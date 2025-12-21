@@ -9,7 +9,11 @@ Unifying Deep Predicate Invention with Foundation Models for Long Horizon Planni
 <!-- <p align="center">
   <img src="metadata/main_demo.gif" width="65%">
 </p> -->
-<source src="matadata/main_demo.mp4" type="video/mp4">
+<video controls width="600">
+  <source src="metadata/main_demo.mp4"
+          type="video/mp4">
+</video>
+
 
 
 ### Some failures UniPred can recover
