@@ -10,12 +10,16 @@ Unifying Deep Predicate Invention with Foundation Models
 ### Some failures UniPred can recover
 
 
-
-<div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
-  <img src="metadata/recovery_1.gif" alt="Recovery demo 1" style="width:48%; max-width:420px; height:auto;" />
-  <img src="metadata/recovery_2.gif" alt="Recovery demo 2" style="width:48%; max-width:420px; height:auto;" />
-</div>
-
+<table>
+  <tr>
+    <td>
+      <img src="metadata/recovery_1.gif" width="420" alt="Recovery demo 1">
+    </td>
+    <td>
+      <img src="metadata/recovery_2.gif" width="420" alt="Recovery demo 2">
+    </td>
+  </tr>
+</table>
 
 
 ### Some failures cannot
