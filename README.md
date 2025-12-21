@@ -1,8 +1,6 @@
 # UniPred  
-Unifying Deep Predicate Invention with Foundation Models for Robotics  
+Unifying Deep Predicate Invention with Foundation Models 
 
-UniPred is a research framework for learning, grounding, and evaluating symbolic predicates from perception and interaction.  
-This repository is under active development. All sections below are intentionally marked as TODO.
 
 ---
 
