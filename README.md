@@ -15,8 +15,8 @@ Unifying Deep Predicate Invention with Foundation Models for Long Horizon Planni
 </video> -->
 
 <p align="center">
-  <img src="metadata/main_2.gif" width="35%">
-  <img src="metadata/main_3.gif" width="35%">
+  <img src="metadata/main_2.gif" width="40%">
+  <img src="metadata/main_3.gif" width="40%">
 </p>
 
 
@@ -28,8 +28,8 @@ Unifying Deep Predicate Invention with Foundation Models for Long Horizon Planni
 
 
 <p align="center">
-  <img src="metadata/recovery_1.gif" width="35%">
-  <img src="metadata/recovery_2.gif" width="35%">
+  <img src="metadata/recovery_1.gif" width="40%">
+  <img src="metadata/recovery_3.gif" width="40%">
 </p>
 
 
