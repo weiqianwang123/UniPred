@@ -60,6 +60,52 @@ Unifying Deep Predicate Invention with Foundation Models for Long Horizon Planni
   <b>Long horizon manipulation tasks are inherently challenging.</b>Many unpredictable factors that can lead to failure, including planning failures and accumulated execution errors at each action step.
 </p>
 
+<<<<<<< HEAD
+## Basic Predicate Learning Example  
+
+A minimal example showing how to learn predicates from data  
+
+TODO  
+
+• training pipeline overview  
+• visualization of predicate grounding results  
+
+---
+
+## Real World Deployment  
+
+Guidelines for running UniPred on physical robotic systems  
+
+TODO  
+• collect data workflow   
+• inference  
+
+---
+
+## Evaluation From Images  
+
+Evaluation of learned predicates using image based benchmarks  
+
+TODO  
+• evaluation protocol description  
+• metrics for predicate accuracy and consistency  
+• qualitative visualization from images  
+• comparison against baselines  
+
+---
+
+## Roadmap  
+
+Planned milestones for this repository  
+
+TODO  
+• full documentation release  
+• code release  
+• public dataset release 
+
+---
+=======
+>>>>>>> 7d9734adad29bb4969fb20de0834848a2d7197d0
 
 ## Citation  
 
