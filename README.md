@@ -1,76 +1,66 @@
-# UniPred  
-Unifying Deep Predicate Invention with Foundation Models for Robotics  
+#  ![logo](metadata/logo.png) UniPred
+Unifying Deep Predicate Invention with Foundation Models for Long Horizon Planning
 
-UniPred is a research framework for learning, grounding, and evaluating symbolic predicates from perception and interaction.  
-This repository is under active development. All sections below are intentionally marked as TODO.
-
----
-
-## Teaser Figure  
-
-A single overview figure that illustrates the full UniPred pipeline  
-from raw perception  
-to predicate induction  
-to downstream planning and control  
-
-TODO  
-• add a clean pipeline style teaser figure  
-• show perception to predicate to planning flow  
-• include both simulation and real world settings  
-
----
 
 ## Demo Videos  
 
-### Main Demo  
-A long duration demonstration showing stable autonomous execution  
-including perception  
-predicate grounding  
-and closed loop task completion  
+### Main Demos  
 
-TODO  
-• add long horizon stable run demo  
-• show no manual intervention  
-• highlight predicate usage during execution  
+<p align="center">
+  <img src="metadata/main_demo.gif" width="70%">
+</p>
+<p align="center">
+  <b>Main Demo.</b> UniPred performs long horizon planning with learned neural-symbolic world model.
+</p>
+<!-- <video controls width="600">
+  <source src="metadata/main_demo.mp4"
+          type="video/mp4">
+</video> -->
 
-### Failure Recovery Demos  
-Short looping animations demonstrating robustness  
-including recovery from perception errors  
-action failure  
-and environment perturbations  
+<p align="center">
+  <img src="metadata/main_2.gif" width="40%">
+  <img src="metadata/main_3.gif" width="40%">
+</p>
+<p align="center">
+  <b>Demo for other tasks...</b> 
+</p>
 
-TODO  
-• add multiple short animations  
-• each focuses on a different failure mode  
-• clearly annotate recovery behavior  
 
----
+### Some failures UniPred can recover
 
-## Code Structure  
+<p align="center">
+  <img src="metadata/recovery_main.gif" width="70%">
+</p>
+<p align="center">
+  <b>Demo showing failure recovery.</b> 
+  
+  UniPred continuously replans based on observation feedback, detects action failures during execution, and performs recovery replanning. Through a total of 13 steps, the system successfully completes the task.
+</p>
 
-This repository will be organized into clear functional modules  
+<p align="center">
+  <img src="metadata/recovery_1.gif" width="40%">
+  <img src="metadata/recovery_3.gif" width="40%">
+</p>
 
-TODO  
-• perception module  
-• predicate learning module  
-• reasoning and planning module  
-• evaluation utilities  
-• real world integration  
+<p align="center">
+  <b>Other Demos showing failure recovery...</b> 
+</p>
 
----
 
-## Environment Setup  
 
-Instructions for setting up the development environment  
+### Some failures cannot
 
-TODO  
-• list required system dependencies  
-• describe recommended hardware  
-• document supported simulation engines  
-• document real world sensor requirements  
+<p align="center">
+  <img src="metadata/fail1.gif" width="30%">
+  <img src="metadata/fail2.gif" width="30%">
+  <img src="metadata/fail3.gif" width="30%">
+</p>
 
----
+<p align="center">
+  <b>Long horizon manipulation tasks are inherently challenging.</b>Many unpredictable factors that can lead to failure, including planning failures and accumulated execution errors at each action step.
+</p>
 
+<<<<<<< HEAD
 ## Basic Predicate Learning Example  
 
 A minimal example showing how to learn predicates from data  
@@ -114,6 +104,8 @@ TODO
 • public dataset release 
 
 ---
+=======
+>>>>>>> 7d9734adad29bb4969fb20de0834848a2d7197d0
 
 ## Citation  
 
@@ -123,7 +115,6 @@ TODO
 • add paper citation  
 • add project webpage  
 
----
 
 ## License  
 
