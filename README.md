@@ -76,9 +76,8 @@ TODO
 A minimal example showing how to learn predicates from data  
 
 TODO  
-• example dataset description  
+
 • training pipeline overview  
-• explanation of learned predicate representations  
 • visualization of predicate grounding results  
 
 ---
@@ -88,10 +87,8 @@ TODO
 Guidelines for running UniPred on physical robotic systems  
 
 TODO  
-• sensor calibration workflow  
-• perception to robot frame alignment  
-• real time inference considerations  
-• safety and reset procedures  
+• collect data workflow   
+• inference  
 
 ---
 
