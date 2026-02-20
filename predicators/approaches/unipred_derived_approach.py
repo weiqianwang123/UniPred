@@ -400,7 +400,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
     @classmethod
     def get_name(cls) -> str:
-        return "ivntr-pdlm-derived"
+        return "unipred-derived"
 
     def _get_current_predicates(self) -> Set[Predicate]:
         return self._initial_predicates | self._learned_predicates

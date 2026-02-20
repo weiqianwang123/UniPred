@@ -22,6 +22,167 @@ from predicators.structs import GroundAtom, GroundAtomTrajectory, \
     LowLevelTrajectory, Object, OptionSpec, Predicate, Segment, \
     STRIPSOperator, Task, _GroundSTRIPSOperator, ParameterizedOption
 
+from predicators.derived_register import clear_registry, register_negation, register_quantified
+
+def _is_derived(info):
+    # 判断 meta_info 是否存在且表明这是派生变体
+    # 你的约定：meta_info = (basic_pred, group_idx, var_idx)
+    # var_idx == 0 表示 basic 本体；>0 表示某个派生（或至少“不是本体”）
+    return len(info) >= 4 and isinstance(info[3], tuple) and info[3][2] > 0
+import numpy as np
+import torch
+
+def _is_torch(x):
+    return isinstance(x, torch.Tensor)
+
+def _clone_like(x):
+    if _is_torch(x):
+        # 避免梯度依赖；确保返回独立副本
+        return x.detach().clone()
+    else:
+        return x.copy()
+
+def _empty_like_cols(ae_mat, num_cols_keep):
+    """构造与 ae_mat 同行数、同最后维度（若有），但列为 0 的空矩阵。"""
+    if _is_torch(ae_mat):
+        device = ae_mat.device
+        dtype  = ae_mat.dtype
+        if ae_mat.ndim == 3:
+            return torch.empty((ae_mat.shape[0], 0, ae_mat.shape[2]), device=device, dtype=dtype)
+        else:  # 2D
+            return torch.empty((ae_mat.shape[0], 0), device=device, dtype=dtype)
+    else:
+        if ae_mat.ndim == 3:
+            return np.empty((ae_mat.shape[0], 0, ae_mat.shape[2]), dtype=ae_mat.dtype)
+        else:
+            return np.empty((ae_mat.shape[0], 0), dtype=ae_mat.dtype)
+
+def _take_cols(ae_mat, keep_cols):
+    """对 [R,C] 或 [R,C,K] 进行按列切片，返回独立副本。"""
+    if _is_torch(ae_mat):
+        idx = torch.as_tensor(keep_cols, dtype=torch.long, device=ae_mat.device)
+        if ae_mat.ndim == 3:
+            out = ae_mat[:, idx, :]
+        else:
+            out = ae_mat[:, idx]
+        return out.detach().clone()
+    else:
+        if ae_mat.ndim == 3:
+            return ae_mat[:, keep_cols, :].copy()
+        else:
+            return ae_mat[:, keep_cols].copy()
+
+def _slice_belief_to_basic(operator_belief, basic_only_list):
+    """返回一个新的 belief，仅包含 basic 列（同步裁剪 col_names / col_ent_idx / ae_matrix）"""
+    col_names   = operator_belief['col_names']
+    col_ent_idx = operator_belief['col_ent_idx']
+    ae_mat      = operator_belief['ae_matrix']
+
+    basic_set = set(basic_only_list)
+    keep_cols = [i for i, p in enumerate(col_names) if p in basic_set]
+
+    if not keep_cols:
+        ae_new = _empty_like_cols(ae_mat, 0)
+        return {
+            'row_names': operator_belief['row_names'],
+            'col_names': [],
+            'col_ent_idx': [],
+            'ae_matrix': ae_new,
+        }
+
+    ae_new = _take_cols(ae_mat, keep_cols)
+
+    return {
+        'row_names': operator_belief['row_names'],
+            # 下面两个要与 ae_new 同步
+        'col_names':   [col_names[i]   for i in keep_cols],
+        'col_ent_idx': [col_ent_idx[i] for i in keep_cols],
+        'ae_matrix': ae_new,
+    }
+
+
+def _decode_derivation(pred: Predicate, meta_info):
+    """返回 (kind, base_pred, quantified_var_idxs, group_idx)"""
+    base_pred, group_idx, var_idx, q_index = meta_info
+    name = getattr(pred, "name", "")
+    is_neg = ("Neg" in name) or ("not" in name.lower())
+    if "exists" in name:
+        kind = "NEG_EXISTS" if is_neg else "EXISTS"
+    elif "forall" in name:
+        kind = "NEG_FORALL" if is_neg else "FORALL"
+    else:
+        kind = "NEG" if is_neg else None
+
+    q_idxs = q_index if kind in {"EXISTS","FORALL","NEG_EXISTS","NEG_FORALL"} else []
+    return kind, base_pred, q_idxs, group_idx
+
+def _register_active_derived(active_preds: set, all_predicates_info):
+    clear_registry()
+    for col, info in all_predicates_info.items():
+        pred = info[0]
+        if pred not in active_preds:
+            continue
+        if not _is_derived(info):
+            continue
+        kind, base_pred, q_idxs, group_idx = _decode_derivation(pred, info[3])
+
+        if kind == "NEG":
+            register_negation(pred, base_pred,group_idx=group_idx)
+        elif kind == "EXISTS":
+            register_quantified(pred, base_pred, q_idxs, "Exists",
+                                group_idx=group_idx, neg_after_quant=False, inner_neg=False)
+        elif kind == "FORALL":
+            register_quantified(pred, base_pred, q_idxs, "ForAll",
+                                group_idx=group_idx, neg_after_quant=False, inner_neg=False)
+        elif kind == "NEG_EXISTS":
+            register_quantified(pred, base_pred, q_idxs, "Exists",
+                                group_idx=group_idx, neg_after_quant=False, inner_neg=True)
+        elif kind == "NEG_FORALL":
+            register_quantified(pred, base_pred, q_idxs, "ForAll",
+                                group_idx=group_idx, neg_after_quant=False, inner_neg=True)
+
+
+def _visualize_plan_comparison(demo_atoms_sequence: Sequence[Set[GroundAtom]],
+                             plan_atoms_sequence: Sequence[Set[GroundAtom]], 
+                             demo_idx: int) -> None:
+    """Visualize demo plan vs generated plan for debugging and analysis."""
+    logging.info(f"\n=== PLAN VISUALIZATION (Demo {demo_idx}) ===")
+    
+    # Plan length comparison
+    demo_len = len(demo_atoms_sequence)
+    plan_len = len(plan_atoms_sequence)
+    logging.info(f"Demo length: {demo_len}, Generated plan length: {plan_len}")
+    
+    # Show step-by-step comparison
+    max_len = max(demo_len, plan_len)
+    for step in range(max_len):
+        logging.info(f"\n--- Step {step} ---")
+        
+        # Demo step
+        if step < demo_len:
+            demo_atoms = demo_atoms_sequence[step]
+            logging.info(f"Demo atoms ({len(demo_atoms)}): {sorted([str(a) for a in demo_atoms])}")
+        else:
+            logging.info("Demo: (no more steps)")
+            
+        # Generated plan step  
+        if step < plan_len:
+            plan_atoms = plan_atoms_sequence[step]
+            logging.info(f"Plan atoms ({len(plan_atoms)}): {sorted([str(a) for a in plan_atoms])}")
+            
+            # Show differences if both exist
+            if step < demo_len:
+                demo_only = demo_atoms - plan_atoms
+                plan_only = plan_atoms - demo_atoms
+                if demo_only:
+                    logging.info(f"  Only in demo: {sorted([str(a) for a in demo_only])}")
+                if plan_only:
+                    logging.info(f"  Only in plan: {sorted([str(a) for a in plan_only])}")
+        else:
+            logging.info("Plan: (no more steps)")
+    
+    logging.info("=== END PLAN VISUALIZATION ===\n")
+
 
 def create_score_function(
         score_function_name: str, initial_predicates: Set[Predicate],
@@ -117,6 +278,8 @@ class _PredicateSearchScoreFunction(abc.ABC):
         total_pred_cost = sum(self._candidates[p]
                               for p in candidate_predicates)
         return CFG.grammar_search_pred_complexity_weight * total_pred_cost
+    
+
 
 @dataclass(frozen=True, eq=False, repr=False)
 class _OperatorBeliefScoreFunction(abc.ABC):
@@ -126,10 +289,128 @@ class _OperatorBeliefScoreFunction(abc.ABC):
     _row_names: List[ParameterizedOption] # all of the option names
     metric_name: str # num_nodes_created or num_nodes_expanded
 
+    def evaluate_and_get_plans(
+            self,
+            candidate_ae_matrix: np.ndarray,
+            candidate_predicates: List[Predicate],
+            predicates_ent_idx: List[List[int]],
+            strips_learner: str,
+            gt_predicates: Optional[Set[Predicate]] = None,
+            max_traj_used: int = -1,
+        ) -> Tuple[List[List[str]]]:
+        """Similar to `evaluate`, but additionally returns the three best
+        skeleton plans (by node-metric) and an optional baseline plan learned
+        with `gt_predicates`.
+
+        Returns
+        -------
+        best_score : float
+            The minimal node count among all skeletons generated with the
+            candidate predicates.
+        top3_plans : List[List[str]]
+            Up to three skeletons (as operator-name lists) sorted by score.
+        baseline_plan : Optional[List[str]]
+            Best skeleton obtained with the ground-truth predicate set.
+            `None` if `gt_predicates` is not provided.
+        """
+        # ---------- 1. Learn PNADs exactly like in evaluate ----------
+        pruned_atom_data = utils.prune_ground_atom_dataset(
+            self._atom_dataset, set(candidate_predicates))
+        segmented_trajs = [
+            segment_trajectory(ll_traj, set(candidate_predicates), atom_seq)
+            for (ll_traj, atom_seq) in pruned_atom_data
+        ]
+        low_level_trajs = [ll_traj for ll_traj, _ in pruned_atom_data]
+        candidate_predicates = candidate_predicates[:len(predicates_ent_idx)]
+        operator_belief = {
+            'row_names': self._row_names,
+            'col_names': candidate_predicates,
+            'col_ent_idx': predicates_ent_idx,
+            'ae_matrix': candidate_ae_matrix
+        }
+        pnads = learn_strips_operators(
+            low_level_trajs,
+            self._train_tasks,
+            set(candidate_predicates),
+            segmented_trajs,
+            verify_harmlessness=False,
+            verbose=True,
+            annotations=None,
+            operator_belief=operator_belief if 'belief' in strips_learner else None,
+        )
+        if not pnads:
+            return float('inf'), [], None
+
+        strips_ops  = [p.op          for p in pnads]
+        option_specs = [p.option_spec for p in pnads]
+        dummy_nsrts = utils.ops_and_specs_to_dummy_nsrts(strips_ops, option_specs)
+
+        # ---------- 2. Enumerate skeletons, keep global best ----------
+        scored_plans: List[Tuple[float, List[str]]] = []
+        ub = CFG.neupi_aaai_expected_nodes_upper_bound
+        scored: List[Tuple[float, int, List[str]]] = []  # (score, demo_idx, plan)
+        for demo_idx, (ll_traj, seg_traj) in enumerate(zip(
+            low_level_trajs[:max_traj_used],
+            segmented_trajs[:max_traj_used])):
+            if not ll_traj.is_demo:
+                continue
+            init_atoms = utils.segment_trajectory_to_atoms_sequence(seg_traj)[0]
+            goal       = self._train_tasks[ll_traj.train_task_idx].goal
+            objects    = set(ll_traj.states[0])
+            ground_nsrts, reachable_atoms = task_plan_grounding(
+                init_atoms, objects, dummy_nsrts,
+                allow_noops=CFG.grammar_search_expected_nodes_allow_noops)
+            heuristic = utils.create_task_planning_heuristic(
+                CFG.sesame_task_planning_heuristic, init_atoms, goal,
+                ground_nsrts, set(candidate_predicates), objects)
+
+            generator = task_plan(init_atoms, goal, ground_nsrts,
+                                reachable_atoms, heuristic, CFG.seed,
+                                CFG.grammar_search_task_planning_timeout,
+                                CFG.sesame_max_skeletons_optimized,
+                                use_visited_state_set=False)
+            try:
+                def simplify_action_string(ground_nsrt) -> str:
+                    """将复杂的 SingletonParameterizedOption 动作格式简化为可读格式。"""
+                    
+                    name = ground_nsrt.option.name
+                    obj_names = [str(o).split(":")[0] for o in ground_nsrt.option_objs]  # 去掉 ":type"
+                    return f"{name}({', '.join(obj_names)})"
+
+                for skeleton, _, metrics in generator:
+                    # skeleton 是一个 GroundNSRT 列表 / 元组
+                    score = metrics[self.metric_name]
+
+                    # 提取 operator 名称（兼容 GroundNSRT / pnad.op 等不同字段）
+                    ops = []
+                    for step in skeleton:
+                       ops.append(simplify_action_string(step))
+
+                    scored.append((score, ops))
+        
+                    # logging.info(
+                    #     "Demo %d | skeleton length=%d | score=%.1f | plan: %s",
+                    #     demo_idx, len(ops), score, " ➜ ".join(ops)
+                    # )
+
+
+            except (PlanningTimeout, PlanningFailure):
+                scored.append((CFG.neupi_aaai_expected_nodes_upper_bound,[]))
+
+        # 排序并截取前三
+        if not scored:
+            return []
+
+        # larger score = worse → sort descending, keep top-3
+        worst3 = sorted(scored, key=lambda x: -x[0])[:3]
+        # drop the score before returning
+        return [(demo_idx, plan) for demo_idx, plan in worst3]
     def evaluate(self, candidate_ae_matrix: np.ndarray, \
                 candidate_predicates: List[Predicate], \
                 predicates_ent_idx: List[List[int]], \
-                strips_learner: str) -> float:
+                strips_learner: str,\
+                all_predicates_info: Optional[Dict[int, Tuple[Predicate, List[int], bool]]]=None,\
+                basic_only_candidate_predicates:Optional[List[Predicate]]=None) -> float:
         total_cost = len(candidate_predicates)
         logging.info(f"Evaluating predicates: {candidate_predicates}, with "
                         f"total cost {total_cost}")
@@ -154,10 +435,16 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                 'col_ent_idx': predicates_ent_idx,
                 'ae_matrix': candidate_ae_matrix
             }
+            if basic_only_candidate_predicates is not None:
+                logging.info(f"using basic predicates: {basic_only_candidate_predicates}")
+                operator_belief = _slice_belief_to_basic(operator_belief, basic_only_candidate_predicates)
+                learn_cols_for_effect = operator_belief['col_names']  # learner 只看这些列
+            else:
+                learn_cols_for_effect = candidate_predicates
             if 'belief' in strips_learner:
                 pnads = learn_strips_operators(low_level_trajs,
                                             self._train_tasks,
-                                            set(candidate_predicates),
+                                            set(learn_cols_for_effect),
                                             segmented_trajs,
                                             verify_harmlessness=False,
                                             verbose=True,
@@ -165,12 +452,13 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                                             operator_belief=operator_belief)
             else:
                 pnads = learn_strips_operators(low_level_trajs,
-                                            self._train_tasks,
-                                            set(candidate_predicates),
-                                            segmented_trajs,
-                                            verify_harmlessness=False,
-                                            verbose=True,
-                                            annotations=None)
+                                                self._train_tasks,
+                                                set(learn_cols_for_effect),
+                                                segmented_trajs,
+                                                verify_harmlessness=False,
+                                                verbose=True,
+                                                annotations=None,
+                                                )
         except TimeoutError:
             logging.info(
                 "Warning: Operator Learning timed out! Skipping evaluation.")
@@ -188,6 +476,12 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             )
         strips_ops = [pnad.op for pnad in pnads]
         option_specs = [pnad.option_spec for pnad in pnads]
+        #register for derived predicates
+        active_pred_set = set(candidate_predicates)
+        if all_predicates_info is not None:
+            # logging.info((f"register derived predicate:{active_pred_set}"))
+            _register_active_derived(active_pred_set,
+                                    all_predicates_info)     
         op_score = self.evaluate_with_operators(candidate_predicates,
                                                 low_level_trajs,
                                                 segmented_trajs, strips_ops,
@@ -261,8 +555,13 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                                   use_visited_state_set=False)
             try:
                 for idx, (_, plan_atoms_sequence,
-                          metrics) in enumerate(generator):
+                            metrics) in enumerate(generator):
                     assert goal.issubset(plan_atoms_sequence[-1])
+                    
+                    # # Visualize demo vs generated plan (enable with --debug flag)
+                    # if idx == 0:  # Only visualize first plan for each demo
+                    #     _visualize_plan_comparison(demo_atoms_sequence, plan_atoms_sequence, seen_demos-1)
+                    
                     # Estimate the probability that this skeleton is refinable.
                     refinement_prob = self._get_refinement_prob(
                         demo_atoms_sequence, plan_atoms_sequence)
@@ -286,6 +585,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                 # Note if we failed to find any skeleton, the next lines add
                 # the upper bound with refinable_skeleton_not_found_prob = 1.0,
                 # so no special action is required.
+                logging.info("Warning: Task planning timed out or failed!")
                 pass
             # After exhausting the skeleton budget or timeout, we use this
             # probability to estimate a "worst-case" planning time, making the
@@ -545,6 +845,8 @@ class _OperatorLearningBasedScoreFunction(_PredicateSearchScoreFunction):
             segment_trajectory(ll_traj, set(candidate_predicates), atom_seq)
             for (ll_traj, atom_seq) in pruned_atom_data
         ]
+        num_segments = sum(len(segs) for segs in segmented_trajs)
+        logging.info(f"      Created {num_segments} segments from {len(segmented_trajs)} trajectories")
         # Each entry in pruned_atom_data is a tuple of (low-level trajectory,
         # low-level ground atoms sequence). We remove the latter, because
         # it's prone to causing bugs -- we should rarely care about the
@@ -565,12 +867,19 @@ class _OperatorLearningBasedScoreFunction(_PredicateSearchScoreFunction):
                 "Warning: Operator Learning timed out! Skipping evaluation.")
             return float('inf')
 
-        logging.debug(
-            f"Learned {len(pnads)} operators for this predicate set.")
-        for pnad in pnads:
-            logging.debug(
-                f"Operator {pnad.op.name} has {len(pnad.datastore)} datapoints."
-            )
+        logging.info(
+            f"      Learned {len(pnads)} operators for this predicate set")
+        # Detailed operator logging (commented out for brevity)
+        # for pnad in pnads:
+        #     op = pnad.op
+        #     logging.info(f"      Operator: {op.name}")
+        #     logging.info(f"        Parameters: {op.parameters}")
+        #     logging.info(f"        Preconditions: {op.preconditions}")
+        #     logging.info(f"        Add Effects: {op.add_effects}")
+        #     logging.info(f"        Delete Effects: {op.delete_effects}")
+        #     if op.ignore_effects:
+        #         logging.info(f"        Ignore Effects: {op.ignore_effects}")
+        #     logging.info(f"        Datapoints: {len(pnad.datastore)}")
         strips_ops = [pnad.op for pnad in pnads]
         option_specs = [pnad.option_spec for pnad in pnads]
         op_score = self.evaluate_with_operators(candidate_predicates,
@@ -658,6 +967,22 @@ class _TaskPlanningScoreFunction(_OperatorLearningBasedScoreFunction):
                                 strips_ops: List[STRIPSOperator],
                                 option_specs: List[OptionSpec]) -> float:
         del low_level_trajs, segmented_trajs  # unused
+        
+        # Log the predicate set being evaluated
+        logging.info(f"\n{'='*60}")
+        logging.info(f"EVALUATING PREDICATE SET")
+        logging.info(f"{'='*60}")
+        logging.info(f"Candidate predicates ({len(candidate_predicates)}):")
+        for pred in sorted(candidate_predicates, key=lambda p: p.name):
+            logging.info(f"  - {pred.name}")
+        logging.info(f"Initial predicates ({len(self._initial_predicates)}):")
+        for pred in sorted(self._initial_predicates, key=lambda p: p.name):
+            logging.info(f"  - {pred.name}")
+        logging.info(f"Total predicates: {len(candidate_predicates | self._initial_predicates)}")
+        logging.info(f"STRIPS operators ({len(strips_ops)}):")
+        for op in strips_ops:
+            logging.info(f"  - {op.name}")
+        
         score = 0.0
         node_expansion_upper_bound = 1e7
         for traj, _ in self._atom_dataset:
@@ -677,20 +1002,39 @@ class _TaskPlanningScoreFunction(_OperatorLearningBasedScoreFunction):
                 ground_nsrts, candidate_predicates | self._initial_predicates,
                 objects)
             try:
-                _, _, metrics = next(
-                    task_plan(init_atoms,
+                logging.info(f"=== Planning attempt for trajectory {traj.train_task_idx} ===")
+                logging.info(f"Initial atoms ({len(init_atoms)}): {sorted([str(atom) for atom in init_atoms])}")
+                logging.info(f"Goal atoms ({len(traj_goal)}): {sorted([str(atom) for atom in traj_goal])}")
+                logging.info(f"Ground NSRTs ({len(ground_nsrts)}): {[nsrt.name for nsrt in ground_nsrts]}")
+                logging.info(f"Reachable atoms ({len(reachable_atoms)}): {len(reachable_atoms) > 0}")
+                logging.info(f"Goal subset of reachable: {traj_goal.issubset(reachable_atoms)}")
+                
+                plan_generator = task_plan(init_atoms,
                               traj_goal,
                               ground_nsrts,
                               reachable_atoms,
                               heuristic,
                               CFG.seed,
                               CFG.grammar_search_task_planning_timeout,
-                              max_skeletons_optimized=1))
+                              max_skeletons_optimized=1)
+                              
+                skeleton, atom_sequence, metrics = next(plan_generator)
+                
+                logging.info(f"=== PLANNING SUCCEEDED ===")
+                logging.info(f"Plan found with {len(skeleton)} actions:")
+                for i, action in enumerate(skeleton):
+                    logging.info(f"  Step {i+1}: {action}")
+                logging.info(f"Atoms sequence length: {len(atom_sequence)}")
+                
                 assert "num_nodes_expanded" in metrics
                 node_expansions = metrics["num_nodes_expanded"]
+                logging.info(f"Nodes expanded: {node_expansions}")
                 assert node_expansions < node_expansion_upper_bound
                 score += node_expansions
-            except (PlanningFailure, PlanningTimeout):
+            except (PlanningFailure, PlanningTimeout) as e:
+                logging.warning(f"=== PLANNING FAILED ===")
+                logging.warning(f"Planning failed for trajectory {traj.train_task_idx}: {type(e).__name__}: {e}")
+                logging.warning(f"Adding penalty score: {node_expansion_upper_bound}")
                 score += node_expansion_upper_bound
         return score
 
@@ -768,9 +1112,11 @@ class _ExpectedNodesScoreFunction(_OperatorLearningBasedScoreFunction):
                                   CFG.grammar_search_task_planning_timeout,
                                   max_skeletons,
                                   use_visited_state_set=False)
+            skeletons_found = 0
             try:
                 for idx, (_, plan_atoms_sequence,
                           metrics) in enumerate(generator):
+                    skeletons_found += 1
                     assert goal.issubset(plan_atoms_sequence[-1])
                     # Estimate the probability that this skeleton is refinable.
                     refinement_prob = self._get_refinement_prob(
@@ -791,11 +1137,14 @@ class _ExpectedNodesScoreFunction(_OperatorLearningBasedScoreFunction):
                         expected_planning_time += p * w
                     # Update the probability that no skeleton yet is refinable.
                     refinable_skeleton_not_found_prob *= (1 - refinement_prob)
-            except (PlanningTimeout, PlanningFailure):
+            except (PlanningTimeout, PlanningFailure) as e:
                 # Note if we failed to find any skeleton, the next lines add
                 # the upper bound with refinable_skeleton_not_found_prob = 1.0,
                 # so no special action is required.
                 pass
+            # Skeleton logging (commented out for brevity)
+            # logging.info(f"      Found {skeletons_found} skeletons for demo {seen_demos}, "
+            #             f"refinable_not_found_prob={refinable_skeleton_not_found_prob:.3f}")
             # After exhausting the skeleton budget or timeout, we use this
             # probability to estimate a "worst-case" planning time, making the
             # soft assumption that some skeleton will eventually work.
@@ -1188,3 +1537,4 @@ class _ExactHeuristicCountBasedScoreFunction(_ExactHeuristicBasedScoreFunction,
                                              ):
     """Implement _generate_heuristic() with exact planning and
     _evaluate_atom_trajectory() with counting-based lookahead."""
+

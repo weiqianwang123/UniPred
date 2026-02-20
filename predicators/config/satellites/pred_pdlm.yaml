@@ -3,6 +3,7 @@ neupi_non_effect_predicates: ['CalibrationTarget', 'HasCamera', 'HasInfrared', '
 
 config:
   - name: "other"
+    num_vectors_to_generate_list: [2, 2, 1, 2]
     domain_desc: ""
   - name: "neural_u_p1"
     types: ["satellite"]

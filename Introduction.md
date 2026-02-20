@@ -13,13 +13,13 @@ To run UniPred on the satellites environment:
 1. **Training**: Train the model from scratch using LLM-guided search
    ```bash
    mkdir -p logs/satellites
-   bash ./scripts/train/satellites/satellites_biplan_pdlm.sh
+   bash ./scripts/train/satellites/unipred.sh
    ```
 
 2. **Testing**: Evaluate the trained model
    ```bash
    mkdir -p logs/satellites  
-   bash ./scripts/test/satellites/satellites_pdlm.sh
+   bash ./scripts/test/satellites/unipred.sh
    ```
 
 
@@ -70,8 +70,8 @@ To adapt IVNTR-LLMSearch to other environments, you need to create two configura
        loss_thresh: 0.005
    ```
 
-3. **Create training script** following the pattern of `satellites_biplan_pdlm.sh`:
+3. **Create training script** following the pattern of `unipred.sh`:
    ```bash
-   python3 predicators/main.py --env <your_env> --approach ivntr-pdlm \
+   python3 predicators/main.py --env <your_env> --approach unipred \
        --neupi_pred_config "predicators/config/<env>/pred_pdlm.yaml" \
        --pred_pddl_config "predicators/config/<env>/pddl.json" \

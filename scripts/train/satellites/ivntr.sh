@@ -1,7 +1,7 @@
 export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
-
+export PYTHONPATH="${PYTHONPATH}:/home/qianwei/UniPred"
 for seed in 0
 do
     echo "Running Seed $seed --------------------------------------"
@@ -18,7 +18,6 @@ do
         --exclude_domain_feat "none" \
         --neupi_do_normalization False \
         --num_train_tasks 500 \
-        --load_data \
         --domain_aaai_thresh 100000 \
         --neupi_entropy_w 0.5 \
         --neupi_loss_w 0.5 \

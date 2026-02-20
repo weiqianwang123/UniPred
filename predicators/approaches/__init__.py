@@ -13,7 +13,8 @@ from predicators.structs import ParameterizedOption, Predicate, Task, Type
 from predicators.approaches.grammar_search_condition_approach import GrammarSearchConditionApproach
 from predicators.approaches.bilevel_learning_approach import BilevelLearningApproach
 from predicators.approaches.mb_shooting_approach import MBShootingApproach
-from predicators.approaches.bilevel_learning_pdlm_approach import BilevelLearningLLMApproach
+from predicators.approaches.unipred_approach import BilevelLearningLLMApproach
+from predicators.approaches.unipred_derived_approach import BilevelLearningLLMApproach as BilevelLearningLLMDerivedApproach
 
 __all__ = ["BaseApproach", "ApproachTimeout", "ApproachFailure"]
 
@@ -58,11 +59,15 @@ def create_approach(name: str, initial_predicates: Set[Predicate],
     try:
         cls = _get_approach_cls_from_name(name)
     except NotImplementedError:
-        assert name in ["mb_shooting", "bilevel_learning"]
+        assert name in ["mb_shooting", "bilevel_learning", "unipred", "unipred-derived"]
         if name == "mb_shooting":
             cls = MBShootingApproach
         elif name == "bilevel_learning":
             cls = BilevelLearningApproach
+        elif name == "unipred":
+            cls = BilevelLearningLLMApproach
+        elif name == "unipred-derived":
+            cls = BilevelLearningLLMDerivedApproach
         else:
             raise NotImplementedError(f"Unknown approach: {name}")
     return cls(initial_predicates, initial_options, types, action_space,

@@ -32,6 +32,8 @@ Real-World-Data/
 scripts/weights/
 table_empty_transformer.pth
 table_empty_transformer.pth
+logs
+ext
 # Jetbrains IDEs
 .idea/
 wandb/

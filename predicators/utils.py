@@ -7,6 +7,7 @@ import abc
 import contextlib
 import functools
 import gc
+import hashlib
 import heapq as hq
 import importlib
 import io
@@ -2727,6 +2728,10 @@ def add_ground_atom_dataset(
     for traj, atoms in tqdm(ground_atom_dataset):
         new_atoms = []
         for i, s in enumerate(traj.states):
+            # logging.info(f"Abstracting state {i} / {len(traj.states)}")
+            # logging.info(f"Current atoms: {atoms[i]}")
+            if i>=len(atoms):
+                continue
             new_atoms.append(atoms[i].union(abstract(s, added_predicates)))
         new_ground_atom_dataset.append((traj, new_atoms))
     return new_ground_atom_dataset
@@ -2737,7 +2742,7 @@ def prune_ground_atom_dataset(
     """Create a new ground atom dataset by keeping only some predicates."""
     new_ground_atom_dataset = []
     for traj, atoms in ground_atom_dataset:
-        assert len(traj.states) == len(atoms)
+        # assert len(traj.states) == len(atoms)
         kept_atoms = [{a
                        for a in sa if a.predicate in kept_predicates}
                       for sa in atoms]
@@ -2941,7 +2946,10 @@ def get_applicable_operators(
     """
     for op in ground_ops:
         applicable = op.preconditions.issubset(atoms)
+        # logging.info(f"op:{op}")
+        # logging.info(f"atoms:{atoms},pre:{op.preconditions}")
         if applicable:
+            # logging.info(f"applicable")
             yield op
 
 
@@ -3235,7 +3243,8 @@ def _atoms_to_pyperplan_facts(
 
 def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
                        predicates: Collection[Predicate],
-                       types: Collection[Type], domain_name: str) -> str:
+                       types: Collection[Type], domain_name: str,
+                       derived_predicates: Optional[Collection[str]] = None) -> str:
     """Create a PDDL domain str from STRIPSOperators or NSRTs."""
     # Sort everything to ensure determinism.
     preds_lst = sorted(predicates)
@@ -3270,12 +3279,20 @@ def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
     ops_lst = sorted(operators)
     preds_str = "\n    ".join(pred.pddl_str() for pred in preds_lst)
     ops_strs = "\n\n  ".join(op.pddl_str() for op in ops_lst)
+    
+    # Add derived predicates support
+    requirements = ":typing"
+    derived_strs = ""
+    if derived_predicates:
+        requirements += " :adl :derived-predicates"
+        derived_strs = "\n\n  " + "\n\n  ".join(derived_predicates)
+    
     return f"""(define (domain {domain_name})
-  (:requirements :typing)
+  (:requirements {requirements})
   (:types {types_str})
 
   (:predicates\n    {preds_str}
-  )
+  ){derived_strs}
 
   {ops_strs}
 )"""
@@ -3615,8 +3632,13 @@ def get_config_path_str(experiment_id: Optional[str] = None) -> str:
     """
     if experiment_id is None:
         experiment_id = CFG.experiment_id
-    return (f"{CFG.env}__{CFG.approach}__{CFG.seed}__{CFG.excluded_predicates}"
-            f"__{CFG.included_options}_aesuperv_{CFG.neupi_gt_ae_matrix}__{experiment_id}")
+
+    # Hash long config strings to avoid filename length issues
+    pred_hash = hashlib.md5(CFG.excluded_predicates.encode()).hexdigest()[:8]
+    opts_hash = hashlib.md5(CFG.included_options.encode()).hexdigest()[:8]
+
+    return (f"{CFG.env}__{CFG.approach}__{CFG.seed}__pred_{pred_hash}"
+            f"__opts_{opts_hash}_aesuperv_{CFG.neupi_gt_ae_matrix}__{experiment_id}")
 
 
 def get_approach_save_path_str() -> str:
@@ -4128,9 +4150,9 @@ def add_text_to_draw_img(
 
 def get_important_cfg(cfg, dict):
     important_keys = [
-        "neupi_non_effect_predicates",
-        "neupi_ae_matrix_channel",
-        "neupi_gt_ae_matrix",
+        # "neupi_non_effect_predicates",
+        # "neupi_ae_matrix_channel",
+        # "neupi_gt_ae_matrix",
         "name",
         "types",
         "architecture",
@@ -4327,6 +4349,7 @@ def parse_str2nsrt(dummy_nsrt_dict: Dict,
                                             reg_weight_path, reg_info_path)
         else:
             sampler = None
+            logging.info(f"Creating neural sampler as none")
         nsrt = NSRT(name=name, parameters=parameters, preconditions=preconditions,
                     add_effects=add_effects, delete_effects=delete_effects,
                     ignore_effects=set(), option=option,

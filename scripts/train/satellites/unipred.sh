@@ -1,21 +1,20 @@
 export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
-export PYTHONPATH="${PYTHONPATH}:/home/qianwei/NPP_clean"
-
-for seed in 0 1 2 3 4
+export PYTHONPATH="${PYTHONPATH}:"
+export PYTHONPATH="${PYTHONPATH}:/home/qianwei/UniPred"
+for seed in 0 
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pdlm \
+    if python3 predicators/main.py --env satellites --approach unipred \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --neupi_pred_config "predicators/config/satellites/pred_pdlm.yaml" \
         --pred_pddl_config "predicators/config/satellites/pddl.json" \
-        --load_data \
         --neupi_gt_ae_matrix False \
         --sesame_task_planner "fdsat" \
         --exclude_domain_feat "none" \
@@ -29,9 +28,9 @@ do
         --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --log_file logs/satellites/ivntr_ood_pdlm_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/unipred_$seed" \
+        --neupi_save_path "saved_approaches/demo/satellites/unipred_$seed" \
+        --log_file logs/satellites/unipred_training_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

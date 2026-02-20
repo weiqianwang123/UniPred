@@ -13,9 +13,43 @@ import requests
 import math
 from collections import OrderedDict
 from predicators.structs import ParameterizedOption, Predicate, Type  # noqa: F401
-from predicators.llm.llm_for_effect_new import constraints_to_vector
+
 from predicators.gnn.neupi import HierachicalMCTSearcher
 # Additional imports for Gemini and Qwen
+def constraints_to_vector(row_names: List[ParameterizedOption],
+                                        constraints: List[Tuple]) -> list[list[int]]:
+                    """
+                    Return allowed_codes[action_index] → list of permissible integers {0,1,2}.
+
+                    Mapping from the original two-channel rules
+                        • channel==0, value==1  → only code 1   (add effect required)
+                        • channel==0, value==0  → code 1 forbidden
+                        • channel==1, value==1  → only code 2   (delete effect required)
+                        • channel==1, value==0  → code 2 forbidden
+                    The intersection of all rules for the same action is kept.
+                    """
+                    n_actions = len(row_names)
+                    allowed = [set([0, 1, 2]) for _ in range(n_actions)]
+
+                    for rule in constraints:
+                        if rule[0] != "position":
+                            continue
+                        row, _, channel, value = rule[1:]
+
+                        if channel == 0:            # ADD channel
+                            if value == 1:
+                                allowed[row] = {1}
+                            else:                   # value == 0
+                                allowed[row].discard(1)
+
+                        elif channel == 1:          # DELETE channel
+                            if value == 1:
+                                allowed[row] = {2}
+                            else:                   # value == 0
+                                allowed[row].discard(2)
+
+                    # convert sets → sorted lists for JSON friendliness
+                    return [sorted(list(codes)) for codes in allowed]
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
