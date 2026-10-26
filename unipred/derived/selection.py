@@ -74,9 +74,9 @@ class DerivedSelectionMixin:
                   encoding="utf-8") as f:
             json.dump(specs, f, indent=1)
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
+    def load(self) -> None:
         """Load the approach and its derived rules."""
-        super().load(online_learning_cycle)  # type: ignore[misc]
+        super().load()  # type: ignore[misc]
         self._derived_rules = {}
         self._withheld_variants = {}
         path = f"{utils.get_approach_load_path_str()}.derived"
