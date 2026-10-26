@@ -5,7 +5,6 @@ from __future__ import division
 import collections
 import logging
 import time
-import wandb
 from typing import Any, Callable, Dict, List, Optional, OrderedDict, Tuple
 
 import numpy as np
@@ -13,7 +12,6 @@ import torch
 from torch.utils.data import Dataset
 
 from predicators.structs import Array
-from itertools import product
 
 def discrete_sigmoid(logits, temperature=1.0, boundary=0.5):
     """

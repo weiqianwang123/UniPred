@@ -5,7 +5,6 @@ import copy
 import collections
 import logging
 import time
-import wandb
 import itertools
 from tqdm import tqdm
 from itertools import combinations
@@ -14,12 +13,11 @@ from typing import Any, Callable, Dict, List, Optional, OrderedDict, Tuple, Set
 import numpy as np
 import torch
 import torch.nn.functional as F
-from predicators.settings import CFG
 
 from .gnn_utils import discrete_graph, _create_super_graph
 from predicators.structs import MDPDataset, Type, DummyPredicate, LowLevelTrajectory, \
     State, GroundAtom, _Option, Predicate, Dataset
-from predicators.utils import abstract
+from predicators.utils import wandb_log
 
 def two2one(two: torch.Tensor) -> torch.Tensor:
     """Convert a 2(1)D ae vector to a 1D tensor."""
@@ -560,8 +558,9 @@ def train_predicate_model(
             #     logging.info(f"Epoch {epoch}, Sample {idx}, data loading time: {data_time:.4f} seconds")
             #     logging.info(f"Epoch {epoch}, Sample {idx}, model processing time: {model_time:.4f} seconds")
             # logging.info(f"Epoch {epoch}, Sample {idx}, non_change_loss: {non_change_loss.item()}, change_loss: {change_loss.item()}")
-            if wandb.run is not None:
-                wandb.log({"non_change_loss_single": non_change_loss.item(), "change_loss_single": change_loss.item(), "train_loss_single": loss.item()})
+            wandb_log({"non_change_loss_single": non_change_loss.item(),
+                       "change_loss_single": change_loss.item(),
+                       "train_loss_single": loss.item()})
 
             start_data_time = time.time()
 
@@ -631,10 +630,12 @@ def train_predicate_model(
         avg_data_time = total_data_time / (idx+1)
         avg_model_time = total_model_time / (idx+1)
         running_loss = {k: np.mean(v) if len(v) > 0 else 100.0 for k, v in running_loss.items()}
-        if wandb.run is not None:
-            wandb.log({"non_change_train": running_loss['non_change_train'], "change_train": running_loss['change_train'],
-                        "train_loss_avg": running_loss['train_loss'], "non_change_val": running_loss['non_change_val'],
-                            "change_val": running_loss['change_val'], "val_loss_avg": running_loss['val_loss']})
+        wandb_log({"non_change_train": running_loss['non_change_train'],
+                   "change_train": running_loss['change_train'],
+                   "train_loss_avg": running_loss['train_loss'],
+                   "non_change_val": running_loss['non_change_val'],
+                   "change_val": running_loss['change_val'],
+                   "val_loss_avg": running_loss['val_loss']})
 
         total_loss_val = running_loss['val_loss']
         total_loss_train = running_loss['train_loss']
@@ -777,7 +778,6 @@ def train_init_dummy_model(
             #     logging.info(f"Epoch {epoch}, Sample {idx}, data loading time: {data_time:.4f} seconds")
             #     logging.info(f"Epoch {epoch}, Sample {idx}, model processing time: {model_time:.4f} seconds")
             logging.info(f"Epoch {epoch}, Sample {idx}, non_change_loss: {non_change_loss.item()}, change_loss: {change_loss.item()}")
-            # wandb.log({"aet_loss_single": aet_loss.item(), "superv_loss_single": superv_loss.item(), "train_loss_single": loss.item()})
 
             start_data_time = time.time()
 
@@ -844,10 +844,6 @@ def train_init_dummy_model(
         avg_data_time = total_data_time / (idx+1)
         avg_model_time = total_model_time / (idx+1)
         running_loss = {k: np.mean(v) for k, v in running_loss.items()}
-        # wandb.log({"aet_loss_avg_train": running_loss['aet_loss_train'], "superv_loss_avg_train": running_loss['superv_loss_train'],
-        #              "train_loss_avg": running_loss['train_loss'], "aet_loss_avg_val": running_loss['aet_loss_val'],
-        #                 "superv_loss_avg_val": running_loss['superv_loss_val'], "val_loss_avg": running_loss['val_loss'],
-        #            "Epoch": epoch})
 
         total_loss_val = running_loss['val_loss']
         if total_loss_val < best_seen_running_validation_loss:

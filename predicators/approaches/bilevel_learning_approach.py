@@ -7,18 +7,15 @@ import os
 import copy
 import glob
 import time
-import copy
-import wandb
 import yaml
 import random
 import itertools
 import json
 import logging
-from z3 import *
+from z3 import Bool, Not, Or, Solver, is_true, sat
 from tqdm import tqdm
 from gym.spaces import Box
-from tqdm import tqdm
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, \
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, \
     Sequence, Set, Tuple, TypeVar
 
 import numpy as np
@@ -34,11 +31,10 @@ from predicators.option_model import _OracleOptionModel
 from predicators.approaches import ApproachFailure, ApproachTimeout
 
 from predicators import utils
-from predicators.approaches import ApproachFailure
 from predicators.approaches.nsrt_learning_approach import NSRTLearningApproach
 from predicators.gnn.neupi import setup_neupi_mlp_net, setup_neupi_optimizer, HierachicalMCTSearcher
 from predicators.gnn.neupi_utils import train_predicate_model, get_single_neupi_prediction, \
-    compute_guidance_vector, select_columns, distill_learned_ae_vector, check_learned_ap_vector, \
+    compute_guidance_vector, distill_learned_ae_vector, check_learned_ap_vector, \
     gen_pretty_pred_name, two2one, one2two, prob_three2two, inferece_dataloader, name2quantifier_types, \
     parse_basic_pred_name
 from predicators.gnn.gnn_utils import GraphTransC2DDataset, compute_normalizers, action_graph_batch_collate, \
@@ -53,8 +49,7 @@ from predicators.predicate_search_score_functions import _OperatorBeliefScoreFun
 from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLevelTrajectoryReward, \
     _Option, ParameterizedOption, DummyPredicate, NeuralPredicate, Predicate, Object, State, Task, Type, \
     Action
-from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
-    LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
+from predicators.structs import NSRT
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 
@@ -68,11 +63,10 @@ def train_val_model_in_parallel(curr_pred, ent_idx, pred_save_path, ae_vector, i
     # Initialize W&B run with a unique name for this process
     logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
     if wandb_run_name:
-        logging.info(f"Starting W&B run. This makes training slower due to logging.")
-        os.environ["WANDB_API_KEY"] = "f510977768bfee8889d74a65884aeec5f45a578f"
-        wandb.init(project="NeuPI", 
-                config=utils.get_important_cfg(CFG, pred_config))
-        wandb.run.name = wandb_run_name + "_pred_" + pred_config['name'] + "_init_" + str(n)
+        logging.info("Starting W&B run. This makes training slower due to logging.")
+        utils.init_wandb_run(
+            f"{wandb_run_name}_pred_{pred_config['name']}_init_{n}",
+            utils.get_important_cfg(CFG, pred_config))
 
     train_dataloader = DataLoader(train_dataset,
                                     batch_size=pred_config['batch_size'],
@@ -145,11 +139,10 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
     # assert n == 0, "Single Process"
     logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
     if wandb_run_name:
-        logging.info(f"Starting W&B run. This makes training slower due to logging.")
-        os.environ["WANDB_API_KEY"] = "f510977768bfee8889d74a65884aeec5f45a578f"
-        wandb.init(project="NeuPI", 
-                config=utils.get_important_cfg(CFG, pred_config))
-        wandb.run.name = wandb_run_name + "_pred_" + pred_config['name'] + "_init_" + str(n)
+        logging.info("Starting W&B run. This makes training slower due to logging.")
+        utils.init_wandb_run(
+            f"{wandb_run_name}_pred_{pred_config['name']}_init_{n}",
+            utils.get_important_cfg(CFG, pred_config))
 
     train_dataloader = DataLoader(train_dataset,
                                     batch_size=pred_config['batch_size'],

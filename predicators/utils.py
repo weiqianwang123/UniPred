@@ -4152,6 +4152,28 @@ def get_important_cfg(cfg, dict):
         config[k] = getattr(cfg, k)
     return config
 
+
+def init_wandb_run(run_name: str, config: Dict[str, Any]) -> None:
+    """Start a Weights & Biases run for neural predicate training.
+
+    wandb is an optional dependency and is only imported here, i.e.,
+    when CFG.wandb_run_name is set. Credentials are handled by wandb
+    itself (`wandb login` or the WANDB_API_KEY environment variable).
+    """
+    import wandb  # pylint: disable=import-outside-toplevel
+    wandb.init(project="NeuPI", name=run_name, config=config)
+
+
+def wandb_log(metrics: Dict[str, float]) -> None:
+    """Log metrics to the active Weights & Biases run, if there is one.
+
+    Never imports wandb: if no run was started with init_wandb_run(),
+    this is a no-op.
+    """
+    wandb = sys.modules.get("wandb")
+    if wandb is not None and wandb.run is not None:
+        wandb.log(metrics)
+
 def task2json(task: EnvironmentTask, base_path: str):
     task_dict = {
         "objects": {},
