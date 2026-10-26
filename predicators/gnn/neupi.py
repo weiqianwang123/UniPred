@@ -43,22 +43,6 @@ def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
 def array_in_list(array, list_of_arrays):
     return any(np.array_equal(array, x) for x in list_of_arrays)
 
-class ResidualBlock(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int):
-        super(ResidualBlock, self).__init__()
-        self.linear = nn.Linear(input_dim, output_dim)
-        self.norm = nn.LayerNorm(output_dim)
-        self.activation = nn.GELU()
-
-    def forward(self, x):
-        identity = x
-        out = self.linear(x)
-        out = self.activation(out)
-        out = self.norm(out)
-        if x.shape[-1] != out.shape[-1]:
-            identity = nn.functional.pad(identity, (0, out.shape[-1] - x.shape[-1]), "constant", 0)
-        out += identity
-        return out
 
 def MLP(layers: List[int], input_dim: int, with_ln: bool) -> nn.Sequential:
     """Create MLP."""
@@ -78,86 +62,6 @@ def MLP(layers: List[int], input_dim: int, with_ln: bool) -> nn.Sequential:
 
     return nn.Sequential(*mlp_layers)
 
-class EncodeDecode(nn.Module, abc.ABC):
-    """Encode-decode architecture."""
-
-    def __init__(self, dims: List[int],
-                 **kwargs: List[int]) -> None:
-        super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
-        node_dim = dims[0] if dims[0] > 0 else 0
-        edge_dim = dims[1] if dims[1] > 0 else 0
-        global_dim = dims[2] if dims[2] > 0 else 0
-        self.params = []
-
-        if 'node_encoder_layers' in kwargs:
-            self.node_encoder = MLP(kwargs['node_encoder_layers'], node_dim, True)
-            node_dim = kwargs['node_encoder_layers'][-1]
-            self.params.append(self.node_encoder.parameters())
-        if 'edge_encoder_layers' in kwargs:
-            self.edge_encoder = MLP(kwargs['edge_encoder_layers'], edge_dim, True)
-            edge_dim = kwargs['edge_encoder_layers'][-1]
-            self.params.append(self.edge_encoder.parameters())
-        if 'global_encoder_layers' in kwargs:
-            self.global_encoder = MLP(kwargs['global_encoder_layers'],
-                                      global_dim, True)
-            global_dim = kwargs['global_encoder_layers'][-1]
-            self.params.append(self.global_encoder.parameters())
-        # no message passing, this is actually just an MLP
-        if 'node_decoder_layers' in kwargs:
-            self.node_decoder = MLP(kwargs['node_decoder_layers'],
-                                    node_dim, False)
-        if 'edge_decoder_layers' in kwargs:
-            self.edge_decoder = MLP(kwargs['edge_decoder_layers'],
-                                    edge_dim, False)
-        if 'global_decoder_layers' in kwargs:
-            self.global_decoder = MLP(kwargs['global_decoder_layers'],
-                                      global_dim, False)
-            
-    def forward(self, graph: Dict) -> List[Dict]:
-        """Torch forward model."""
-        if hasattr(self, 'node_encoder'):
-            data = graph['nodes']
-            if data.size()[1] == 0:
-                data = torch.ones((data.size()[0], 1)).to(data.device)
-            graph['nodes'] = self.node_encoder(data)
-        if hasattr(self, 'edge_encoder'):
-            data = graph['edges']
-            if data.size()[1] == 0:
-                data = torch.ones((data.size()[0], 1)).to(data.device)
-            graph['edges'] = self.edge_encoder(data)
-        if hasattr(self, 'global_encoder'):
-            data = graph['globals']
-            if data.size()[1] == 0:
-                data = torch.ones((data.size()[0], 1)).to(data.device)
-            graph['globals'] = self.global_encoder(data)
-        else:
-            graph['globals'] = torch.zeros((graph['n_node'].size()[0], 0)).to(graph['nodes'].device)
-
-        output_graph = []
-
-        replacements = {
-            'nodes': self.node_decoder(graph['nodes']),
-            'edges': self.edge_decoder(graph['edges']),
-        }
-
-        if hasattr(self, 'global_decoder'):
-            replacements['globals'] = self.global_decoder(graph['globals'])
-        else:
-            replacements['globals'] = graph['globals']
-
-        output_graph.append(replace_graph(graph, replacements))
-
-        return output_graph
-    
-    def reset_parameters(self):
-        for param in self.params:
-            for p in param:
-                if len(p.shape) > 1:
-                    nn.init.xavier_uniform_(p)
-                else:
-                    nn.init.zeros_(p)
 
 class EncodeDecodeMLP(nn.Module, abc.ABC):
     """Encode-decode architecture."""
@@ -167,8 +71,6 @@ class EncodeDecodeMLP(nn.Module, abc.ABC):
                  decoder: nn.Module, \
                  init_fn) -> None:
         super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
         self.arity = arity
         self.encoder = encoder
         self.decoder = decoder
@@ -217,8 +119,6 @@ class SelectiveRotEncodeDecodeMLP(nn.Module, abc.ABC):
                  rot_feat: Dict, \
                  init_fn) -> None:
         super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
         self.non_rot_feat_inx = non_rot_feat
         self.rot_feat_ind = []
         for i in range(1, arity+1):
@@ -297,8 +197,6 @@ class SelectiveEncodeDecodeMLP(nn.Module, abc.ABC):
                  feat_ind: List[int], \
                  init_fn) -> None:
         super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
         self.feat_ind = feat_ind
         self.arity = arity
         assert self.arity == 1, "Only support arity == 1 for selective feature"
@@ -346,8 +244,6 @@ class SelectiveRelRotEncodeDecodeMLP(nn.Module, abc.ABC):
                  rot_feat: Dict, \
                  init_fn) -> None:
         super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
         assert arity == 2, "Only support arity == 2 for relative feature"
         self.non_rot_feat_inx = []
         self.rot_feat_ind = []
@@ -439,8 +335,6 @@ class SelectiveRelOnlyEncodeDecodeMLP(nn.Module, abc.ABC):
                  rot_feat: Dict, \
                  init_fn) -> None:
         super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
         assert arity == 2, "Only support arity == 2 for relative feature"
         self.non_rot_feat_inx = []
         self.rot_feat_ind = []
@@ -530,98 +424,6 @@ class SelectiveRelOnlyEncodeDecodeMLP(nn.Module, abc.ABC):
 
         return output_graph
     
-class SelectiveRelPoseOnlyEncodeDecodeMLP(nn.Module, abc.ABC):
-    """Encode-decode architecture."""
-
-    def __init__(self, arity: int, \
-                 encoder: nn.Module, \
-                 encoder_rot: nn.Module, \
-                 decoder: nn.Module, \
-                 non_rot_feat: Dict, \
-                 rot_feat: Dict, \
-                 init_fn) -> None:
-        super().__init__()
-        # dims = [node_dim, edge_dim, global_dim, node_dim, edge_dim, global_dim]
-        # input dims should > 0, otherwise will have ones padding 
-        assert arity == 2, "Only support arity == 2 for relative feature"
-        self.non_rot_feat_inx = []
-        self.rot_feat_ind = []
-        for i in range(1, arity+1):
-            local_rot = [None] * 4
-            for feat in rot_feat.keys():
-                # note that real part is the first element
-                if "ent{}".format(i) in feat and "_qw" in feat:
-                    local_rot[0] = rot_feat[feat]
-                elif "ent{}".format(i) in feat and "_qx" in feat:
-                    local_rot[1] = rot_feat[feat]
-                elif "ent{}".format(i) in feat and "_qy" in feat:
-                    local_rot[2] = rot_feat[feat]
-                elif "ent{}".format(i) in feat and "_qz" in feat:
-                    local_rot[3] = rot_feat[feat]
-            self.rot_feat_ind.append(local_rot)
-            # non rot also compute relative
-            local_non_root = []
-            for feat in non_rot_feat:
-                if "ent{}".format(i) in feat:
-                    local_non_root.append(non_rot_feat[feat])
-                elif "ent{}".format(i) in feat:
-                    local_non_root.append(non_rot_feat[feat])
-                elif "ent{}".format(i) in feat:
-                    local_non_root.append(non_rot_feat[feat])
-                elif "ent{}".format(i) in feat:
-                    local_non_root.append(non_rot_feat[feat])
-            self.non_rot_feat_inx.append(local_non_root)
-        self.arity = arity
-        self.encoder = encoder
-        self.encoder_rot = encoder_rot
-        self.decoder = decoder
-        self.apply_init(init_fn)
-
-    def apply_init(self, init_fn):
-        """Apply custom initialization to the encoder and decoder."""
-        for p in self.parameters():
-            if p.dim() > 1:
-                init_fn(p)
-            else:
-                # Bias use uniform initialization
-                nn.init.uniform_(p, -1.0, 1.0)
-
-    def forward(self, graph: Dict) -> List[Dict]:
-        """Torch forward model."""
-        input_data = graph['edges']
-        input_rot_quant_1 = input_data[:, self.rot_feat_ind[0]]
-        assert torch.isclose(torch.norm(input_rot_quant_1, dim=1), \
-                torch.ones_like(torch.norm(input_rot_quant_1, dim=1))).all()
-        input_rot_1 = quaternion_to_matrix(input_rot_quant_1).view(-1, 9)
-        input_rot_quant_2 = input_data[:, self.rot_feat_ind[1]]
-        assert torch.isclose(torch.norm(input_rot_quant_2, dim=1), \
-                torch.ones_like(torch.norm(input_rot_quant_2, dim=1))).all()
-        input_rot_2 = quaternion_to_matrix(input_rot_quant_2).view(-1, 9)
-        # additionally compute the relative rotation
-        rel_rot = torch.matmul(input_rot_1.view(-1, 3, 3), input_rot_2.view(-1, 3, 3).transpose(1, 2))
-        rel_rot = rel_rot.view(-1, 9)
-
-        input_non_rot_1 = input_data[:, self.non_rot_feat_inx[0]]
-        input_non_rot_2 = input_data[:, self.non_rot_feat_inx[1]]
-        rel_non_rot = input_non_rot_1 - input_non_rot_2
-
-        encoded_non_rot = self.encoder(rel_non_rot)
-        encoded_rot = self.encoder_rot(rel_rot)
-        encoded = torch.cat([encoded_non_rot, encoded_rot], dim=1)
-        decoded = self.decoder(encoded)
-
-        output_graph = []
-        if self.arity == 1:
-            replacements = {
-                'nodes': decoded
-            }
-        elif self.arity == 2:
-            replacements = {
-                'edges': decoded
-            }
-        output_graph.append(replace_graph(graph, replacements))
-
-        return output_graph
     
 def _setup_neupi_dims(dataset: GraphTransC2DDataset) -> List[int]:
     """Extract dimensions from dataset."""
@@ -871,89 +673,7 @@ def setup_neupi_optimizer(model: nn.Module, opti_config: Dict, lr_scheduler_conf
     
     return optimizer, scheduler
 
-class DummyModel(torch.nn.Module):
-    def __init__(self, random):
-        super(DummyModel, self).__init__()
-        self.place_holder_mlp = nn.Linear(1, 1)
-        self.random = random
-
-    def forward(self, x):
-        if not self.random:
-            return x
-        else:
-            random_graph = {
-                "n_node": x["n_node"],
-                "n_edge": x["n_edge"],
-                "nodes": torch.zeros_like(x["nodes"]),
-                "edges": torch.zeros_like(x["edges"]),
-                "senders": x["senders"],
-                "receivers": x["receivers"],
-            }
-            # rand the nodes as binary
-            random_graph["nodes"] = torch.bernoulli(torch.rand_like(random_graph["nodes"]))
-            # rand the edges as binary
-            random_graph["edges"] = torch.bernoulli(torch.rand_like(random_graph["edges"]))
-            # check if the "edges" are all zero
-            for i in range(random_graph["edges"].shape[0]):
-                if torch.sum(random_graph["edges"][i]) == 0:
-                    random_graph["edges"][i, 0] = 1
-            return random_graph
         
-class DummyModelIndex(torch.nn.Module):
-    def __init__(self, random, arity, idx):
-        super(DummyModelIndex, self).__init__()
-        self.place_holder_mlp = nn.Linear(1, 1)
-        self.random = random
-        self.arity = arity
-        self.idx = idx
-
-    def forward(self, x):
-        if not self.random:
-            if self.arity == 1:
-                node_data = x["nodes"]
-                node_data = node_data[:, self.idx:self.idx+1]
-                new_graph = {
-                    "n_node": x["n_node"],
-                    "n_edge": x["n_edge"],
-                    "nodes": node_data,
-                    "edges": x["edges"],
-                    "senders": x["senders"],
-                    "receivers": x["receivers"],
-                }
-            elif self.arity == 2:
-                edge_data = x["edges"]
-                edge_data = edge_data[:, self.idx:self.idx+1]
-                new_graph = {
-                    "n_node": x["n_node"],
-                    "n_edge": x["n_edge"],
-                    "nodes": x["nodes"],
-                    "edges": edge_data,
-                    "senders": x["senders"],
-                    "receivers": x["receivers"],
-                }
-            return new_graph
-        else:
-            if self.arity == 1:
-                random_graph = {
-                    "n_node": x["n_node"],
-                    "n_edge": x["n_edge"],
-                    "nodes": torch.zeros_like(x["nodes"])[:, 0:1],
-                    "edges": x["edges"],
-                    "senders": x["senders"],
-                    "receivers": x["receivers"],
-                }
-                random_graph["nodes"] = torch.bernoulli(torch.rand_like(random_graph["nodes"]))
-            elif self.arity == 2:
-                random_graph = {
-                    "n_node": x["n_node"],
-                    "n_edge": x["n_edge"],
-                    "nodes": x["nodes"],
-                    "edges": torch.zeros_like(x["edges"])[:, 0:1],
-                    "senders": x["senders"],
-                    "receivers": x["receivers"],
-                }
-                random_graph["edges"] = torch.bernoulli(torch.rand_like(random_graph["edges"]))
-            return random_graph
 
 class MCTSNode:
     def __init__(self, state, level, parent=None):
@@ -1013,11 +733,9 @@ class MCTSNode:
             next_state_[max_zero_loss_idx] = 2
             if array_in_list(next_state, self.next_states):
                 self.next_states.remove(tuple(next_state))
-                # logging.info(f"Found next state: {next_state}")
                 return next_state
             elif array_in_list(next_state_, self.next_states):
                 self.next_states.remove(tuple(next_state_))
-                # logging.info(f"Found next state: {next_state_}")
                 return next_state_
             else:
                 # this cell has been tried, set it to -1
@@ -1115,7 +833,6 @@ class HierachicalMCTSearcher(abc.ABC):
                     return None
                 self.visits += 1
                 selected_nodes = self.uct_selection(self.frontier, 1)
-                # logging.info(f"Selected nodes: {[node.state for node in selected_nodes]}")
                 # 2. Expand the selected nodes, add to frontier, and evaluate
                 for node in selected_nodes:
                     assert not node.is_fully_expanded()
@@ -1124,9 +841,6 @@ class HierachicalMCTSearcher(abc.ABC):
                     child = node.expand(self.global_zero_loss, self._rng)
                     if tuple(child.state) not in self.evaluated_values:
                         self.evaluated_values.add(tuple(child.state))
-                        # logging.info(f"Propose Child node: {child.state}")
-                        # logging.info(f"From Parent: {node.state}")
                         if child.level <= self.frontier_max_level:
-                            # logging.info(f"Adding to Frontier")
                             self.frontier.append(child)
                         return child.state

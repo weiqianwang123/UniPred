@@ -67,9 +67,6 @@ class GlobalSettings:
     # satellites env parameters
     satellites_num_sat_train = [2, 2]
     satellites_num_obj_train = [2, 2]
-    # default
-    # satellites_num_sat_train = [2, 3]
-    # satellites_num_obj_train = [3, 4]
     satellites_num_sat_test = [3, 3]
     satellites_num_obj_test = [3, 3]
 

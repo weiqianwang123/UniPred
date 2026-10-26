@@ -448,38 +448,14 @@ class SatellitesEnv(BaseEnv):
     def _Sees_holds(self, state: State, objects: Sequence[Object]) -> bool:
         sat, obj = objects
         triangle = self._get_fov_geom(state, sat)
-        sat_x = state.get(sat, "x")
-        sat_y = state.get(sat, "y")
         obj_x = state.get(obj, "x")
         obj_y = state.get(obj, "y")
         # Note: we require only that the center of the object
         # is in the view cone, ignoring the object's radius.
         if not triangle.contains_point(obj_x, obj_y):
             return False
-        # Now check if the line of sight is occluded by another entity.
-        # We end up not checking occlusion as it is not modeled at the high level.
-        # Maybe we should also apply Nishanth's work in the future on top of ours.
-        # dist_denom = np.sqrt((sat_x - obj_x)**2 + (sat_y - obj_y)**2)
-        # for ent in state:
-        #     if ent in (sat, obj):
-        #         continue
-        #     # Compute the projection distance of this entity onto the line
-        #     # segment connecting `sat` and `obj`.
-        #     ent_x = state.get(ent, "x")
-        #     ent_y = state.get(ent, "y")
-
-        #     # Check if the entity is between the satellite and the object
-        #     dot_product = (ent_x - sat_x) * (obj_x - sat_x) + (ent_y - sat_y) * (obj_y - sat_y)
-        #     if dot_product < 0: # before start
-        #         continue
-
-        #     if dot_product > dist_denom**2: # after end
-        #         continue
-
-        #     # Compute perpendicular distance from entity to line
-        #     dist = abs((obj_x - sat_x) * (sat_y - ent_y) - (sat_x - ent_x) * (obj_y - sat_y)) / dist_denom
-        #     if dist < self.radius * 2:
-        #         return False
+        # Occlusion by other entities is not checked: it is not modeled at
+        # the abstract level.
         return True
     
     def _ViewClear_holds(self, state: State, objects: Sequence[Object]) -> bool:

@@ -75,11 +75,9 @@ class SatellitesGroundTruthNSRTFactory(GroundTruthNSRTFactory):
                            rng: np.random.Generator,
                            objs: Sequence[Object]) -> Array:
             del goal  # unused
-            sat, obj = objs
+            _, obj = objs
             obj_x = state.get(obj, "x")
             obj_y = state.get(obj, "y")
-            sat_x = state.get(sat, "x")
-            sat_y = state.get(sat, "y")
             # dist
             min_dist = SatellitesEnv.radius * 4
             max_dist = SatellitesEnv.fov_dist - SatellitesEnv.radius * 2

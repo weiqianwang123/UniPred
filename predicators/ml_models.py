@@ -7,25 +7,15 @@ import abc
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, \
-    Tuple
-from typing import Type as TypingType
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from scipy.stats import beta as BetaRV
-from sklearn.base import BaseEstimator
-from sklearn.neighbors import \
-    KNeighborsClassifier as _SKLearnKNeighborsClassifier
-from sklearn.neighbors import \
-    KNeighborsRegressor as _SKLearnKNeighborsRegressor
 from torch import Tensor, nn, optim
 from torch.distributions.categorical import Categorical
 
-from predicators import utils
-from predicators.structs import Array, MaxTrainIters, Object, State
+from predicators.structs import Array, MaxTrainIters
 
 
 ################################ Base Classes #################################
@@ -53,24 +43,6 @@ class Regressor(abc.ABC):
         x is single-dimensional.
         """
         raise NotImplementedError("Override me!")
-
-
-class _ScikitLearnRegressor(Regressor):
-    """A regressor that lightly wraps a scikit-learn regression model."""
-
-    def __init__(self, seed: int, **kwargs: Any) -> None:
-        super().__init__(seed)
-        self._model = self._initialize_model(**kwargs)
-
-    @abc.abstractmethod
-    def _initialize_model(self, **kwargs: Any) -> BaseEstimator:
-        raise NotImplementedError("Override me!")
-
-    def fit(self, X: Array, Y: Array) -> None:
-        return self._model.fit(X, Y)
-
-    def predict(self, x: Array) -> Array:
-        return self._model.predict([x])[0]
 
 
 class _NormalizingRegressor(Regressor):
@@ -262,34 +234,6 @@ class BinaryClassifier(abc.ABC):
         x is single-dimensional.
         """
         raise NotImplementedError("Override me!")
-
-
-class _ScikitLearnBinaryClassifier(BinaryClassifier):
-    """A regressor that lightly wraps a scikit-learn classification model."""
-
-    def __init__(self, seed: int, **kwargs: Any) -> None:
-        super().__init__(seed)
-        self._model = self._initialize_model(**kwargs)
-
-    @abc.abstractmethod
-    def _initialize_model(self, **kwargs: Any) -> BaseEstimator:
-        raise NotImplementedError("Override me!")
-
-    def fit(self, X: Array, y: Array) -> None:
-        return self._model.fit(X, y)
-
-    def classify(self, x: Array) -> bool:
-        class_prediction = self._model.predict([x])[0]
-        assert class_prediction in [0, 1]
-        return bool(class_prediction)
-
-    def predict_proba(self, x: Array) -> float:
-        probs = self._model.predict_proba([x])[0]
-        # Special case: only one class.
-        if probs.shape == (1, ):
-            return float(self.classify(x))
-        assert probs.shape == (2, )  # [P(x is class 0), P(x is class 1)]
-        return probs[1]  # return the second element of probs
 
 
 class _NormalizingBinaryClassifier(BinaryClassifier):
@@ -817,85 +761,6 @@ class ImplicitMLPRegressor(PyTorchRegressor):
         return candidate_ys[sample_idx]
 
 
-class CNNRegressor(PyTorchRegressor):
-    """A basic CNN regressor operating on 2D images with multiple channels."""
-
-    def __init__(self,
-                 seed: int,
-                 conv_channel_nums: List[int],
-                 conv_kernel_sizes: List[int],
-                 linear_hid_sizes: List[int],
-                 max_train_iters: MaxTrainIters,
-                 clip_gradients: bool,
-                 clip_value: float,
-                 learning_rate: float,
-                 weight_decay: float = 0,
-                 use_torch_gpu: bool = False,
-                 train_print_every: int = 1000) -> None:
-        """Create a CNNRegressor.
-
-        conv_channel_nums and conv_kernel_sizes define the sizes of the
-        output channels and square kernels for the Conv2d layers.
-        linear_hid_sizes is the same as hid_sizes for MLPRegressor.
-        """
-        super().__init__(seed,
-                         max_train_iters,
-                         clip_gradients,
-                         clip_value,
-                         learning_rate,
-                         weight_decay=weight_decay,
-                         use_torch_gpu=use_torch_gpu,
-                         train_print_every=train_print_every)
-        assert len(conv_channel_nums) == len(conv_kernel_sizes)
-        self._conv_channel_nums = conv_channel_nums
-        self._conv_kernel_sizes = conv_kernel_sizes
-        self._linear_hid_sizes = linear_hid_sizes
-
-        self._max_pool = nn.MaxPool2d(2, 2)
-        # Set in fit().
-        self._convs = nn.ModuleList()
-        self._linears = nn.ModuleList()
-
-    def forward(self, tensor_X: Tensor) -> Tensor:
-        for _, conv in enumerate(self._convs):
-            tensor_X = self._max_pool(F.relu(conv(tensor_X)))
-        tensor_X = torch.flatten(tensor_X, 1)
-        for _, linear in enumerate(self._linears[:-1]):
-            tensor_X = F.relu(linear(tensor_X))
-        tensor_X = self._linears[-1](tensor_X)
-        return tensor_X
-
-    def _initialize_net(self) -> None:
-        self._convs = nn.ModuleList()
-
-        # We need to calculate the size of the tensor outputted from the Conv2d
-        # layers to use as the input dim for the linear layers post-flatten.
-        assert len(self._x_dims) == 3, "X should be 4-dimensional (N, C, H, W)"
-        c_dim, h_dim, w_dim = self._x_dims
-        for i in range(len(self._conv_channel_nums)):
-            kernel_size = self._conv_kernel_sizes[i]
-            self._convs.append(
-                nn.Conv2d(c_dim, self._conv_channel_nums[i], kernel_size))
-            # Calculate size after Conv2d + MaxPool2d
-            c_dim = self._conv_channel_nums[i]
-            h_dim = (h_dim - kernel_size + 1) // 2
-            w_dim = (w_dim - kernel_size + 1) // 2
-
-        flattened_size = c_dim * h_dim * w_dim
-        self._linears = nn.ModuleList()
-        self._linears.append(
-            nn.Linear(flattened_size, self._linear_hid_sizes[0]))
-        for i in range(len(self._linear_hid_sizes) - 1):
-            self._linears.append(
-                nn.Linear(self._linear_hid_sizes[i],
-                          self._linear_hid_sizes[i + 1]))
-        self._linears.append(nn.Linear(self._linear_hid_sizes[-1],
-                                       self._y_dim))
-
-    def _create_loss_fn(self) -> Callable[[Tensor, Tensor], Tensor]:
-        return nn.MSELoss()
-
-
 class NeuralGaussianRegressor(PyTorchRegressor, DistributionRegressor):
     """NeuralGaussianRegressor definition."""
 
@@ -1021,93 +886,6 @@ class DegenerateMLPDistributionRegressor(MLPRegressor, DistributionRegressor):
         return self.predict(x)
 
 
-class KNeighborsRegressor(_ScikitLearnRegressor):
-    """K nearest neighbors from scikit-learn."""
-
-    def _initialize_model(self, **kwargs: Any) -> BaseEstimator:
-        return _SKLearnKNeighborsRegressor(**kwargs)
-
-
-class MonotonicBetaRegressor(PyTorchRegressor, DistributionRegressor):
-    """A model that learns conditional beta distributions with the requirement
-    that the mean of the distribution increases with the (assumed 1d) input.
-
-    This regressor is used primarily for competence modeling.
-    """
-
-    def __init__(self,
-                 seed: int,
-                 max_train_iters: MaxTrainIters,
-                 clip_gradients: bool,
-                 clip_value: float,
-                 learning_rate: float,
-                 weight_decay: float = 0,
-                 use_torch_gpu: bool = False,
-                 train_print_every: int = 1000,
-                 n_iter_no_change: int = 10000000,
-                 constant_variance: float = 1e-2) -> None:
-
-        super().__init__(seed,
-                         max_train_iters,
-                         clip_gradients,
-                         clip_value,
-                         learning_rate,
-                         weight_decay=weight_decay,
-                         n_iter_no_change=n_iter_no_change,
-                         use_torch_gpu=use_torch_gpu,
-                         disable_normalization=True,
-                         train_print_every=train_print_every)
-
-        # This model has three learnable parameters.
-        self.theta = torch.nn.Parameter(torch.randn(3), requires_grad=True)
-        # We use a constant variance.
-        assert 0 < constant_variance < 0.25
-        self.variance = constant_variance
-
-    def _transform_theta(self) -> List[Tensor]:
-        # Map unbounded parameters to constrained parameters with the following
-        # guarantees: (1) 0 <= theta0 <= 1; (2) theta0 <= theta1 <= 1; and
-        # (3) theta2 >= 0.
-        theta0 = self.theta[0]
-        theta1 = self.theta[1]
-        theta2 = self.theta[2]
-        ctheta0 = F.sigmoid(theta0)
-        ctheta1 = F.sigmoid(theta0 + (F.elu(theta1) + 1))
-        ctheta2 = F.elu(theta2) + 1
-        return [ctheta0, ctheta1, ctheta2]
-
-    def forward(self, tensor_X: Tensor) -> Tensor:
-        # Transform weights to obey constraints.
-        c0, c1, c2 = self._transform_theta()
-        # Exponential saturation function.
-        mean = c0 + (c1 - c0) * (1 - torch.exp(-c2 * tensor_X))  # type: ignore
-        # Clip mean to avoid numerical issues.
-        mean = torch.clip(mean, 1e-3, 1.0 - 1e-3)
-        return mean
-
-    def _initialize_net(self) -> None:
-        # Reset the learnable parameters.
-        self.theta = torch.nn.Parameter(torch.randn(3), requires_grad=True)
-
-    def _create_loss_fn(self) -> Callable[[Tensor, Tensor], Tensor]:
-        # Just regress the mean for stability.
-        return nn.MSELoss()
-
-    def predict_beta(self, x: float) -> BetaRV:
-        """Predict a beta distribution given the input."""
-        mean = self._predict(np.array([x], dtype=np.float32))[0]
-        return utils.beta_from_mean_and_variance(mean, self.variance)
-
-    def predict_sample(self, x: Array, rng: np.random.Generator) -> Array:
-        assert len(x) == 1
-        rv = self.predict_beta(x[0])
-        return rv.rvs(random_state=rng).reshape(x.shape)
-
-    def get_transformed_params(self) -> List[float]:
-        """For interpretability."""
-        return [v.item() for v in self._transform_theta()]
-
-
 ################################ Classifiers ##################################
 
 
@@ -1172,59 +950,8 @@ class MLPBinaryClassifier(PyTorchBinaryClassifier):
         self._initialize_net()
         self.load_state_dict(model_weights)
 
-class KNeighborsClassifier(_ScikitLearnBinaryClassifier):
-    """K nearest neighbors from scikit-learn."""
-
-    def _initialize_model(self, **kwargs: Any) -> BaseEstimator:
-        return _SKLearnKNeighborsClassifier(**kwargs)
-
-
-class BinaryClassifierEnsemble(BinaryClassifier):
-    """BinaryClassifierEnsemble definition."""
-
-    def __init__(self, seed: int, ensemble_size: int,
-                 member_cls: TypingType[BinaryClassifier],
-                 **kwargs: Any) -> None:
-        super().__init__(seed)
-        self._members = [
-            member_cls(seed + i, **kwargs) for i in range(ensemble_size)
-        ]
-
-    def fit(self, X: Array, y: Array) -> None:
-        for i, member in enumerate(self._members):
-            logging.info(f"Fitting member {i} of ensemble...")
-            member.fit(X, y)
-
-    def classify(self, x: Array) -> bool:
-        avg = np.mean(self.predict_member_probas(x))
-        classification = bool(avg > 0.5)
-        return classification
-
-    def predict_proba(self, x: Array) -> float:
-        raise Exception("Can't call predict_proba() on an ensemble. Use "
-                        "predict_member_probas() instead.")
-
-    def predict_member_probas(self, x: Array) -> Array:
-        """Return class probabilities predicted by each member."""
-        return np.array([m.predict_proba(x) for m in self._members])
-
 
 ################################## Utilities ##################################
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class LearnedPredicateClassifier:
-    """A convenience class for holding the model underlying a learned
-    predicate."""
-    _model: BinaryClassifier
-
-    def classifier(self, state: State, objects: Sequence[Object]) -> bool:
-        """The classifier corresponding to the given model.
-
-        May be used as the _classifier field in a Predicate.
-        """
-        v = state.vec(objects)
-        return self._model.classify(v)
 
 
 def _get_torch_device(use_torch_gpu: bool) -> torch.device:

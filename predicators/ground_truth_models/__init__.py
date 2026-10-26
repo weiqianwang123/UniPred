@@ -150,35 +150,5 @@ def parse_config_included_options(env: BaseEnv) -> Set[ParameterizedOption]:
 # Convenience functions used by external scripts, tests, and other oracles.
 
 
-def _get_from_env_by_names(env_name: str, names: Sequence[str],
-                           env_attr: str) -> List:
-    """Helper for loading types, predicates, and options by name."""
-    env = get_or_create_env(env_name)
-    name_to_env_obj = {}
-    for o in getattr(env, env_attr):
-        name_to_env_obj[o.name] = o
-    assert set(name_to_env_obj).issuperset(set(names))
-    return [name_to_env_obj[name] for name in names]
-
-
-def _get_types_by_names(env_name: str, names: Sequence[str]) -> List[Type]:
-    """Load types from an env given their names."""
-    return _get_from_env_by_names(env_name, names, "types")
-
-
-def _get_predicates_by_names(env_name: str,
-                             names: Sequence[str]) -> List[Predicate]:
-    """Load predicates from an env given their names."""
-    return _get_from_env_by_names(env_name, names, "predicates")
-
-
-def _get_options_by_names(env_name: str,
-                          names: Sequence[str]) -> List[ParameterizedOption]:
-    """Load parameterized options from an env given their names."""
-    options = get_gt_options(env_name)
-    name_to_option = {o.name: o for o in options}
-    return [name_to_option[name] for name in names]
-
-
 # Find the factories.
 utils.import_submodules(__path__, __name__)

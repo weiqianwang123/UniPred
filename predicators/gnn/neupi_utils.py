@@ -303,8 +303,6 @@ def neupi_supervise_criterion(
         edge_mask_s_1 = output_target_edges ==super_label['non_change_1']
         edge_mask_s_2 = output_target_edges ==super_label['non_change_2']
         edge_mask_s_3 = output_target_edges ==super_label['non_change_3']
-        # edge_mask_s_ = output_target__edges < 0
-        # assert torch.equal(edge_mask_s, edge_mask_s_), "Mask should be the same for s and s'"
         # Note, this is very important, we should mask the edges
         # zero mask is shared in one batch, across different edge matrixes
         # Create zero mask
@@ -585,11 +583,9 @@ def get_quantified_binary_edges(binary_output: Dict, binary_output_: Dict,
                 node_id0 = None
             quantified_type = pred_type1
         if (node_id0 is None) and (node_id1 is not None):
-            # assert node_id1 is not None, "Should have node_id1"
             # node 0 is quantified, find all the corresponding types for node 0
             node_id0 = node_type_graph[quantified_type]
         elif (node_id1 is None) and (node_id0 is not None):
-            # assert node_id0 is not None, "Should have node_id0"
             node_id1 = node_type_graph[quantified_type]
     else:
         # quantify two types
@@ -654,34 +650,19 @@ def inferece_dataloader(val_dataloader: torch.utils.data.DataLoader,
             batched_data = copy.deepcopy(data)
             input = data['input']
             input_ = data['input_']
-            # debug
-            # target = data['target']
-            # target_ = data['target_']
 
             # Move tensors to the correct device
             for key, val in input.items():
                 input[key] = val.to(device) if val is not None else val
             for key, val in input_.items():
                 input_[key] = val.to(device) if val is not None else val
-            # for key, val in target.items():
-            #     target[key] = val.to(device) if val is not None else val
-            # for key, val in target_.items():
-            #     target_[key] = val.to(device) if val is not None else val
             # Partition the input graph into discrete graphs
             logits_output = pred_model(input.copy())[-1]
             logits_output_ = pred_model(input_.copy())[-1]
 
-            # outputs_logits = (logits_output, logits_output_)
-            # targets = (target, target_)
-            # for debug, checking the distribution of the output
-            # non_change_loss, change_loss = neupi_supervise_criterion(
-            #     outputs_logits, targets, None, CFG.neupi_super_label, device=device)
-
             # Discretize the output graphs
             binary_output = discrete_graph(logits_output, temperature=gumbel_temp, boundary=boundary)
-            # prob_output = torch.sigmoid(logits_output['edges'] / gumbel_temp)
             binary_output_ = discrete_graph(logits_output_, temperature=gumbel_temp, boundary=boundary)
-            # prob_output_ = torch.sigmoid(logits_output['edges'] / gumbel_temp)
 
             # Store relevant data for future use
             batched_data['binary_output'] = binary_output

@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import os
 import copy
-import glob
 import time
 import yaml
 import itertools
 import queue as queue_lib
-import json
 import logging
 import zlib
 from z3 import Bool, Not, Or, Solver, is_true, sat
@@ -40,7 +38,7 @@ from predicators.nsrt_learning.segmentation import segment_trajectory
 from predicators.nsrt_learning.nsrt_learning_main import learn_nsrts_from_data
 from predicators.settings import CFG
 from predicators.predicate_search_score_functions import _OperatorBeliefScoreFunction
-from predicators.structs import NSRT, Action, Dataset, DummyPredicate, \
+from predicators.structs import Action, Dataset, DummyPredicate, \
     GroundAtom, GroundAtomTrajectory, LowLevelTrajectory, \
     NeuralPredicate, Object, ParameterizedOption, Predicate, State, Task, \
     Type, _Option
@@ -976,7 +974,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                          dataset.trajectories[:num_trajs]):
             if not ll_traj.is_demo:
                 continue
-            goal = self._train_tasks[ll_traj.train_task_idx].goal
             atoms_traj = []
             for segment in segment_traj:
                 state = segment.states[0]  # the segment's initial state
@@ -1003,9 +1000,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                edge_feature_to_index):
         num_objects = len(object_to_node)
         num_edge_features = max(len(edge_feature_to_index), 1)
-        
-        # Create mapping arrays for node indices
-        node_indices = np.array([object_to_node[obj] for obj in object_to_node])
         
         # Create mapping arrays for feature indices
         ent1_feature_mapping = np.array([
@@ -1430,7 +1424,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         if CFG.neupi_cache_input_graph:
             if not hasattr(self, 'cached_input_graph'):
                 self.cached_input_graph = {}
-        for state, atoms, state_, atoms_, action, action_label in tqdm(data):
+        for state, _, state_, _, action, action_label in tqdm(data):
             if CFG.neupi_cache_input_graph:
                 if transition_id in self.cached_input_graph:
                     input_graph, object_to_node, input_graph_, object_to_node_ = \
@@ -1503,9 +1497,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 else:
                     logging.info(f"Using {CFG.max_normalizer_data} data for normalizer computation")
                     num_data = CFG.max_normalizer_data
-                for state, atoms, state_, atoms_, action, action_label in tqdm(data[:num_data]):
-                    input_graph, object_to_node = self._graphify_single_input(state)
-                    input_graph_, object_to_node_ = self._graphify_single_input(state_)
+                for state, _, state_, _, _, _ in tqdm(data[:num_data]):
+                    input_graph, _ = self._graphify_single_input(state)
+                    input_graph_, _ = self._graphify_single_input(state_)
                     graph_inputs.append(input_graph)
                     graph_inputs.append(input_graph_)
                 self._input_normalizers = compute_normalizers(graph_inputs, normalize_nodes=self._node_is_rot, \

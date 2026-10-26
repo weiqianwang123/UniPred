@@ -2,7 +2,6 @@
 and their objects (behavior cloning); the ground-truth samplers give the
 continuous parameters, and plans are found by shooting."""
 
-import os
 import time
 import logging
 import itertools
@@ -10,7 +9,6 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Set, Tuple
 
 import numpy as np
-import dill as pkl
 import torch
 import torch.nn
 import torch.optim
@@ -25,9 +23,8 @@ from predicators.ground_truth_models import get_gt_nsrts
 from predicators.settings import CFG
 from predicators.gnn.gnn_utils import get_single_model_prediction, normalize_graph
 from predicators.structs import Action, Dataset, DummyOption, \
-    GroundAtom, NSRT, ParameterizedOption, Predicate, State, Task, Type, \
+    GroundAtom, ParameterizedOption, Predicate, State, Task, Type, \
     _Option
-from predicators.nsrt_learning.sampler_learning import _create_neural_sampler
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
@@ -314,7 +311,7 @@ class GNNNSRTPolicyApproach(GNNApproach):
                     break  # out of the while loop for this shooting try
                 try:
                     cur_option = ground_nsrt.sample_option(state, goal=goal, rng=self._rng)
-                except utils.OptionExecutionFailure as e:
+                except utils.OptionExecutionFailure:
                     break
                 plan.append(cur_option)
                 # Use the option model to determine the next state.

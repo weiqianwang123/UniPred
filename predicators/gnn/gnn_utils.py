@@ -612,7 +612,6 @@ def action_graph_batch_collate(batch: List[Dict],
     Note, the tricky part is that the "action_node_ids" will also 
     change to the new super graph.
     """
-    # assert len(batch) == 1, "Only support batch size 1 now"
     action_infos = [d['action_info'] for d in batch]
     new_batch = {}
     new_action_info = None
@@ -630,6 +629,3 @@ def action_graph_batch_collate(batch: List[Dict],
     new_batch['action_info'] = new_action_info
     return new_batch
 
-def get_graph_batch_collate_with_device(device: torch.device) -> Callable:
-    """Return a graph_batch_collate function that is given a device."""
-    return lambda batch: graph_batch_collate(batch, device=device)

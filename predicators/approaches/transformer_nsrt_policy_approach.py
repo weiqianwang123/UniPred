@@ -2,7 +2,7 @@
 options and their objects; otherwise like GNNNSRTPolicyApproach."""
 
 import logging
-from typing import Optional, List, Set
+from typing import List, Set
 
 import numpy as np
 import dill as pkl

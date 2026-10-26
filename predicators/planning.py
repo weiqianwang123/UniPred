@@ -398,11 +398,6 @@ def _skeleton_generator(
         if use_visited_state_set:
             frozen_atoms = frozenset(node.atoms)
             visited_atom_sets.add(frozen_atoms)
-        # Good debug point #1: print out the skeleton here to see what
-        # the high-level search is doing. You can accomplish this via:
-        # for act in node.skeleton:
-        #     logging.info(f"{act.name} {act.objects}")
-        # logging.info("")
         if task.goal.issubset(node.atoms):
             # If this skeleton satisfies the goal, yield it.
             metrics["num_skeletons_optimized"] += 1
@@ -558,7 +553,6 @@ def run_low_level_search(
         nsrt = skeleton[cur_idx]
         # Ground the NSRT's ParameterizedOption into an _Option.
         # This invokes the NSRT's sampler.
-        # logging.info(f"{cur_idx}-th NSRT: {nsrt.name}, {num_tries[cur_idx]} times")
         option = nsrt.sample_option(state, task.goal, rng_sampler)
         plan[cur_idx] = option
         # Increment num_samples metric by 1

@@ -23,12 +23,10 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "tabulate",
-    "natsort",
     "pyperplan==2.1",
     "imageio>=2.22,<3",
     "imageio-ffmpeg",
     "opencv-python>=4.5,<4.12",
-    "pillow",
     "z3-solver>=4.12",
 ]
 

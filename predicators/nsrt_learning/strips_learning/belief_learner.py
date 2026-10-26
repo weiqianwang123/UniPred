@@ -265,8 +265,6 @@ class BeliefSTRIPSLearner(BaseSTRIPSLearner):
                         add_effects.add(lifted_atom)
                     else:
                         delete_effects.add(lifted_atom)
-            # every operator has non-empty effects
-            # assert add_effects or delete_effects
             ignore_effects: Set[Predicate] = set()  # will be learned later
             op = STRIPSOperator(f"Op{i}", params, preconds,
                                     add_effects, delete_effects,

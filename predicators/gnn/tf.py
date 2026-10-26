@@ -159,7 +159,6 @@ class TransformerGraphModel(GraphModel):
 
         # We find the maximum sequence length among the B graphs
         max_len = 0
-        seqs = []
         for i in range(n_graphs):
             num_nodes_i = n_node_per_graph[i].item()
             num_edges_i = n_edge_per_graph[i].item()
@@ -222,8 +221,7 @@ class TransformerGraphModel(GraphModel):
         encoded shape: (B, max_len, d_model)
         We'll build a new graph dict with updated features.
         """
-        B, max_len, _ = encoded.shape
-        device = encoded.device
+        B, _, _ = encoded.shape
 
         # We'll create placeholders for final node/edge/global
         node_embs = []

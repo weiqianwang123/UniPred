@@ -6,7 +6,6 @@ import cv2
 import abc
 import contextlib
 import functools
-import gc
 import heapq as hq
 import importlib
 import io
@@ -14,14 +13,12 @@ import itertools
 import logging
 import os
 import pkgutil
-import re
 import subprocess
 import sys
 import time
 from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Collection, Dict, \
     FrozenSet, Generator, Generic, Hashable, Iterator, List, Optional, \
     Sequence, Set, Tuple
@@ -29,7 +26,6 @@ from typing import Type as TypingType
 from typing import TypeVar, Union, cast
 
 import dill as pkl
-import cloudpickle as cpkl
 import imageio
 import matplotlib
 import matplotlib.pyplot as plt
@@ -39,23 +35,20 @@ import pathos.multiprocessing as mp
 from gymnasium.spaces import Box
 from matplotlib import patches
 from numpy.typing import NDArray
-from PIL import ImageDraw, ImageFont
 from pyperplan.heuristics.heuristic_base import \
     Heuristic as _PyperplanBaseHeuristic
 from pyperplan.planner import HEURISTICS as _PYPERPLAN_HEURISTICS
-from scipy.stats import beta as BetaRV
 
 from predicators import hooks
 from predicators.args import create_arg_parser
 from predicators.settings import CFG, GlobalSettings
 from predicators.structs import NSRT, Action, Array, DummyOption, \
     EntToEntSub, GroundAtom, GroundAtomTrajectory, \
-    GroundNSRTOrSTRIPSOperator, Image, LDLRule, LiftedAtom, \
-    LiftedDecisionList, LiftedOrGroundAtom, LowLevelTrajectory, Metrics, \
+    GroundNSRTOrSTRIPSOperator, Image, LiftedAtom, LiftedOrGroundAtom, LowLevelTrajectory, Metrics, \
     NSRTOrSTRIPSOperator, Object, ObjectOrVariable, Observation, OptionSpec, \
     ParameterizedOption, Predicate, Segment, State, STRIPSOperator, Task, \
-    Type, Variable, VarToObjSub, Video, _GroundLDLRule, \
-    _GroundNSRT, _GroundSTRIPSOperator, _Option, _TypedEntity, DummyPredicate
+    Type, Variable, VarToObjSub, Video, \
+    _GroundNSRT, _GroundSTRIPSOperator, _Option, _TypedEntity
 from predicators.third_party.fast_downward_translator.translate import \
     main as downward_translate
 
@@ -184,19 +177,6 @@ def segment_trajectory_to_atoms_sequence(
     atoms_seq.append(seg_traj[-1].final_atoms)
     assert len(atoms_seq) == len(seg_traj) + 1
     return atoms_seq
-
-
-def num_options_in_action_sequence(actions: Sequence[Action]) -> int:
-    """Given a sequence of actions with options included, get the number of
-    options that are encountered."""
-    num_options = 0
-    last_option = None
-    for action in actions:
-        current_option = action.get_option()
-        if not current_option is last_option:
-            last_option = current_option
-            num_options += 1
-    return num_options
 
 
 def entropy(p: float) -> float:
@@ -829,87 +809,6 @@ def wrap_atom_predicates(atoms: Collection[LiftedOrGroundAtom],
     return new_atoms
 
 
-class LinearChainParameterizedOption(ParameterizedOption):
-    """A parameterized option implemented via a sequence of "child"
-    parameterized options.
-
-    This class is meant to help ParameterizedOption manual design.
-
-    The children are executed in order starting with the first in the sequence
-    and transitioning when the terminal function of each child is hit.
-
-    The children are assumed to chain together, so the initiable of the next
-    child should always be True when the previous child terminates. If this
-    is not the case, an AssertionError is raised.
-
-    The children must all have the same types and params_space, which in turn
-    become the types and params_space for this ParameterizedOption.
-
-    The LinearChainParameterizedOption has memory, which stores the current
-    child index.
-    """
-
-    def __init__(self, name: str,
-                 children: Sequence[ParameterizedOption]) -> None:
-        assert len(children) > 0
-        self._children = children
-
-        # Make sure that the types and params spaces are consistent.
-        types = children[0].types
-        params_space = children[0].params_space
-        for i in range(1, len(self._children)):
-            child = self._children[i]
-            assert types == child.types
-            assert np.allclose(params_space.low, child.params_space.low)
-            assert np.allclose(params_space.high, child.params_space.high)
-
-        super().__init__(name,
-                         types,
-                         params_space,
-                         policy=self._policy,
-                         initiable=self._initiable,
-                         terminal=self._terminal)
-
-    def _initiable(self, state: State, memory: Dict, objects: Sequence[Object],
-                   params: Array) -> bool:
-        # Initialize the current child to the first one.
-        memory["current_child_index"] = 0
-        # Create memory dicts for each child to avoid key collisions. One
-        # example of a failure that arises without this is when using
-        # multiple SingletonParameterizedOption instances, each of those
-        # options would be referencing the same start_state in memory.
-        memory["child_memory"] = [{} for _ in self._children]
-        current_child = self._children[0]
-        child_memory = memory["child_memory"][0]
-        return current_child.initiable(state, child_memory, objects, params)
-
-    def _policy(self, state: State, memory: Dict, objects: Sequence[Object],
-                params: Array) -> Action:
-        # Check if the current child has terminated.
-        current_index = memory["current_child_index"]
-        current_child = self._children[current_index]
-        child_memory = memory["child_memory"][current_index]
-        if current_child.terminal(state, child_memory, objects, params):
-            # Move on to the next child.
-            current_index += 1
-            memory["current_child_index"] = current_index
-            current_child = self._children[current_index]
-            child_memory = memory["child_memory"][current_index]
-            assert current_child.initiable(state, child_memory, objects,
-                                           params)
-        return current_child.policy(state, child_memory, objects, params)
-
-    def _terminal(self, state: State, memory: Dict, objects: Sequence[Object],
-                  params: Array) -> bool:
-        # Check if the last child has terminated.
-        current_index = memory["current_child_index"]
-        if current_index < len(self._children) - 1:
-            return False
-        current_child = self._children[current_index]
-        child_memory = memory["child_memory"][current_index]
-        return current_child.terminal(state, child_memory, objects, params)
-
-
 class SingletonParameterizedOption(ParameterizedOption):
     """A parameterized option that takes a single action and stops.
 
@@ -939,9 +838,6 @@ class SingletonParameterizedOption(ParameterizedOption):
         # has been executed yet.
         def _initiable(state: State, memory: Dict, objects: Sequence[Object],
                        params: Array) -> bool:
-            # Commented this line because our environment will have transition noise
-            # if "start_state" in memory:
-                # assert state.allclose(memory["start_state"])
             # Always update the memory dict due to the "is" check in _terminal.
             memory["start_state"] = state
             assert initiable is not None
@@ -960,27 +856,6 @@ class SingletonParameterizedOption(ParameterizedOption):
                          policy=policy,
                          initiable=_initiable,
                          terminal=_terminal)
-
-
-class StateWithCache(State):
-    """A state with a cache stored in the simulator state that is ignored for
-    state equality checks.
-
-    The cache is deliberately not copied.
-    """
-
-    @property
-    def cache(self) -> Dict[str, Dict]:
-        """Expose the cache in the simulator_state."""
-        return cast(Dict[str, Dict], self.simulator_state)
-
-    def allclose(self, other: State) -> bool:
-        # Ignores the simulator state.
-        return State(self.data).allclose(State(other.data))
-
-    def copy(self) -> State:
-        state_dict_copy = super().copy().data
-        return StateWithCache(state_dict_copy, self.cache)
 
 
 class LoggingMonitor(abc.ABC):
@@ -1156,16 +1031,6 @@ class OptionExecutionFailure(ExceptionWithInfo):
 
 class OptionTimeoutFailure(OptionExecutionFailure):
     """A special kind of option execution failure due to an exceeded budget."""
-
-
-class RequestActPolicyFailure(ExceptionWithInfo):
-    """An exception raised by an acting policy in a request when it fails to
-    produce an action, which terminates the interaction."""
-
-
-class HumanDemonstrationFailure(ExceptionWithInfo):
-    """An exception raised when CFG.demonstrator == "human" and the human gives
-    a bad input."""
 
 
 class EnvironmentFailure(ExceptionWithInfo):
@@ -1347,32 +1212,6 @@ def create_random_option_policy(
 
     return _policy
 
-def sample_applicable_ground_nsrt(
-        state: State, ground_nsrts: Sequence[_GroundNSRT],
-        predicates: Set[Predicate],
-        rng: np.random.Generator) -> Optional[_GroundNSRT]:
-    """Choose uniformly among the ground NSRTs that are applicable in the
-    state."""
-    atoms = abstract(state, predicates)
-    applicable_nsrts = sorted(get_applicable_operators(ground_nsrts, atoms))
-    if len(applicable_nsrts) == 0:
-        return None
-    idx = rng.choice(len(applicable_nsrts))
-    return applicable_nsrts[idx]
-
-
-def action_arrs_to_policy(
-        action_arrs: Sequence[Array]) -> Callable[[State], Action]:
-    """Create a policy that executes action arrays in sequence."""
-
-    queue = list(action_arrs)  # don't modify original, just in case
-
-    def _policy(s: State) -> Action:
-        del s  # unused
-        return Action(queue.pop(0))
-
-    return _policy
-
 
 def _get_entity_combinations(
         entities: Collection[ObjectOrVariable],
@@ -1396,14 +1235,6 @@ def get_object_combinations(objects: Collection[Object],
     return _get_entity_combinations(objects, types)
 
 
-def get_variable_combinations(
-        variables: Collection[Variable],
-        types: Sequence[Type]) -> Iterator[List[Variable]]:
-    """Get all combinations of variables satisfying the given types
-    sequence."""
-    return _get_entity_combinations(variables, types)
-
-
 def get_all_ground_atoms_for_predicate(
         predicate: Predicate, objects: Collection[Object]) -> Set[GroundAtom]:
     """Get all groundings of the predicate given objects.
@@ -1417,22 +1248,6 @@ def get_all_ground_atoms_for_predicate(
         ground_atom = GroundAtom(predicate, args)
         ground_atoms.add(ground_atom)
     return ground_atoms
-
-
-def get_all_lifted_atoms_for_predicate(
-        predicate: Predicate,
-        variables: FrozenSet[Variable]) -> Set[LiftedAtom]:
-    """Get all groundings of the predicate given variables.
-
-    Note: we don't want lru_cache() on this function because we might want
-    to call it with stripped predicates, and we wouldn't want it to return
-    cached values.
-    """
-    lifted_atoms = set()
-    for args in get_variable_combinations(variables, predicate.types):
-        lifted_atom = LiftedAtom(predicate, args)
-        lifted_atoms.add(lifted_atom)
-    return lifted_atoms
 
 
 def get_random_object_combination(
@@ -1560,21 +1375,6 @@ def create_new_variables(
         new_var = Variable(new_var_name, t)
         new_vars.append(new_var)
     return new_vars
-
-
-def param_option_to_nsrt(param_option: ParameterizedOption,
-                         nsrts: Set[NSRT]) -> NSRT:
-    """If options and NSRTs are 1:1, then map an option to an NSRT."""
-    nsrt_matches = [n for n in nsrts if n.option == param_option]
-    assert len(nsrt_matches) == 1
-    nsrt = nsrt_matches[0]
-    return nsrt
-
-
-def option_to_ground_nsrt(option: _Option, nsrts: Set[NSRT]) -> _GroundNSRT:
-    """If options and NSRTs are 1:1, then map an option to an NSRT."""
-    nsrt = param_option_to_nsrt(option.parent, nsrts)
-    return nsrt.ground(option.objects)
 
 
 _S = TypeVar("_S", bound=Hashable)  # state in heuristic search
@@ -1825,80 +1625,6 @@ def run_hill_climbing(
     return states, actions, heuristics
 
 
-def run_policy_guided_astar(
-        initial_state: _S,
-        check_goal: Callable[[_S], bool],
-        get_valid_actions: Callable[[_S], Iterator[Tuple[_A, float]]],
-        get_next_state: Callable[[_S, _A], _S],
-        heuristic: Callable[[_S], float],
-        policy: Callable[[_S], Optional[_A]],
-        num_rollout_steps: int,
-        rollout_step_cost: float,
-        max_expansions: int = 10000000,
-        max_evals: int = 10000000,
-        timeout: int = 10000000,
-        lazy_expansion: bool = False) -> Tuple[List[_S], List[_A]]:
-    """Perform A* search, but at each node, roll out a given policy for a given
-    number of timesteps, creating new successors at each step.
-
-    Stop the rollout prematurely if the policy returns None.
-
-    Note that unlike the other search functions, which take get_successors as
-    input, this function takes get_valid_actions and get_next_state as two
-    separate inputs. This is necessary because we need to anticipate the next
-    state conditioned on the action output by the policy.
-
-    The get_valid_actions generates (action, cost) tuples. For policy-generated
-    transitions, the costs are ignored, and rollout_step_cost is used instead.
-    """
-
-    # Create a new successor function that rolls out the policy first.
-    # A successor here means: from this state, if you take this sequence of
-    # actions in order, you'll end up at this final state.
-    def get_successors(state: _S) -> Iterator[Tuple[List[_A], _S, float]]:
-        # Get policy-based successors.
-        policy_state = state
-        policy_action_seq = []
-        policy_cost = 0.0
-        for _ in range(num_rollout_steps):
-            action = policy(policy_state)
-            valid_actions = {a for a, _ in get_valid_actions(policy_state)}
-            if action is None or action not in valid_actions:
-                break
-            policy_state = get_next_state(policy_state, action)
-            policy_action_seq.append(action)
-            policy_cost += rollout_step_cost
-            yield (list(policy_action_seq), policy_state, policy_cost)
-
-        # Get primitive successors.
-        for action, cost in get_valid_actions(state):
-            next_state = get_next_state(state, action)
-            yield ([action], next_state, cost)
-
-    _, action_subseqs = run_astar(initial_state=initial_state,
-                                  check_goal=check_goal,
-                                  get_successors=get_successors,
-                                  heuristic=heuristic,
-                                  max_expansions=max_expansions,
-                                  max_evals=max_evals,
-                                  timeout=timeout,
-                                  lazy_expansion=lazy_expansion)
-
-    # The states are "jumpy", so we need to reconstruct the dense state
-    # sequence from the action subsequences. We also need to construct a
-    # flat action sequence.
-    state = initial_state
-    state_seq = [state]
-    action_seq = []
-    for action_subseq in action_subseqs:
-        for action in action_subseq:
-            action_seq.append(action)
-            state = get_next_state(state, action)
-            state_seq.append(state)
-
-    return state_seq, action_seq
-
-
 _RRTState = TypeVar("_RRTState")
 
 
@@ -2028,60 +1754,6 @@ class RRT(Generic[_RRTState]):
         return path
 
 
-class BiRRT(RRT[_RRTState]):
-    """Bidirectional rapidly-exploring random tree."""
-
-    def query_to_goal_fn(
-            self,
-            start: _RRTState,
-            goal_sampler: Callable[[], _RRTState],
-            goal_fn: Callable[[_RRTState], bool],
-            sample_goal_eps: float = 0.0) -> Optional[List[_RRTState]]:
-        raise NotImplementedError("Can't query to goal function using BiRRT")
-
-    def _rrt_connect(
-        self,
-        pt1: _RRTState,
-        goal_sampler: Callable[[], _RRTState],
-        goal_fn: Optional[Callable[[_RRTState], bool]] = None,
-        sample_goal_eps: float = 0.0,
-    ) -> Optional[List[_RRTState]]:
-        # goal_fn and sample_goal_eps are unused
-        pt2 = goal_sampler()
-        root1, root2 = _RRTNode(pt1), _RRTNode(pt2)
-        nodes1, nodes2 = [root1], [root2]
-
-        for _ in range(self._num_iters):
-            if len(nodes1) > len(nodes2):
-                nodes1, nodes2 = nodes2, nodes1
-            samp = self._sample_fn(pt1)
-            min_key1 = functools.partial(self._get_pt_dist_to_node, samp)
-            nearest1 = min(nodes1, key=min_key1)
-            for newpt in self._extend_fn(nearest1.data, samp):
-                if self._collision_fn(newpt):
-                    break
-                nearest1 = _RRTNode(newpt, parent=nearest1)
-                nodes1.append(nearest1)
-            min_key2 = functools.partial(self._get_pt_dist_to_node,
-                                         nearest1.data)
-            nearest2 = min(nodes2, key=min_key2)
-            for newpt in self._extend_fn(nearest2.data, nearest1.data):
-                if self._collision_fn(newpt):
-                    break
-                nearest2 = _RRTNode(newpt, parent=nearest2)
-                nodes2.append(nearest2)
-            else:
-                path1 = nearest1.path_from_root()
-                path2 = nearest2.path_from_root()
-                # This is a tricky case to cover.
-                if path1[0] != root1:  # pragma: no cover
-                    path1, path2 = path2, path1
-                assert path1[0] == root1
-                path = path1[:-1] + path2[::-1]
-                return [node.data for node in path]
-        return None
-
-
 class _RRTNode(Generic[_RRTState]):
     """A node for RRT."""
 
@@ -2204,241 +1876,7 @@ def all_ground_nsrts_fd_translator(
         yield nsrt.ground(objs)
 
 
-def all_possible_ground_atoms(state: State,
-                              preds: Set[Predicate]) -> List[GroundAtom]:
-    """Get a sorted list of all possible ground atoms in a state given the
-    predicates.
-
-    Ignores the predicates' classifiers.
-    """
-    objects = frozenset(state)
-    ground_atoms = set()
-    for pred in preds:
-        ground_atoms |= get_all_ground_atoms_for_predicate(pred, objects)
-    return sorted(ground_atoms)
-
-
-def all_ground_ldl_rules(
-    rule: LDLRule,
-    objects: Collection[Object],
-    static_predicates: Optional[Collection[Predicate]] = None,
-    init_atoms: Optional[Collection[GroundAtom]] = None
-) -> List[_GroundLDLRule]:
-    """Get all possible groundings of the given rule with the given objects.
-
-    If provided, use the static predicates and init_atoms to avoid
-    grounding rules that will never have satisfied preconditions in any
-    state.
-    """
-    if static_predicates is None:
-        static_predicates = set()
-    if init_atoms is None:
-        init_atoms = set()
-    return _cached_all_ground_ldl_rules(rule, frozenset(objects),
-                                        frozenset(static_predicates),
-                                        frozenset(init_atoms))
-
-
-@functools.lru_cache(maxsize=None)
-def _cached_all_ground_ldl_rules(
-        rule: LDLRule, objects: FrozenSet[Object],
-        static_predicates: FrozenSet[Predicate],
-        init_atoms: FrozenSet[GroundAtom]) -> List[_GroundLDLRule]:
-    """Helper for all_ground_ldl_rules() that caches the outputs."""
-    ground_rules = []
-    # Use static preconds to reduce the map of parameters to possible objects.
-    # For example, if IsBall(?x) is a positive state precondition, then only
-    # the objects that appear in init_atoms with IsBall could bind to ?x.
-    # For now, we just check unary static predicates, since that covers the
-    # common case where such predicates are used in place of types.
-    # Create map from each param to unary static predicates.
-    param_to_pos_preds: Dict[Variable, Set[Predicate]] = {
-        p: set()
-        for p in rule.parameters
-    }
-    param_to_neg_preds: Dict[Variable, Set[Predicate]] = {
-        p: set()
-        for p in rule.parameters
-    }
-    for (preconditions, param_to_preds) in [
-        (rule.pos_state_preconditions, param_to_pos_preds),
-        (rule.neg_state_preconditions, param_to_neg_preds),
-    ]:
-        for atom in preconditions:
-            pred = atom.predicate
-            if pred in static_predicates and pred.arity == 1:
-                param = atom.variables[0]
-                param_to_preds[param].add(pred)
-    # Create the param choices, filtering based on the unary static atoms.
-    param_choices = []  # list of lists of possible objects for each param
-    # Preprocess the atom sets for faster lookups.
-    init_atom_tups = {(a.predicate, tuple(a.objects)) for a in init_atoms}
-    for param in rule.parameters:
-        choices = []
-        for obj in objects:
-            # Types must match, as usual.
-            if obj.type != param.type:
-                continue
-            # Check the static conditions.
-            binding_valid = True
-            for pred in param_to_pos_preds[param]:
-                if (pred, (obj, )) not in init_atom_tups:
-                    binding_valid = False
-                    break
-            for pred in param_to_neg_preds[param]:
-                if (pred, (obj, )) in init_atom_tups:
-                    binding_valid = False
-                    break
-            if binding_valid:
-                choices.append(obj)
-        # Must be sorted for consistency with other grounding code.
-        param_choices.append(sorted(choices))
-    for choice in itertools.product(*param_choices):
-        ground_rule = rule.ground(choice)
-        ground_rules.append(ground_rule)
-    return ground_rules
-
-
-def parse_ldl_from_str(ldl_str: str, types: Collection[Type],
-                       predicates: Collection[Predicate],
-                       nsrts: Collection[NSRT]) -> LiftedDecisionList:
-    """Parse a lifted decision list from a string representation of it."""
-    parser = _LDLParser(types, predicates, nsrts)
-    return parser.parse(ldl_str)
-
-
-class _LDLParser:
-    """Parser for lifted decision lists from strings."""
-
-    def __init__(self, types: Collection[Type],
-                 predicates: Collection[Predicate],
-                 nsrts: Collection[NSRT]) -> None:
-        self._nsrt_name_to_nsrt = {nsrt.name.lower(): nsrt for nsrt in nsrts}
-        self._type_name_to_type = {t.name.lower(): t for t in types}
-        self._predicate_name_to_predicate = {
-            p.name.lower(): p
-            for p in predicates
-        }
-
-    def parse(self, ldl_str: str) -> LiftedDecisionList:
-        """Run parsing."""
-        ldl_str = ldl_str.lower()  # ignore case during parsing
-        rules = []
-        rule_matches = re.finditer(r"\(:rule", ldl_str)
-        for start in rule_matches:
-            rule_str = find_balanced_expression(ldl_str, start.start())
-            rule = self._parse_rule(rule_str)
-            rules.append(rule)
-        return LiftedDecisionList(rules)
-
-    def _parse_rule(self, rule_str: str) -> LDLRule:
-        rule_pattern = r"\(:rule(.*):parameters(.*):preconditions(.*)" + \
-                       r":goals(.*):action(.*)\)"
-        match_result = re.match(rule_pattern, rule_str, re.DOTALL)
-        assert match_result is not None
-        # Remove white spaces.
-        matches = [m.strip().rstrip() for m in match_result.groups()]
-        # Unpack the matches.
-        rule_name, params_str, preconds_str, goals_str, nsrt_str = matches
-        # Handle the parameters.
-        assert "?" in params_str, "Assuming all rules have parameters."
-        variable_name_to_variable = {}
-        assert params_str.endswith(")")
-        for param_str in params_str[:-1].split("?")[1:]:
-            param_name, param_type_str = param_str.split("-")
-            param_name = param_name.strip()
-            param_type_str = param_type_str.strip()
-            variable_name = "?" + param_name
-            param_type = self._type_name_to_type[param_type_str]
-            variable = Variable(variable_name, param_type)
-            variable_name_to_variable[variable_name] = variable
-        # Handle the preconditions.
-        pos_preconds, neg_preconds = self._parse_lifted_atoms(
-            preconds_str, variable_name_to_variable)
-        # Handle the goals.
-        pos_goals, neg_goals = self._parse_lifted_atoms(
-            goals_str, variable_name_to_variable)
-        assert not neg_goals, "Negative LDL goals not currently supported"
-        # Handle the NSRT.
-        nsrt = self._parse_into_nsrt(nsrt_str, variable_name_to_variable)
-        # Finalize the rule.
-        params = sorted(variable_name_to_variable.values())
-        return LDLRule(rule_name, params, pos_preconds, neg_preconds,
-                       pos_goals, nsrt)
-
-    def _parse_lifted_atoms(
-        self, atoms_str: str, variable_name_to_variable: Dict[str, Variable]
-    ) -> Tuple[Set[LiftedAtom], Set[LiftedAtom]]:
-        """Parse the given string (representing either preconditions or
-        effects) into a set of positive lifted atoms and a set of negative
-        lifted atoms.
-
-        Check against params to make sure typing is correct.
-        """
-        assert atoms_str[0] == "("
-        assert atoms_str[-1] == ")"
-
-        # Handle conjunctions.
-        if atoms_str.startswith("(and") and atoms_str[4] in (" ", "\n", "("):
-            clauses = find_all_balanced_expressions(atoms_str[4:-1].strip())
-            pos_atoms, neg_atoms = set(), set()
-            for clause in clauses:
-                clause_pos_atoms, clause_neg_atoms = self._parse_lifted_atoms(
-                    clause, variable_name_to_variable)
-                pos_atoms |= clause_pos_atoms
-                neg_atoms |= clause_neg_atoms
-            return pos_atoms, neg_atoms
-
-        # Handle negations.
-        if atoms_str.startswith("(not") and atoms_str[4] in (" ", "\n", "("):
-            # Only contains a single literal inside not.
-            split_strs = atoms_str[4:-1].strip()[1:-1].strip().split()
-            pred = self._predicate_name_to_predicate[split_strs[0]]
-            args = [variable_name_to_variable[arg] for arg in split_strs[1:]]
-            lifted_atom = LiftedAtom(pred, args)
-            return set(), {lifted_atom}
-
-        # Handle single positive atoms.
-        split_strs = atoms_str[1:-1].split()
-        # Empty conjunction.
-        if not split_strs:
-            return set(), set()
-        pred = self._predicate_name_to_predicate[split_strs[0]]
-        args = [variable_name_to_variable[arg] for arg in split_strs[1:]]
-        lifted_atom = LiftedAtom(pred, args)
-        return {lifted_atom}, set()
-
-    def _parse_into_nsrt(
-            self, nsrt_str: str,
-            variable_name_to_variable: Dict[str, Variable]) -> NSRT:
-        """Parse the given string into an NSRT."""
-        assert nsrt_str[0] == "("
-        assert nsrt_str[-1] == ")"
-        nsrt_str = nsrt_str[1:-1].split()[0]
-        nsrt = self._nsrt_name_to_nsrt[nsrt_str]
-        # Validate parameters.
-        variables = variable_name_to_variable.values()
-        for v in nsrt.parameters:
-            assert v in variables, f"NSRT parameter {v} missing from LDL rule"
-        return nsrt
-
-
 _T = TypeVar("_T")  # element of a set
-
-
-def sample_subsets(universe: Sequence[_T], num_samples: int, min_set_size: int,
-                   max_set_size: int,
-                   rng: np.random.Generator) -> Iterator[Set[_T]]:
-    """Sample multiple subsets from a universe."""
-    assert min_set_size <= max_set_size
-    assert max_set_size <= len(universe), "Not enough elements in universe"
-    for _ in range(num_samples):
-        set_size = rng.integers(min_set_size, max_set_size + 1)
-        idxs = rng.choice(np.arange(len(universe)),
-                          size=set_size,
-                          replace=False)
-        sample = {universe[i] for i in idxs}
-        yield sample
 
 
 def create_dataset_filename_str(
@@ -2539,56 +1977,6 @@ def load_ground_atom_dataset(
         raise ValueError(f"Cannot load ground atoms: {dataset_fname}")
     return ground_atom_dataset
 
-def load_ground_neural_atom_dataset(
-        dataset_fname: str,
-        trajectories: List[LowLevelTrajectory]) -> List[GroundAtomTrajectory]:
-    """Load a previously-saved ground atom dataset.
-
-    Note importantly that we only save atoms themselves, we don't save
-    the low-level trajectory information that's necessary to make
-    GroundAtomTrajectories given series of ground atoms (that info can
-    be saved separately, in case one wants to just load trajectories and
-    not also load ground atoms). Thus, this function needs to take these
-    trajectories as input.
-    """
-    os.makedirs(CFG.data_dir, exist_ok=True)
-    # Check that the dataset file was previously saved.
-    ground_atom_dataset_atoms: Optional[List[List[Set[GroundAtom]]]] = []
-    if os.path.exists(dataset_fname):
-        # Load the ground atoms dataset.
-        with open(dataset_fname, "rb") as f:
-            ground_atom_dataset_atoms = cpkl.load(f)
-        assert ground_atom_dataset_atoms is not None
-        assert len(trajectories) == len(ground_atom_dataset_atoms)
-        logging.info("\n\nLOADED GROUND ATOM DATASET")
-
-        # The saved ground atom dataset consists only of sequences
-        # of sets of GroundAtoms, we need to recombine this with
-        # the LowLevelTrajectories to create a GroundAtomTrajectory.
-        ground_atom_dataset = []
-        for i, traj in enumerate(trajectories):
-            ground_atom_seq = ground_atom_dataset_atoms[i]
-            ground_atom_dataset.append(
-                (traj, [set(atoms) for atoms in ground_atom_seq]))
-    else:
-        raise ValueError(f"Cannot load ground atoms: {dataset_fname}")
-    return ground_atom_dataset
-
-def save_ground_neural_atom_dataset(ground_atom_dataset: List[GroundAtomTrajectory],
-                             dataset_fname: str) -> None:
-    """Saves a given ground atom dataset so it can be loaded in the future."""
-    # Save ground atoms dataset to file. Note that a
-    # GroundAtomTrajectory contains a normal LowLevelTrajectory and a
-    # list of sets of GroundAtoms, so we only save the list of
-    # GroundAtoms (the LowLevelTrajectories are saved separately).
-    ground_atom_dataset_to_pkl = []
-    for gt_traj in ground_atom_dataset:
-        trajectory = []
-        for ground_atom_set in gt_traj[1]:
-            trajectory.append(ground_atom_set)
-        ground_atom_dataset_to_pkl.append(trajectory)
-    with open(dataset_fname, "wb") as f:
-        cpkl.dump(ground_atom_dataset_to_pkl, f)
 
 def save_ground_atom_dataset(ground_atom_dataset: List[GroundAtomTrajectory],
                              dataset_fname: str) -> None:
@@ -2619,22 +2007,6 @@ def extract_preds_and_types(
                 types[var_type.name] = var_type
             preds[atom.predicate.name] = atom.predicate
     return preds, types
-
-
-def get_static_preds(ops: Collection[NSRTOrSTRIPSOperator],
-                     predicates: Collection[Predicate]) -> Set[Predicate]:
-    """Get the subset of predicates from the given set that are static with
-    respect to the given lifted operators."""
-    static_preds = set()
-    for pred in predicates:
-        # This predicate is not static if it appears in any op's effects.
-        if any(
-                any(atom.predicate == pred for atom in op.add_effects) or any(
-                    atom.predicate == pred for atom in op.delete_effects)
-                for op in ops):
-            continue
-        static_preds.add(pred)
-    return static_preds
 
 
 def get_static_atoms(ground_ops: Collection[GroundNSRTOrSTRIPSOperator],
@@ -3171,29 +2543,6 @@ class VideoMonitor(LoggingMonitor):
         return self._video
 
 
-@dataclass
-class SimulateVideoMonitor(LoggingMonitor):
-    """A monitor that calls render_state on each state and action seen.
-
-    This monitor is meant for use with run_policy_with_simulator, as
-    opposed to VideoMonitor, which is meant for use with run_policy.
-    """
-    _task: Task
-    _render_state_fn: Callable[[State, Task, Optional[Action]], Video]
-    _video: Video = field(init=False, default_factory=list)
-
-    def reset(self, train_or_test: str, task_idx: int) -> None:
-        self._video = []
-
-    def observe(self, obs: Observation, action: Optional[Action]) -> None:
-        assert isinstance(obs, State)
-        self._video.extend(self._render_state_fn(obs, self._task, action))
-
-    def get_video(self) -> Video:
-        """Return the video."""
-        return self._video
-
-
 def create_video_from_partial_refinements(
     partial_refinements: Sequence[Tuple[Sequence[_GroundNSRT],
                                         Sequence[_Option]]],
@@ -3284,34 +2633,6 @@ def save_images(outfile_prefix: str, video: Video) -> None:
         outpath = os.path.join(outdir, outfile)
         imageio.imwrite(outpath, image)
         logging.info(f"Wrote out to {outpath}")
-
-
-def get_env_asset_path(asset_name: str, assert_exists: bool = True) -> str:
-    """Return the absolute path to env asset."""
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    asset_dir_path = os.path.join(dir_path, "envs", "assets")
-    path = os.path.join(asset_dir_path, asset_name)
-    if assert_exists:
-        assert os.path.exists(path), f"Env asset not found: {asset_name}."
-    return path
-
-
-def get_third_party_path() -> str:
-    """Return the absolute path to the third party directory."""
-    third_party_dir_path = os.path.join(get_path_to_predicators_root(),
-                                        "predicators/third_party")
-    return third_party_dir_path
-
-
-def get_path_to_predicators_root() -> str:
-    """Return the absolute path to the predicators root directory.
-
-    Specifically, this returns something that looks like:
-    '<installation-path>/predicators'. Note there is no '/' at the end.
-    """
-    module_path = Path(__file__)
-    predicators_dir = module_path.parent.parent
-    return str(predicators_dir)
 
 
 def import_submodules(path: List[str], name: str) -> None:
@@ -3477,18 +2798,6 @@ def string_to_python_object(value: str) -> Any:
     return value
 
 
-def flush_cache() -> None:
-    """Clear all lru caches."""
-    gc.collect()
-    wrappers = [
-        a for a in gc.get_objects()
-        if isinstance(a, functools._lru_cache_wrapper)  # pylint: disable=protected-access
-    ]
-
-    for wrapper in wrappers:
-        wrapper.cache_clear()
-
-
 def parse_config_excluded_predicates(
         env: BaseEnv) -> Tuple[Set[Predicate], Set[Predicate]]:
     """Parse the CFG.excluded_predicates string, given an environment.
@@ -3528,16 +2837,6 @@ def parse_config_excluded_predicates(
         included = env.predicates
     excluded = {pred for pred in env.predicates if pred.name in excluded_names}
     return included, excluded
-
-
-def replace_goals_with_agent_specific_goals(
-        included_predicates: Set[Predicate],
-        excluded_predicates: Set[Predicate], env: BaseEnv) -> Set[Predicate]:
-    """Replace original goal predicates with agent-specific goal predicates if
-    the environment defines them."""
-    preds = included_predicates - env.goal_predicates \
-        | env.agent_goal_predicates - excluded_predicates
-    return preds
 
 
 def null_sampler(state: State, goal: Set[GroundAtom], rng: np.random.Generator,
@@ -3591,91 +2890,6 @@ def nostdout() -> Generator[None, None, None]:
     sys.stdout = save_stdout
 
 
-def query_ldl(
-    ldl: LiftedDecisionList,
-    atoms: Set[GroundAtom],
-    objects: Set[Object],
-    goal: Set[GroundAtom],
-    static_predicates: Optional[Set[Predicate]] = None,
-    init_atoms: Optional[Collection[GroundAtom]] = None
-) -> Optional[_GroundNSRT]:
-    """Queries a lifted decision list representing a goal-conditioned policy.
-
-    Given an abstract state and goal, the rules are grounded in order. The
-    first applicable ground rule is used to return a ground NSRT.
-
-    If static_predicates is provided, it is used to avoid grounding rules with
-    nonsense preconditions like IsBall(robot).
-
-    If no rule is applicable, returns None.
-    """
-    for rule in ldl.rules:
-        for ground_rule in all_ground_ldl_rules(
-                rule,
-                objects,
-                static_predicates=static_predicates,
-                init_atoms=init_atoms):
-            if ground_rule.pos_state_preconditions.issubset(atoms) and \
-                    not ground_rule.neg_state_preconditions & atoms and \
-                    ground_rule.goal_preconditions.issubset(goal):
-                return ground_rule.ground_nsrt
-    return None
-
-
-def generate_random_string(length: int, alphabet: Sequence[str],
-                           rng: np.random.Generator) -> str:
-    """Generates a random string of the given length using the provided set of
-    characters (alphabet)."""
-    assert all(len(c) == 1 for c in alphabet)
-    return "".join(rng.choice(alphabet, size=length))
-
-
-def find_balanced_expression(s: str, index: int) -> str:
-    """Find balanced expression in string starting from given index."""
-    assert s[index] == "("
-    start_index = index
-    balance = 1
-    while balance != 0:
-        index += 1
-        symbol = s[index]
-        if symbol == "(":
-            balance += 1
-        elif symbol == ")":
-            balance -= 1
-    return s[start_index:index + 1]
-
-
-def find_all_balanced_expressions(s: str) -> List[str]:
-    """Return a list of all balanced expressions in a string, starting from the
-    beginning."""
-    assert s[0] == "("
-    assert s[-1] == ")"
-    exprs = []
-    index = 0
-    start_index = index
-    balance = 1
-    while index < len(s) - 1:
-        index += 1
-        if balance == 0:
-            exprs.append(s[start_index:index])
-            # Jump to next "(".
-            while True:
-                if s[index] == "(":
-                    break
-                index += 1
-            start_index = index
-            balance = 1
-            continue
-        symbol = s[index]
-        if symbol == "(":
-            balance += 1
-        elif symbol == ")":
-            balance -= 1
-    assert balance == 0
-    exprs.append(s[start_index:index + 1])
-    return exprs
-
-
 def range_intersection(lb1: float, ub1: float, lb2: float, ub2: float) -> bool:
     """Given upper and lower bounds for two ranges, returns True iff the ranges
     intersect."""
@@ -3714,98 +2928,6 @@ def roundrobin(iterables: Sequence[Iterator]) -> Iterator:
         for nxt in nexts:
             yield nxt()
 
-
-def get_task_seed(train_or_test: str, task_idx: int) -> int:
-    """Parses task seed from CFG.test_env_seed_offset."""
-    assert task_idx < CFG.test_env_seed_offset
-    # SeedSequence generates a sequence of random values given an integer
-    # "entropy". We use CFG.seed to define the "entropy" and then get the
-    # n^th generated random value and use that to seed the gym environment.
-    # This is all to avoid unintentional dependence between experiments
-    # that are conducted with consecutive random seeds. For example, if
-    # we used CFG.seed + task_idx to seed the gym environment, there would
-    # be overlap between experiments when CFG.seed = 1, CFG.seed = 2, etc.
-    seed_entropy = CFG.seed
-    if train_or_test == "test":
-        seed_entropy += CFG.test_env_seed_offset
-    seed_sequence = np.random.SeedSequence(seed_entropy)
-    # Need to cast to int because generate_state() returns a numpy int.
-    task_seed = int(seed_sequence.generate_state(task_idx + 1)[-1])
-    return task_seed
-
-
-def _beta_bernoulli_posterior_alpha_beta(
-        success_history: List[bool],
-        alpha: float = 1.0,
-        beta: float = 1.0) -> Tuple[float, float]:
-    """See https://gregorygundersen.com/blog/2020/08/19/bernoulli-beta/"""
-    n = len(success_history)
-    s = sum(success_history)
-    alpha_n = alpha + s
-    beta_n = n - s + beta
-    return (alpha_n, beta_n)
-
-
-def beta_bernoulli_posterior(success_history: List[bool],
-                             alpha: float = 1.0,
-                             beta: float = 1.0) -> BetaRV:
-    """Returns the RV."""
-    alpha_n, beta_n = _beta_bernoulli_posterior_alpha_beta(
-        success_history, alpha, beta)
-    return BetaRV(alpha_n, beta_n)
-
-
-def beta_bernoulli_posterior_mean(success_history: List[bool],
-                                  alpha: float = 1.0,
-                                  beta: float = 1.0) -> float:
-    """Faster computation to avoid instantiating BetaRV when not needed."""
-    alpha_n, beta_n = _beta_bernoulli_posterior_alpha_beta(
-        success_history, alpha, beta)
-    return alpha_n / (alpha_n + beta_n)
-
-
-def beta_from_mean_and_variance(mean: float,
-                                variance: float,
-                                variance_lower_pad: float = 1e-6,
-                                variance_upper_pad: float = 1e-3) -> BetaRV:
-    """Recover a beta distribution given a mean and a variance.
-
-    See https://stats.stackexchange.com/questions/12232/ for derivation.
-    """
-    # Clip variance.
-    variance = max(min(variance,
-                       mean * (1 - mean) - variance_upper_pad),
-                   variance_lower_pad)
-    alpha = ((1 - mean) / variance - 1 / mean) * (mean**2)
-    beta = alpha * (1 / mean - 1)
-    assert alpha > 0
-    assert beta > 0
-    rv = BetaRV(alpha, beta)
-    assert abs(rv.mean() - mean) < 1e-6
-    return rv
-
-def rotate_point_in_image(r: float, c: float, rot_degrees: float, height: int,
-                          width: int) -> Tuple[int, int]:
-    """If an image has been rotated using ndimage.rotate, this computes the
-    location of a pixel (r, c) in that image following the same rotation.
-
-    The rotation is expected in degrees, following ndimage.rotate.
-    """
-    rotation_radians = np.radians(rot_degrees)
-    transform_matrix = np.array(
-        [[np.cos(rotation_radians), -np.sin(rotation_radians)],
-         [np.sin(rotation_radians),
-          np.cos(rotation_radians)]])
-    # Subtract the center of the image from the pixel location to
-    # translate the rotation to the origin.
-    center = np.array([(height - 1) / 2., (width - 1) / 2])
-    centered_pt = np.subtract([r, c], center)
-    # Apply the rotation.
-    rotated_pt_centered = np.matmul(transform_matrix, centered_pt)
-    # Add the center of the image back to the pixel location to
-    # translate the rotation back from the origin.
-    rotated_pt = rotated_pt_centered + center
-    return rotated_pt[0], rotated_pt[1]
 
 def _obs_to_state_pass_through(obs: Observation) -> State:
     """Helper for run_ground_nsrt_with_assertions."""
@@ -3851,43 +2973,4 @@ def run_ground_nsrt_with_assertions(ground_nsrt: _GroundNSRT,
                 f"Delete effect for {ground_nsrt_str} failed: {atom}"
     return state
 
-
-def get_scaled_default_font(
-        draw: ImageDraw.ImageDraw,
-        size: int) -> ImageFont.FreeTypeFont:  # pragma: no cover
-    """Method that modifies the size of some provided PIL ImageDraw font.
-
-    Useful for scaling up font sizes when using PIL to insert text
-    directly into images.
-    """
-    # Determine the scaling factor
-    base_font = ImageFont.load_default()
-    width, height = draw.textbbox((0, 0), "A", font=base_font)[:2]
-    scale_factor = size / max(width, height)
-    # Scale the font using the factor
-    return base_font.font_variant(size=int(scale_factor *  # type: ignore
-                                           base_font.size))  # type: ignore
-
-
-def add_text_to_draw_img(
-        draw: ImageDraw.ImageDraw, position: Tuple[int, int], text: str,
-        font: ImageFont.FreeTypeFont
-) -> ImageDraw.ImageDraw:  # pragma: no cover
-    """Method that adds some text with a particular font at a particular pixel
-    position in an input PIL.ImageDraw.ImageDraw image.
-
-    Returns the modified ImageDraw.ImageDraw with the added text.
-    """
-    text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:]
-    background_position = (position[0] - 5, position[1] - 5
-                           )  # Slightly larger than text
-    background_size = (text_width + 10, text_height + 10)
-    # Draw the background rectangle
-    draw.rectangle(
-        (background_position, (background_position[0] + background_size[0],
-                               background_position[1] + background_size[1])),
-        fill="black")
-    # Add the text to the image
-    draw.text(position, text, fill="red", font=font)
-    return draw
 

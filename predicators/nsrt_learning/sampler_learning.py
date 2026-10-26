@@ -218,8 +218,6 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
             else:
                 filtered_data = data
             X_regressor[-1].extend(filtered_data)
-        # for var in variables:
-        #     X_regressor[-1].extend(state[sub[var]])
         # Above, we made the assumption that there is one goal atom with one
         # goal object, which must also be used when assembling data for the
         # regressor.
@@ -277,70 +275,6 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
     return _LearnedSampler(classifier, regressor, variables,
                            param_option).sampler
 
-def _create_neural_sampler(variables: Sequence[Variable],
-                          param_option: ParameterizedOption,
-                          cls_weights: str,
-                          cls_info: str,
-                          reg_weights: str,
-                          reg_info: str
-                          ) -> NSRTSampler:
-
-    classifier = MLPBinaryClassifier(
-    seed=CFG.seed,
-    balance_data=CFG.mlp_classifier_balance_data,
-    max_train_iters=CFG.sampler_mlp_classifier_max_itr,
-    learning_rate=CFG.learning_rate,
-    weight_decay=CFG.weight_decay,
-    use_torch_gpu=CFG.use_torch_gpu,
-    train_print_every=CFG.pytorch_train_print_every,
-    n_iter_no_change=CFG.mlp_classifier_n_iter_no_change,
-    hid_sizes=CFG.mlp_classifier_hid_sizes,
-    n_reinitialize_tries=CFG.sampler_mlp_classifier_n_reinitialize_tries,
-    weight_init="default")
-    classifier_weights = torch.load(cls_weights, map_location="cpu")
-    # The info dicts hold numpy arrays, written by _learn_neural_sampler().
-    classifier_info = torch.load(cls_info, weights_only=False)
-    x_dims = classifier_info['x_dims']
-    input_shift = classifier_info['input_shift']
-    input_scale = classifier_info['input_scale']
-    classifier.load(x_dims, input_shift, input_scale, classifier_weights)
-    if CFG.sampler_learning_regressor_model == "neural_gaussian":
-        regressor: DistributionRegressor = NeuralGaussianRegressor(
-            seed=CFG.seed,
-            hid_sizes=CFG.neural_gaus_regressor_hid_sizes,
-            max_train_iters=CFG.neural_gaus_regressor_max_itr,
-            clip_gradients=CFG.mlp_regressor_clip_gradients,
-            clip_value=CFG.mlp_regressor_gradient_clip_value,
-            learning_rate=CFG.learning_rate,
-            weight_decay=CFG.weight_decay,
-            use_torch_gpu=CFG.use_torch_gpu,
-            train_print_every=CFG.pytorch_train_print_every)
-    else:
-        assert CFG.sampler_learning_regressor_model == "degenerate_mlp"
-        regressor = DegenerateMLPDistributionRegressor(
-            seed=CFG.seed,
-            hid_sizes=CFG.mlp_regressor_hid_sizes,
-            max_train_iters=CFG.mlp_regressor_max_itr,
-            clip_gradients=CFG.mlp_regressor_clip_gradients,
-            clip_value=CFG.mlp_regressor_gradient_clip_value,
-            learning_rate=CFG.learning_rate,
-            weight_decay=CFG.weight_decay,
-            use_torch_gpu=CFG.use_torch_gpu,
-            train_print_every=CFG.pytorch_train_print_every)
-        
-    regressor_weights = torch.load(reg_weights, map_location="cpu")
-    regressor_info = torch.load(reg_info, weights_only=False)
-    x_dims = regressor_info['x_dims']
-    y_dim = regressor_info['y_dim']
-    input_shift = regressor_info['input_shift']
-    input_scale = regressor_info['input_scale']
-    output_shift = regressor_info['output_shift']
-    output_scale = regressor_info['output_scale']
-    regressor.load(x_dims, y_dim, input_shift, input_scale, 
-                   output_shift, output_scale,
-                   regressor_weights)
-    return _LearnedSampler(classifier, regressor, variables,
-                           param_option).sampler
 
 def _create_sampler_data(
     datastores: List[Datastore], variables: Sequence[Variable],
@@ -442,8 +376,6 @@ class _LearnedSampler:
         """
         x_lst: List[Any] = [1.0]  # start with bias term
         sub = dict(zip(self._variables, objects))
-        # for var in self._variables:
-        #     x_lst.extend(state[sub[var]])
         for var in self._variables:
             obj = sub[var]
             data = state[obj]
@@ -451,9 +383,6 @@ class _LearnedSampler:
                 desired_feat_id = CFG.domain_sampler_data_filter[obj.type.name]
                 filtered_data = [d for i, d in enumerate(data) if i in desired_feat_id]
                 filtered_data = np.array(filtered_data)
-                # if len(filtered_data) != len(data):
-                #     has_pcd = True
-                #     dropped_dim = len(data) - len(filtered_data)
             else:
                 filtered_data = data
             x_lst.extend(filtered_data)

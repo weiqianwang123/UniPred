@@ -418,7 +418,6 @@ class BlocksEnv(BaseEnv):
     def _GripperOpen_holds(state: State, objects: Sequence[Object]) -> bool:
         robot, = objects
         rf = state.get(robot, "fingers")
-        # assert rf in (0.0, 1.0)
         return rf >= 0.5
 
     def _Holding_holds(self, state: State, objects: Sequence[Object]) -> bool:

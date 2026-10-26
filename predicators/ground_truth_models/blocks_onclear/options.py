@@ -90,14 +90,12 @@ class BlocksOnClearGroundTruthOptionFactory(GroundTruthOptionFactory):
         def policy(state: State, memory: Dict, objects: Sequence[Object],
                    params: Array) -> Action:
             del memory, params  # unused
-            _, block, otherblock = objects
+            _, block, _ = objects
             block_pose = np.array([
                 state.get(block, "pose_x"),
                 state.get(block, "pose_y"),
                 state.get(block, "pose_z")
             ])
-            # assert state.get(otherblock, "pose_z") < state.get(block, "pose_z"), \
-            # "Block to unstack must be below the other block."
             arr = np.r_[block_pose, 0.0, 0.0].astype(np.float32)
             arr = np.clip(arr, action_space.low, action_space.high)
             return Action(arr)

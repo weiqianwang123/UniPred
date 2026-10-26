@@ -342,7 +342,6 @@ class _UnaryFreeForallClassifier(_UnaryClassifier):
         ]
 
     def _classify_object(self, s: State, obj: Object) -> bool:
-        # assert obj.type == self.body.types[self.free_variable_idx]
         assert obj.is_instance(self.body.types[self.free_variable_idx])
         for o in utils.get_object_combinations(set(s), self._quantified_types):
             o_lst = list(o)
