@@ -1,7 +1,6 @@
 """Tests for LLM effect proposals."""
 
 import numpy as np
-import pytest
 
 from predicators import utils
 from predicators.structs import Action, Predicate, Type
@@ -38,8 +37,7 @@ class _Scripted(LLMClient):
         return self._replies.pop(0)
 
 
-def _proposer(client, seeds=(), use_llm=True, feedback=True, semantic=True,
-              allowed=None):
+def _proposer(client, seeds=(), feedback=True, semantic=True, allowed=None):
     names = NameMap(_ROWS, [_HAND_EMPTY], semantic)
     context = PromptContext(names.text("Toys on a table. Pick needs "
                                        "HandEmpty."), "(define (domain d))",
@@ -47,8 +45,7 @@ def _proposer(client, seeds=(), use_llm=True, feedback=True, semantic=True,
     return EffectProposer(
         client=client, target=_HOLDING, rows=_ROWS, names=names,
         context=context, allowed=allowed or [{0, 1, 2}] * 3, seeds=seeds,
-        use_llm=use_llm, loss_feedback=feedback, accept_loss=0.005,
-        zero_loss=1.0)
+        loss_feedback=feedback, accept_loss=0.005, zero_loss=1.0)
 
 
 def test_loss_to_score():
@@ -121,11 +118,9 @@ def test_without_feedback_or_semantics():
 def test_seeds_only_and_forced_rows():
     """With the LLM loop off, only seeds are proposed; rows whose effect is
     forced by the data are filled in."""
-    proposer = _proposer(None, seeds=[np.array([ADD, 0, 0])], use_llm=False)
+    proposer = _proposer(None, seeds=[np.array([ADD, 0, 0])])
     assert proposer.propose() is not None
     assert proposer.propose() is None
     client = _Scripted(["ADD: Pick\nDEL:\nWHY: x"])
     forced = _proposer(client, allowed=[{0, 1, 2}, {DELETE}, {0}])
     assert list(forced.propose()) == [ADD, DELETE, NO_EFFECT]
-    with pytest.raises(AssertionError):
-        _proposer(None, use_llm=True)

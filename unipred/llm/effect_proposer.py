@@ -1,8 +1,8 @@
 """LLM-in-the-loop effect proposals (stage 3 of UniPred).
 
 An EffectProposer proposes effect vectors for one predicate type: first the
-seeds from PDDL completion, then (if the LLM loop is on) new proposals from
-the LLM. The LLM sees the domain, the demonstrations and every earlier
+seeds from PDDL completion, then (if it has an LLM client, i.e. the LLM
+loop is on) new proposals from the LLM. The LLM sees the domain, the demonstrations and every earlier
 proposal with the feedback from the classifier trained on it: a score in
 [0, 100] derived from the validation loss, or, without loss feedback,
 only whether the proposal was accepted.
@@ -72,10 +72,8 @@ class EffectProposer:
     def __init__(self, client: Optional[LLMClient], target: Predicate,
                  rows: Sequence[ParameterizedOption], names: NameMap,
                  context: PromptContext, allowed: Sequence[Set[int]],
-                 seeds: Sequence[np.ndarray], use_llm: bool,
-                 loss_feedback: bool, accept_loss: float,
-                 zero_loss: float) -> None:
-        assert client is not None or not use_llm
+                 seeds: Sequence[np.ndarray], loss_feedback: bool,
+                 accept_loss: float, zero_loss: float) -> None:
         self._client = client
         self._target = target
         self._rows = list(rows)
@@ -83,7 +81,6 @@ class EffectProposer:
         self._context = context
         self._allowed = [set(a) for a in allowed]
         self._seeds = [tuple(int(c) for c in s) for s in seeds]
-        self._use_llm = use_llm
         self._loss_feedback = loss_feedback
         self._accept_loss = accept_loss
         self._zero_loss = zero_loss
@@ -105,9 +102,8 @@ class EffectProposer:
                 logging.info(f"Proposing PDDL seed for {self._target.name}: "
                              f"{self._describe(seed)}")
                 return np.array(seed)
-        if not self._use_llm:
+        if self._client is None:
             return None
-        assert self._client is not None
         system = load_prompt("effect_proposal_system.txt").substitute()
         notes: List[str] = []
         for attempt in range(self._client.retry_attempts):

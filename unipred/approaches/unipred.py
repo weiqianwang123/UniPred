@@ -150,7 +150,6 @@ class UniPredApproach(DerivedSelectionMixin, BilevelLearningApproach):
                 context=self._context,
                 allowed=allowed,
                 seeds=self._seed_vectors().get(curr_pred, []),
-                use_llm=CFG.unipred_llm_loop,
                 loss_feedback=CFG.unipred_loss_feedback,
                 accept_loss=pred_config["loss_thresh"],
                 zero_loss=CFG.unipred_score_zero_loss)
