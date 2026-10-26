@@ -33,3 +33,76 @@ design. Each entry says what was chosen and why.
   WiperInBox); HandEmpty, HoldingToy, HoldingWiper, ToyOnTable, BoxNear and
   BoxFar are invented, and NoToyOnTable is the derived predicate ForAll
   ?toy. Not ToyOnTable(?toy, ?table).
+
+## Packing
+
+- **Scene.** A row of boxes, each split by a movable divider into a left
+  and a right region that hold one item each. Items are small or large;
+  a large item fits only a region widened by shifting the divider, which
+  is possible only while both regions of the box are empty. This keeps
+  the paper's two features of Packing: the item and region properties
+  that matter (size, width, occupancy) are visible only in the images,
+  and solving a task sometimes needs an action (Shift) whose only purpose
+  is to enable a later placement.
+- **Options.** Pick(robot, item), PlaceSmall and PlaceLarge(robot, item,
+  region), and Shift(robot, region, other). The paper names placing skills
+  per item size; Shift takes both regions of the box so that its effects
+  (one region wide, both regions no longer centered) mention only its
+  parameters.
+- **State.** Poses and the robot's gripper and held flags, plus each item's
+  and region's crop feature vector from a frozen encoder. What only the
+  images show is kept in State.simulator_state for the ground-truth
+  predicates, so `allow_state_allclose_comparison_despite_simulator_state`
+  is set.
+- **Encoder.** DINOv3 (the paper's) when its weights are installed, else
+  ResNet-18 with ImageNet weights (`--perception_encoder auto`); either can
+  be forced. A "fake" encoder (mean colors of a 4 x 4 grid) exists only for
+  tests. No encoder is ever used with random weights.
+- **Given predicates** are the goal predicate Packed and the static facts
+  IsSmall, IsLarge and SameBox; HandEmpty, Holding, OnTable, In, Wide and
+  Centered are invented, and Free (no item in the region) is derived.
+- **Task sizes.** Train: two boxes, one large and two small items. Test:
+  three boxes, two large and two small items. Larger test tasks made
+  ground-truth planning time out within the 10 s budget without changing
+  what is being tested (more boxes and more large items than in training).
+- **50 demonstrations**, as in the paper.
+
+## Planning with derived predicates
+
+- **Delete relaxation.** Derived atoms are never operator effects, so the
+  delete relaxation cannot tell when they become true. While an atoms
+  closure is installed, reachability checks and the delete-relaxation
+  heuristics (lmcut, hff, ...) assume every derived atom is reachable.
+  This is optimistic, so it never rules out a plan, and it lets A* use the
+  usual lmcut heuristic in every domain instead of goal_count.
+- **Fast Downward** cannot call the closure, so planning with fdopt/fdsat
+  while a closure is installed is an error rather than a silent fallback.
+
+## Learning
+
+- **Loss feedback scale.** The LLM sees each earlier proposal with a score
+  in [0, 100] that is linear in log(validation loss): 100 at the
+  acceptance threshold (`loss_thresh`), 0 at a loss of 1. Losses span
+  orders of magnitude, and a fixed mapping keeps a proposal's score
+  unchanged as new proposals arrive. With `unipred_loss_feedback: false`
+  the LLM sees only "accepted" or "rejected".
+- **Classifier seeds.** Each classifier is seeded from (seed, predicate,
+  iteration, proposal index), so the same seed learns the same predicates
+  whatever order the parallel training processes finish in.
+- **JS loss.** The fork's divergence on unchanged atoms is kept as it is
+  (not the full Bernoulli Jensen-Shannon divergence), because the
+  acceptance threshold 0.005 is calibrated to it.
+- **IVNTR configs** share the predicate types of the UniPred configs
+  (configs/<domain>/ivntr_predicates.yaml includes predicates.yaml), so
+  the two methods search the same predicate space and differ only in how
+  candidates are proposed.
+
+## Baselines
+
+- **GNN and transformer policies** use the ground-truth NSRTs' samplers to
+  turn a predicted option and objects into continuous parameters, as the
+  predicators baselines do.
+- **Grammar search** uses the cluster-and-intersect operator learner and a
+  bounded budget (at most 50 predicates, 20 demonstrations for scoring and
+  a 0.1 s planning timeout while scoring), so a run ends in minutes rather
+  than days.
