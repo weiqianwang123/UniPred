@@ -140,16 +140,19 @@ def load_predicate_config(
 
 
 def _train_val_model_process(settings: Dict[str, Any], queue: Queue,
-                             args: Tuple) -> None:
+                             num_threads: int, args: Tuple) -> None:
     """Entry point of a training process for parallel invention.
 
     The processes are started with the "spawn" method, because CUDA
     cannot be used in a forked process once the parent has used it. A
     spawned process starts from scratch, so the global settings and the
-    logging are restored first. Each process trains one model with
+    logging are restored first. The processes share the CPU cores: each
+    uses num_threads torch threads (by default, torch would use every
+    core in every process). Each process trains one model with
     train_val_model_single() and puts its (model path, val loss) on the
     queue.
     """
+    torch.set_num_threads(num_threads)
     CFG.__dict__.update(settings)
     handlers: List[logging.Handler] = [logging.StreamHandler()]
     if CFG.log_file:
@@ -782,6 +785,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     if not isinstance(value, (classmethod, staticmethod))
                 }
                 processes = []
+                num_threads = max(1, (os.cpu_count() or 1) // len(sat_vectors))
                 for i in range(len(sat_vectors)):
                     args = (curr_pred, ent_idx, pred_save_path,
                             sat_vectors[i], iteration, pred_config,
@@ -790,7 +794,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                             self._edge_feature_to_index, train_datasets[i],
                             val_datasets[i], i)
                     p = context.Process(target=_train_val_model_process,
-                                        args=(settings, queue, args))
+                                        args=(settings, queue, num_threads,
+                                              args))
                     p.start()
                     processes.append(p)
                 # Results are small, so read them before joining; a failed

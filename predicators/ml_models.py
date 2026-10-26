@@ -27,8 +27,6 @@ from torch.distributions.categorical import Categorical
 from predicators import utils
 from predicators.structs import Array, MaxTrainIters, Object, State
 
-# torch.use_deterministic_algorithms(mode=True)  # type: ignore
-# torch.set_num_threads(1)  # fixes libglomp error on supercloud
 
 ################################ Base Classes #################################
 
