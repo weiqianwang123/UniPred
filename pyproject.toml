@@ -18,12 +18,18 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml",
     "numpy>=1.24,<2",
+    "scipy",
+    "dill>=0.3.8",
+    "matplotlib",
+    "pillow",
     "torch>=2.1",
+    # ResNet-18 crop encoder (Packing without DINOv3).
+    "torchvision",
 ]
 
 [project.optional-dependencies]
-# Perception for the real-robot domain (see examples/real_robot).
-real = ["opencv-python", "pillow", "transformers", "timm", "supervision"]
+# GroundingDINO, SAM2 and DINOv3 (unipred/perception; scripts/install.sh).
+perception = ["transformers>=4.56"]
 dev = ["pytest", "pylint", "mypy", "yapf", "isort"]
 
 [tool.setuptools.packages.find]
