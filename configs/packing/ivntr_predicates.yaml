@@ -1,6 +1,7 @@
 # IVNTR on Packing: the predicate types of predicates.yaml with IVNTR's
 # search budget (its tree search proposes many more effect vectors than
-# the LLM does).
+# the LLM does). As in IVNTR, every vector that passes is kept for
+# selection (no max_num_vectors).
 include: predicates.yaml
 defaults: {num_iter: 70, batch_vect_num: 4, matrix_vec_try: 100,
-           search_tree_max_level: 3}
+           search_tree_max_level: 3, max_num_vectors: null}
