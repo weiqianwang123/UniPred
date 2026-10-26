@@ -5,7 +5,7 @@ then Execution.
 """
 import abc
 import logging
-from typing import Any, Callable, List, Optional, Set, Tuple
+from typing import Any, Callable, List, Optional, Sequence, Set, Tuple
 
 from gym.spaces import Box
 
@@ -14,7 +14,7 @@ from predicators.approaches import ApproachFailure, ApproachTimeout, \
     BaseApproach
 from predicators.option_model import _OptionModelBase, create_option_model
 from predicators.planning import PlanningFailure, PlanningTimeout, \
-    run_task_plan_once, sesame_plan
+    run_task_plan_once, sesame_plan, skeleton_atoms_sequence
 from predicators.settings import CFG
 from predicators.structs import NSRT, Action, GroundAtom, Metrics, \
     ParameterizedOption, Predicate, State, Task, Type, _GroundNSRT, _Option
@@ -50,7 +50,10 @@ class BilevelPlanningApproach(BaseApproach):
         self._num_calls = 0
         self._last_plan: List[_Option] = []  # used if plan WITH sim
         self._last_nsrt_plan: List[_GroundNSRT] = []  # plan WITHOUT sim
-        self._last_atoms_seq: List[Set[GroundAtom]] = []  # plan WITHOUT sim
+        # Expected (necessary) atoms after each step of the last plan. Plans
+        # found WITH sim only record them for the expected_atoms monitor.
+        self._last_atoms_seq: List[Set[GroundAtom]] = []
+        self._num_options_started = 0  # in the last plan found WITH sim
 
     def _solve(self, task: Task, timeout: int) -> Callable[[State], Action]:
         self._num_calls += 1
@@ -78,7 +81,13 @@ class BilevelPlanningApproach(BaseApproach):
                 task, nsrts, preds, timeout, seed)
             self._last_plan = option_plan
             self._last_nsrt_plan = nsrt_plan
-            policy = utils.option_plan_to_policy(option_plan)
+            self._last_atoms_seq = []
+            if CFG.execution_monitor == "expected_atoms":
+                self._last_atoms_seq = utils.compute_necessary_atoms_seq(
+                    nsrt_plan,
+                    skeleton_atoms_sequence(task, nsrt_plan, preds),
+                    task.goal)
+            policy = self._option_plan_to_counting_policy(option_plan)
 
         self._save_metrics(metrics, nsrts, preds)
 
@@ -203,10 +212,37 @@ class BilevelPlanningApproach(BaseApproach):
         assert self.get_name() == "oracle"
         return self._last_nsrt_plan
 
-    def get_execution_monitoring_info(self) -> List[Set[GroundAtom]]:
+    def _option_plan_to_counting_policy(
+            self, option_plan: Sequence[_Option]) -> Callable[[State], Action]:
+        """Like utils.option_plan_to_policy(), but counts the started options
+        in self._num_options_started."""
+        queue = list(option_plan)
+        self._num_options_started = 0
+
+        def _option_policy(state: State) -> _Option:
+            del state  # not used
+            if not queue:
+                raise utils.OptionExecutionFailure("Option plan exhausted!")
+            self._num_options_started += 1
+            return queue.pop(0)
+
+        return utils.option_policy_to_policy(_option_policy)
+
+    def get_execution_monitoring_info(self) -> List[Any]:
+        """For plans found without sim, return the remaining expected atoms
+        sequence, one entry per step.
+
+        For plans found with sim, return [(option, atoms)] while an
+        option is running: the atoms are expected to hold once the
+        option terminates.
+        """
         if self._plan_without_sim:
             remaining_atoms_seq = list(self._last_atoms_seq)
             if remaining_atoms_seq:
                 self._last_atoms_seq.pop(0)
             return remaining_atoms_seq
-        return []
+        num_started = self._num_options_started
+        if num_started == 0 or num_started >= len(self._last_atoms_seq):
+            return []
+        return [(self._last_plan[num_started - 1],
+                 self._last_atoms_seq[num_started])]
