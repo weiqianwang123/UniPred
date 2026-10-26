@@ -71,6 +71,12 @@ class UniPredSettings:
     pix2pred_gt_predicates = False
     pix2pred_gt_label_predicates = ""
 
+    # Threads of torch in the main process. The models are small, and
+    # torch's default of one thread per core makes them train many times
+    # slower when other processes share the CPU (the fork's parallel
+    # classifier training divides the cores among its processes).
+    torch_num_threads = 1
+
     # Perception (unipred/perception): the directory that scripts/install.sh
     # downloads the weights into (default: $UNIPRED_WEIGHTS_DIR), and the
     # encoder of object crops ("dinov3", "resnet18", "fake" for tests, or

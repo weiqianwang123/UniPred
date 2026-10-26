@@ -3,9 +3,11 @@
     python -m unipred.main --config configs/satellites/unipred.yaml --seed 0
 
 Takes the same flags as predicators/main.py, plus ``--config FILE`` (see
-unipred/config.py). Flags given explicitly override the configs.
+unipred/config.py). Flags given explicitly override the configs. torch uses
+--torch_num_threads threads (see unipred/settings.py).
 """
 
+import argparse
 import os
 import sys
 
@@ -17,10 +19,19 @@ def main() -> None:
         os.environ["PYTHONHASHSEED"] = "0"
         os.execv(sys.executable,
                  [sys.executable, "-m", "unipred.main"] + sys.argv[1:])
-    import unipred  # pylint: disable=import-outside-toplevel,unused-import
-    from predicators import main as predicators_main  # pylint: disable=import-outside-toplevel
-    from unipred.config import expand_config_args  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    import torch
+
+    import unipred  # pylint: disable=unused-import
+    from predicators import main as predicators_main
+    from unipred.config import expand_config_args
+    from unipred.settings import UniPredSettings
     args = expand_config_args(sys.argv[1:])
+    threads = argparse.ArgumentParser(add_help=False)
+    threads.add_argument("--torch_num_threads",
+                         type=int,
+                         default=UniPredSettings.torch_num_threads)
+    torch.set_num_threads(threads.parse_known_args(args)[0].torch_num_threads)
     if "--log_file" in args:
         log_dir = os.path.dirname(args[args.index("--log_file") + 1])
         if log_dir:
