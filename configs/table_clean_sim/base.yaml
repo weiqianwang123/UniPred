@@ -8,7 +8,6 @@ excluded_predicates: HandEmpty,HoldingToy,HoldingWiper,ToyOnTable,BoxNear,BoxFar
 num_train_tasks: 50
 num_test_tasks: 50
 timeout: 10
-# Derived predicates need A* and a heuristic that sees derived atoms.
+# The atoms closure of the derived predicates needs A*.
 sesame_task_planner: astar
-sesame_task_planning_heuristic: goal_count
 execution_monitor: expected_atoms

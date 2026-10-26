@@ -17,7 +17,7 @@ def make_closure(rules: Sequence[DerivedRule]) -> AtomsClosure:
     holding after an operator are not carried over.
     """
     rules = list(rules)
-    heads = {rule.head for rule in rules}
+    heads = frozenset(rule.head for rule in rules)
     assert not heads & {rule.base for rule in rules}, \
         "Derived predicates must be defined from basic predicates."
 
@@ -29,4 +29,4 @@ def make_closure(rules: Sequence[DerivedRule]) -> AtomsClosure:
             derived |= rule.evaluate(basic, objects)
         return basic | derived
 
-    return _closure
+    return AtomsClosure(heads, _closure)
