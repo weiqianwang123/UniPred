@@ -45,6 +45,7 @@ from pyperplan.heuristics.heuristic_base import \
 from pyperplan.planner import HEURISTICS as _PYPERPLAN_HEURISTICS
 from scipy.stats import beta as BetaRV
 
+from predicators import hooks
 from predicators.args import create_arg_parser
 from predicators.settings import CFG, GlobalSettings
 from predicators.structs import NSRT, Action, Array, DummyOption, \
@@ -2819,13 +2820,27 @@ def create_task_planning_heuristic(
     objects: Collection[Object],
 ) -> _TaskPlanningHeuristic:
     """Create a task planning heuristic that consumes ground atoms and
-    estimates the cost-to-go."""
+    estimates the cost-to-go.
+
+    While an atoms closure is installed (see hooks.py), the heuristic sees
+    every derived atom as true, as the delete relaxation cannot tell when
+    one becomes true.
+    """
+    derived_atoms = frozenset(hooks.all_derived_atoms(objects))
+    init_atoms = init_atoms | derived_atoms
     if heuristic_name in _PYPERPLAN_HEURISTICS:
-        return _create_pyperplan_heuristic(heuristic_name, init_atoms, goal,
-                                           ground_ops, predicates, objects)
-    if heuristic_name == GoalCountHeuristic.HEURISTIC_NAME:
-        return GoalCountHeuristic(heuristic_name, init_atoms, goal, ground_ops)
-    raise ValueError(f"Unrecognized heuristic name: {heuristic_name}.")
+        heuristic = _create_pyperplan_heuristic(heuristic_name, init_atoms,
+                                                goal, ground_ops, predicates,
+                                                objects)
+    elif heuristic_name == GoalCountHeuristic.HEURISTIC_NAME:
+        heuristic = GoalCountHeuristic(heuristic_name, init_atoms, goal,
+                                       ground_ops)
+    else:
+        raise ValueError(f"Unrecognized heuristic name: {heuristic_name}.")
+    if not derived_atoms:
+        return heuristic
+    return _WithDerivedAtoms(heuristic_name, init_atoms, goal, ground_ops,
+                             heuristic, derived_atoms)
 
 
 @dataclass(frozen=True)
@@ -2838,6 +2853,16 @@ class _TaskPlanningHeuristic:
 
     def __call__(self, atoms: Collection[GroundAtom]) -> float:
         raise NotImplementedError("Override me!")
+
+
+@dataclass(frozen=True)
+class _WithDerivedAtoms(_TaskPlanningHeuristic):
+    """A heuristic evaluated with every derived atom added to the state."""
+    base: _TaskPlanningHeuristic
+    derived_atoms: FrozenSet[GroundAtom]
+
+    def __call__(self, atoms: Collection[GroundAtom]) -> float:
+        return self.base(set(atoms) | self.derived_atoms)
 
 
 class GoalCountHeuristic(_TaskPlanningHeuristic):

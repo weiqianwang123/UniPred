@@ -234,18 +234,16 @@ def filter_nsrts(
     """Helper function for _sesame_plan_with_astar(); optionally filter out
     NSRTs with empty effects and/or those that are unreachable.
 
-    While an atoms closure is installed (see hooks.py), reachability is
-    not checked, because derived atoms are invisible to the delete
-    relaxation.
+    While an atoms closure is installed (see hooks.py), every derived atom
+    counts as reachable.
     """
     nonempty_ground_nsrts = [
         nsrt for nsrt in ground_nsrts
         if allow_noops or (nsrt.add_effects | nsrt.delete_effects)
     ]
-    if hooks.closure_active():
-        return nonempty_ground_nsrts
-    all_reachable_atoms = utils.get_reachable_atoms(nonempty_ground_nsrts,
-                                                    init_atoms)
+    objects = set(task.init)
+    all_reachable_atoms = utils.get_reachable_atoms(
+        nonempty_ground_nsrts, init_atoms | hooks.all_derived_atoms(objects))
     if check_dr_reachable and not task.goal.issubset(all_reachable_atoms):
         raise PlanningFailure(f"Goal {task.goal} not dr-reachable")
     reachable_nsrts = [
@@ -266,8 +264,8 @@ def task_plan_grounding(
 
     Also return the set of reachable atoms, which is used by task
     planning to quickly determine if a goal is unreachable. While an atoms
-    closure is installed (see hooks.py), unreachable operators are kept,
-    because derived atoms are invisible to the delete relaxation.
+    closure is installed (see hooks.py), every derived atom counts as
+    reachable.
 
     See the task_plan docstring for usage instructions.
     """
@@ -277,9 +275,8 @@ def task_plan_grounding(
             if allow_noops or (ground_nsrt.add_effects
                                | ground_nsrt.delete_effects):
                 ground_nsrts.append(ground_nsrt)
-    reachable_atoms = utils.get_reachable_atoms(ground_nsrts, init_atoms)
-    if hooks.closure_active():
-        return ground_nsrts, reachable_atoms
+    reachable_atoms = utils.get_reachable_atoms(
+        ground_nsrts, init_atoms | hooks.all_derived_atoms(objects))
     reachable_nsrts = [
         nsrt for nsrt in ground_nsrts
         if nsrt.preconditions.issubset(reachable_atoms)
@@ -316,10 +313,9 @@ def task_plan(
 
     The objects are passed to the atoms closure (see hooks.py). If they
     are not given, the objects of the initial atoms and of the ground NSRTs
-    are used. While a closure is installed, the dr-reachability goal check
-    is skipped.
+    are used.
     """
-    if not hooks.closure_active() and not goal.issubset(reachable_atoms):
+    if not goal.issubset(reachable_atoms):
         raise PlanningFailure(f"Goal {goal} not dr-reachable")
     if objects is None:
         objects = {o for atom in init_atoms for o in atom.objects} | \

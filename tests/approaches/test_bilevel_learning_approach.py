@@ -5,7 +5,7 @@ import os
 import pytest
 import torch
 
-from predicators import utils
+from predicators import hooks, utils
 from predicators.approaches.bilevel_learning_approach import \
     BilevelLearningApproach, PredicateCandidate, load_predicate_config
 from predicators.envs import get_or_create_env
@@ -40,10 +40,8 @@ class _FakeScoreFunction:
         return self._scores.get(effects, 1e9)
 
 
-def _closure_for_c(atoms, objects):
-    """A stand-in closure; selection only passes it on."""
-    del objects  # unused
-    return atoms
+# A stand-in closure; selection only passes it on.
+_CLOSURE_FOR_C = hooks.AtomsClosure(frozenset(), lambda atoms, objects: atoms)
 
 
 class _ExpandingApproach(BilevelLearningApproach):
@@ -59,7 +57,7 @@ class _ExpandingApproach(BilevelLearningApproach):
 
     def _atoms_closure(self, predicates):
         if _PREDS["C"] in predicates:
-            return _closure_for_c
+            return _CLOSURE_FOR_C
         return None
 
 
@@ -113,7 +111,7 @@ def test_selection_expands_candidate_pool(tmp_path):
     last_effects, operator_predicates, closure = calls[-1]
     assert last_effects == {"P0", "A", "C"}
     assert {p.name for p in operator_predicates} == {"P0", "A"}
-    assert closure is _closure_for_c
+    assert closure is _CLOSURE_FOR_C
     assert all(call[2] is None for call in calls if "C" not in call[0])
 
 
