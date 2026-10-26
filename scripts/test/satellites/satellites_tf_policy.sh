@@ -1,6 +1,7 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs/final/satellites/sim
 
 for seed in 0 1 2 3 4
 do
@@ -19,7 +20,6 @@ do
         --gnn_batch_size 512 \
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
-        --load_approach \
         --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/satellites/tf_policy_$seed" \
         --log_file logs/final/satellites/sim/tf_policy_ood_$seed.log; then

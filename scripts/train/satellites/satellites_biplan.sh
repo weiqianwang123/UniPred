@@ -1,8 +1,9 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs/final/satellites
 
-for seed in 0
+for seed in 0 1 2 3 4
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
@@ -27,9 +28,9 @@ do
         --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
-        --log_file /home/bowenli2/ws/NeuroSym/NeuPI/logs/demo/satellites/ivntr_ood_$seed.log; then
+        --approach_dir "saved_approaches/final/satellites/ivntr_$seed" \
+        --neupi_save_path "saved_approaches/final/satellites/ivntr_$seed" \
+        --log_file logs/final/satellites/ivntr_train_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

@@ -1,8 +1,9 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs/final/blocks_pos/sim
 
-for seed in 0 1 2
+for seed in 0 1 2 3 4
 do
     # Record start time
     start_time=$(date +%s)

@@ -1,6 +1,7 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs/final/blocks_pos/sim
 
 for seed in 0 1 2 3 4
 do
@@ -20,7 +21,6 @@ do
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
         --gnn_do_normalization True \
-        --load_approach \
         --approach_dir "saved_approaches/final/blocks_pos/gnn_policy_$seed" \
         --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
         --log_file logs/final/blocks_pos/sim/gnn_policy_ood_$seed.log; then

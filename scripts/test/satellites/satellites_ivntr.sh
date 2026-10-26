@@ -1,6 +1,7 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs/satellites
 
 for seed in 0
 do

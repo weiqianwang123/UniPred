@@ -1,11 +1,19 @@
-from typing import Dict, List
-import dill as pkl
+"""Convert learned IVNTR models (.neupi_info pickles) to JSON files that
+can be loaded with --load_neupi_from_json True.
+
+Usage:
+    python scripts/biplan_pkl2json.py saved_approaches/final/satellites/ivntr_0
+"""
+import argparse
 import copy
+import glob
 import json
 import os
-import glob
-import numpy as np
+from typing import Dict, List
+
+import dill as pkl
 from tqdm import tqdm
+
 from predicators.gnn.gnn_utils import GraphTransC2DDataset
 from predicators.gnn.neupi_utils import two2one
 
@@ -239,12 +247,20 @@ def method2json(content: Dict, base_path: str):
     with open(base_path, 'w') as f:
         json.dump(method_dict, f, indent=4)
 
-for seed in [0,1,2,3,4]:
-    base_path = f'saved_approaches/final/view_plan_trivial/biplan_{seed}'
-    all_files = glob.glob(os.path.join(base_path, '*.neupi_info'))
-    for file in tqdm(all_files):
-        name = os.path.basename(file)
-        name = name.replace('.neupi_info', '')
-        with open(file, 'rb') as f:
-            content = pkl.load(f)
-        method2json(content, os.path.join(base_path, f'{name}.json'))
+def _main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("approach_dirs",
+                        nargs="+",
+                        help="directories containing *.neupi_info files")
+    args = parser.parse_args()
+    for base_path in args.approach_dirs:
+        all_files = glob.glob(os.path.join(base_path, '*.neupi_info'))
+        for file in tqdm(all_files):
+            name = os.path.basename(file).replace('.neupi_info', '')
+            with open(file, 'rb') as f:
+                content = pkl.load(f)
+            method2json(content, os.path.join(base_path, f'{name}.json'))
+
+
+if __name__ == "__main__":
+    _main()

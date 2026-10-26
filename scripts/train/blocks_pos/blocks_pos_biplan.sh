@@ -1,10 +1,11 @@
-export FD_EXEC_PATH=ext/downward
+export FD_EXEC_PATH=${FD_EXEC_PATH:-ext/downward}
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
+mkdir -p logs
 
 for seed in 0 1 2 3 4
 do
-    echo "Running Seed 0 --------------------------------------"
+    echo "Running Seed $seed --------------------------------------"
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
