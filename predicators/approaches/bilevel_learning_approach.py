@@ -1618,7 +1618,12 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 if all_pass_mask.any():
                     # find out their idxes and check if they pass the preconditions
                     logging.info(f"Found {all_pass_mask.sum()} init low-objective ae vectors!")
-                    min_idxes = torch.where(all_pass_mask)[0]
+                    # Best first (validation loss, then guidance), so that a
+                    # cap of max_num_vectors keeps the best ones.
+                    min_idxes = sorted(
+                        torch.where(all_pass_mask)[0].tolist(),
+                        key=lambda i: (float(all_iter_losses[i]),
+                                       float(all_iter_objective[i])))
                     for min_idx in min_idxes:
                         if max_num_vectors is not None and len(
                                 self.learned_ae_pred_info[curr_pred]
