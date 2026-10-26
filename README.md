@@ -42,24 +42,13 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
     cd ..
     mkdir saved_approaches saved_datasets logs
     ```
-    If you want to run the blocks point cloud environment, follow instructions here to compile pytorch3d on your machine.
-    Otherwise, simply use pip install
-    ```
-    pip install pytorch3d
-    ```
-
     *Trouble Shooting for MacBook*:
     1. Make sure you have installed `coreutils`
         ```
         brew install coreutils
         ```
 
-    2. If `pip install` didn't work for `pybullet`, try conda instead:
-        ```
-            conda install -c conda-forge pybullet
-        ```
-
-    3. Issues related to Fast Downward
+    2. Issues related to Fast Downward
         Follow the official installation guide [here](https://github.com/aibasel/downward/blob/main/BUILD.md), there might be issues across platforms.
 
 
@@ -79,17 +68,16 @@ This is used to test the installation is successful and to reproduce the Satelli
     │   ├── open_models/
     │   │   ├── satellites/
     │   │   │   ├── ivntr_0/
-    │   │   ├── view_plan_hard/
+    │   │   ├── blocks_pos/
     │   │   ├── ...
     ```
-2. Understand the mapping of the env names `->` those in the paper, Table I:
+2. Understand the mapping of the env names `->` those in the paper, Table I.
+    This fork only keeps the two simulated domains below; the other IVNTR
+    domains (Measure-Mul, Climb-Measure, Climb-Transport, Engrave) and their
+    PyBullet/Spot/point-cloud dependencies were removed.
     ```
     satellites -> Satellites
-    blocks_pos -> Blocks
-    view_plan_trivial -> Measure-Mul
-    view_plan_hard -> Climb-Measure
-    pickplace_stair -> Climb-Transport
-    blocks_pcd -> Engrave
+    blocks_pos (env blocks_onclear) -> Blocks
     ```
 3. Select a test script in `scripts/test` to plan with the invented (and selected) neural predicates.
 

@@ -2,6 +2,7 @@ __pycache__
 *.pyc
 .DS_Store
 .vscode
+.idea/
 *.egg-info
 *.pkl
 *~
@@ -11,29 +12,22 @@ __pycache__
 *.so
 build
 dist
-pylint_recursive.py
 .coverage
+sas_plan
+
+# Experiment outputs
+outputs/
+logs/
+*.log
 results
 eval_trajectories
 videos
-saved_approaches
-saved_datasets
+images
+saved_*/
 scripts/results
-pretrained_model_cache
-tests/datasets/mock_vlm_datasets/cache/
-machines.txt
-*_vision_data
-tests/_fake_trajs
-tests/_fake_results
-sas_plan
-
-# Jetbrains IDEs
-.idea/
 wandb/
 *.pt
-*.log
 *.npy
-*.txt
 *.ply
-CLAUDE.md
-ext/
+tests/_fake_trajs
+tests/_fake_results
