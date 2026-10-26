@@ -40,6 +40,8 @@ def test_auto_backend(tmp_path):
     utils.reset_config({"perception_weights_dir": str(tmp_path)})
     assert resolve_backend("auto") == "resnet18"
     (tmp_path / "dinov3").mkdir()
+    assert resolve_backend("auto") == "resnet18"  # an incomplete download
+    (tmp_path / "dinov3" / "config.json").write_text("{}")
     assert resolve_backend("auto") == "dinov3"
     assert resolve_backend("fake") == "fake"
     with pytest.raises(ValueError, match="Unknown encoder backend"):
@@ -127,3 +129,20 @@ def test_tiny_crops_and_slivers():
     detector = Detector("fake", {"robot": "robot gripper", "toy": "toy"})
     image = _scene_image([("toy", (10, 10, 20, 20)), ("toy", (40, 40, 42, 41))])
     assert len(detector.detect(image)) == 1
+
+
+def test_max_box_area_drops_large_detections():
+    """A detection larger than its type's max_box_area (a fraction of the
+    image) is dropped; other types are not limited."""
+    image = _scene_image([("toy", (10, 10, 20, 20)), ("toy", (30, 5, 60, 40)),
+                          ("robot", (0, 45, 64, 64))])
+    detector = Detector("fake", {
+        "robot": "robot gripper",
+        "toy": "toy"
+    },
+                        max_box_area={"toy": 0.1})
+    assert sorted((d.object_type, d.box[0])
+                  for d in detector.detect(image)) == [("robot", 0.0),
+                                                       ("toy", 10.0)]
+    with pytest.raises(ValueError, match="cup"):
+        Detector("fake", {"toy": "toy"}, max_box_area={"cup": 0.1})

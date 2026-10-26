@@ -15,7 +15,8 @@ Backends:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, \
+    Union
 
 import numpy as np
 import torch
@@ -55,21 +56,34 @@ def fake_colors(object_types: Iterable[str]) -> Dict[str, Tuple[int, int, int]]:
 
 
 class Detector:
-    """Detects the objects of the types in prompts (type -> text prompt)."""
+    """Detects the objects of the types in prompts (type -> a text prompt,
+    or a list of them for a type whose objects look different, e.g. toys:
+    [red cube, yellow ball]). A detection of a type in max_box_area larger
+    than that fraction of the image is dropped (e.g. a box around the robot
+    arm that GroundingDINO takes for a toy)."""
 
     def __init__(self,
                  backend: str,
-                 prompts: Mapping[str, str],
+                 prompts: Mapping[str, Union[str, Sequence[str]]],
                  box_threshold: float = 0.35,
                  text_threshold: float = 0.25,
-                 device: str = "cpu") -> None:
+                 device: str = "cpu",
+                 max_box_area: Optional[Mapping[str, float]] = None) -> None:
         if backend not in ("groundingdino_sam2", "fake"):
             raise ValueError(f"Unknown detector backend: {backend!r} (use "
                              "groundingdino_sam2 or fake).")
         self.backend = backend
-        self._prompts = dict(prompts)
+        self._prompts = {
+            t: [p] if isinstance(p, str) else list(p)
+            for t, p in prompts.items()
+        }
         self._box_threshold = box_threshold
         self._text_threshold = text_threshold
+        self._max_box_area = dict(max_box_area or {})
+        unknown = set(self._max_box_area) - set(self._prompts)
+        if unknown:
+            raise ValueError(f"max_box_area names types without prompts: "
+                             f"{sorted(unknown)}.")
         self._device = torch.device(device if torch.cuda.is_available()
                                     or device == "cpu" else "cpu")
         if backend == "groundingdino_sam2":
@@ -80,6 +94,12 @@ class Detector:
         if self.backend == "fake":
             return self._detect_fake(image)
         return self._detect_models(image)
+
+    def _small_enough(self, object_type: str, box: Box,
+                      image_area: float) -> bool:
+        limit = self._max_box_area.get(object_type)
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        return limit is None or area <= limit * image_area
 
     def _detect_fake(self, image: np.ndarray) -> List[Detection]:
         detections = []
@@ -94,7 +114,8 @@ class Detector:
                 ys, xs = np.nonzero(mask)
                 box = (float(xs.min()), float(ys.min()), float(xs.max() + 1),
                        float(ys.max() + 1))
-                detections.append(Detection(object_type, box, 1.0, mask))
+                if self._small_enough(object_type, box, mask.size):
+                    detections.append(Detection(object_type, box, 1.0, mask))
         return detections
 
     def _load_models(self) -> None:
@@ -112,8 +133,7 @@ class Detector:
 
     def _detect_models(self, image: np.ndarray) -> List[Detection]:
         pil = Image.fromarray(image.astype(np.uint8)).convert("RGB")
-        types = list(self._prompts)
-        labels = [self._prompts[t] for t in types]
+        labels = [p for prompts in self._prompts.values() for p in prompts]
         inputs = self._dino_processor(images=pil,
                                       text=[labels],
                                       return_tensors="pt").to(self._device)
@@ -130,8 +150,10 @@ class Detector:
                                     result["scores"].tolist(),
                                     result["text_labels"]):
             object_type = _type_of_label(text, self._prompts)
-            if object_type is not None:
+            if object_type is not None and self._small_enough(
+                    object_type, tuple(box), pil.size[0] * pil.size[1]):
                 found.append((object_type, tuple(box), float(score)))
+        found = _suppress_duplicates(found)
         if not found:
             return []
         masks = self._masks(pil, [box for _, box, _ in found])
@@ -152,15 +174,39 @@ class Detector:
         return [m[0].numpy().astype(bool) for m in masks]
 
 
-def _type_of_label(label: str, prompts: Dict[str, str]) -> Optional[str]:
+def box_iou(a: Box, b: Box) -> float:
+    """Intersection over union of two boxes."""
+    width = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    height = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = width * height
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (union - inter) if union > inter else 0.0
+
+
+def _suppress_duplicates(
+    found: List[Tuple[str, Box, float]],
+    max_iou: float = 0.5) -> List[Tuple[str, Box, float]]:
+    """Of detections of one type that overlap more than max_iou (e.g. one
+    toy matched by two of the type's prompts), keep the best scored."""
+    kept: List[Tuple[str, Box, float]] = []
+    for detection in sorted(found, key=lambda d: -d[2]):
+        if all(d[0] != detection[0] or box_iou(d[1], detection[1]) <= max_iou
+               for d in kept):
+            kept.append(detection)
+    return kept
+
+
+def _type_of_label(label: str,
+                   prompts: Dict[str, List[str]]) -> Optional[str]:
     """The object type whose prompt GroundingDINO matched: GroundingDINO
     returns the words of the prompt that it matched."""
     label = label.strip().lower()
-    exact = [t for t, p in prompts.items() if p.lower() == label]
+    exact = [t for t, ps in prompts.items() if label in map(str.lower, ps)]
     if exact:
         return exact[0]
-    partial = [
-        t for t, p in prompts.items() if label and (label in p.lower()
-                                                     or p.lower() in label)
-    ]
-    return partial[0] if len(partial) == 1 else None
+    partial = {
+        t
+        for t, ps in prompts.items() for p in map(str.lower, ps)
+        if label and (label in p or p in label)
+    }
+    return partial.pop() if len(partial) == 1 else None

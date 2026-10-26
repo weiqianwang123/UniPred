@@ -18,7 +18,10 @@ mask_crops: false
 # The robot's camera ids; implementations of RobotInterface.capture() use
 # the first one (examples/real_robot/closed_loop_example.py).
 cameras: [0]
-# The GroundingDINO text prompt of each object type.
+# The GroundingDINO text prompt of each object type (or a list of prompts
+# for a type whose objects look different).
+# Optionally, max_box_area (type -> a fraction of the image) drops
+# detections of a type larger than that (see configs/sim_robot.yaml).
 prompts:
   robot: robot gripper
   toy: toy

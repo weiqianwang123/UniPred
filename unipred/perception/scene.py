@@ -65,7 +65,8 @@ class ScenePerceiver:
                             config["prompts"],
                             box_threshold=config["box_threshold"],
                             text_threshold=config["text_threshold"],
-                            device=config["device"])
+                            device=config["device"],
+                            max_box_area=config["max_box_area"])
         encoder = CropEncoder(encoder_backend or config["encoder"],
                               device=config["device"])
         return cls(detector, encoder, config["crop_padding"],
@@ -155,6 +156,7 @@ _ROBOT_CONFIG_DEFAULTS = {
     "crop_padding": 0.15,
     "mask_crops": False,
     "cameras": [0],
+    "max_box_area": {},
 }
 
 

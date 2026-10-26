@@ -26,8 +26,9 @@ def weights_path(model: str) -> Path:
 
 
 def is_installed(model: str) -> bool:
-    """Whether the model's weights are installed."""
-    return bool(CFG.perception_weights_dir) and weights_path(model).is_dir()
+    """Whether the model's weights are installed (its config is there)."""
+    return bool(CFG.perception_weights_dir) and (weights_path(model) /
+                                                 "config.json").is_file()
 
 
 def require(model: str) -> Path:
