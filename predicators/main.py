@@ -130,7 +130,9 @@ def main() -> None:
         f"offline_learning_{k}": v
         for k, v in cogman.metrics.items()
     }
-    results = _run_testing(env, cogman)
+    results = env.evaluate_offline(approach)
+    if results is None:
+        results = _run_testing(env, cogman)
     results["learning_time"] = learning_time
     results.update(offline_learning_metrics)
     _save_test_results(results)

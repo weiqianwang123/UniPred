@@ -204,12 +204,9 @@ class BilevelPlanningApproach(BaseApproach):
         return self._last_plan
 
     def get_last_nsrt_plan(self) -> List[_GroundNSRT]:
-        """Similar to get_last_plan() in that only oracle should use this.
-
-        And this will only be used when bilevel_plan_without_sim is
-        True.
-        """
-        assert self.get_name() == "oracle"
+        """The skeleton found by the last call of solve(), e.g., to check it
+        against ground-truth operators in environments evaluated offline
+        (see BaseEnv.evaluate_offline)."""
         return self._last_nsrt_plan
 
     def _option_plan_to_counting_policy(
