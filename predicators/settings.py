@@ -304,11 +304,16 @@ class GlobalSettings:
     neupi_entropy_entry_min = 0.0
     neupi_entropy_entry_max = 1.0
     neupi_gt_ae_matrix = False
-    neupi_aaai_metric = 'num_nodes_expanded'
     neupi_w_negation = True
     neupi_w_quantifiers = True
-    neupi_aaai_expected_nodes_upper_bound = 1e5
-    domain_aaai_thresh = 1e6
+    # Predicate selection scores a predicate set by the planning effort on
+    # the demonstrations (num_nodes_expanded or num_nodes_created; lower is
+    # better), counting a demonstration that cannot be solved as
+    # neupi_selection_nodes_upper_bound. Hill-climbing stops once the score
+    # is below neupi_selection_thresh.
+    neupi_selection_metric = 'num_nodes_expanded'
+    neupi_selection_nodes_upper_bound = 1e5
+    neupi_selection_thresh = 1e6
     neupi_equ_dataset = 0.05
     neupi_learning_dataset = 1.0 # for predicate training and NSRT learning
     neupi_pred_search_dataset = 1.0

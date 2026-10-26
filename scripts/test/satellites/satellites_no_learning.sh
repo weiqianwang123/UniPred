@@ -7,10 +7,9 @@ for seed in 0 1 2 3 4
 do
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach random_nsrt \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --in_domain_test True \
         --load_data \
@@ -40,10 +39,9 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach random_nsrt \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \
@@ -70,11 +68,10 @@ do
 
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach random_options \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
         --in_domain_test True \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \
@@ -102,10 +99,9 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach random_options \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \

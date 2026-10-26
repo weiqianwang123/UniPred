@@ -206,7 +206,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
         if len(pnads) == 0:
             logging.info("Warning: No operators learned! Skipping evaluation.")
             # larger than any possible score
-            return CFG.neupi_aaai_expected_nodes_upper_bound * \
+            return CFG.neupi_selection_nodes_upper_bound * \
                 len(self._train_tasks) * 2
         for pnad in pnads:
             logging.debug(
@@ -263,7 +263,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             except Exception:  # pylint: disable=broad-except
                 # The heuristic cannot be built for these operators, so
                 # count this demonstration as unsolvable.
-                score += CFG.neupi_aaai_expected_nodes_upper_bound
+                score += CFG.neupi_selection_nodes_upper_bound
                 continue
             # The expected time needed before a low-level plan is found. We
             # approximate this using node creations and by adding a penalty
@@ -320,7 +320,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             # After exhausting the skeleton budget or timeout, we use this
             # probability to estimate a "worst-case" planning time, making the
             # soft assumption that some skeleton will eventually work.
-            ub = CFG.neupi_aaai_expected_nodes_upper_bound
+            ub = CFG.neupi_selection_nodes_upper_bound
             expected_planning_time += refinable_skeleton_not_found_prob * ub
             # The score is simply the total expected planning time.
             score += expected_planning_time

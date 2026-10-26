@@ -10,22 +10,15 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach ivntr \
-        --seed $seed --offline_data_method "demo" \
-        --disable_harmlessness_check True \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --neupi_pred_config "predicators/config/satellites/pred.yaml" \
-        --neupi_gt_ae_matrix False \
         --sesame_task_planner "astar" \
-        --exclude_domain_feat "none" \
         --neupi_do_normalization False \
         --num_train_tasks 500 \
         --load_data \
-        --domain_aaai_thresh 100000 \
-        --neupi_entropy_w 0.5 \
-        --neupi_loss_w 0.5 \
+        --neupi_selection_thresh 100000 \
         --neupi_equ_dataset 1.0 \
-        --neupi_pred_search_dataset 1.0 \
-        --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --timeout 5 \
         --approach_dir "saved_approaches/final/satellites/ivntr_$seed" \

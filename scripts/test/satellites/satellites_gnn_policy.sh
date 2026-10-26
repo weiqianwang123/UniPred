@@ -10,7 +10,7 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach gnn_nsrt_policy \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
         --load_data \
@@ -44,7 +44,7 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env satellites --approach gnn_nsrt_policy \
-        --seed $seed --offline_data_method "demo" \
+        --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
         --load_data \

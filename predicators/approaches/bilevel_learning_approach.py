@@ -66,6 +66,54 @@ def _load_tensor(path: str) -> Any:
 #                          Programmatic classifiers                            #
 ################################################################################
 
+_PREDICATE_TYPE_DEFAULTS = {
+    "decision_b": 0.5,
+    "skip_train": False,
+    "search_tree_max_level": 1,
+}
+
+
+def load_predicate_config(
+    path: str, options: Sequence[ParameterizedOption]
+) -> Tuple[List[Dict], List[int], List[str]]:
+    """Load the predicate config of IVNTR (--neupi_pred_config).
+
+    The YAML file has these keys::
+
+        final_options: [UseCamera]  # options that only achieve goals
+        static_predicates: [HasCamera]  # given predicates, never effects
+        defaults: {epochs: 100, ...}  # merged into every predicate type
+        predicate_types:  # the neural predicate types to invent
+          - name: neural_b_p3
+            types: [satellite, object]
+            ent_idx: [0, 0]  # which option argument of each type
+            search_options: [MoveTo, MoveAway]  # optional, default all
+            ...  # training and search settings
+
+    Other top-level keys are left to extensions. Returns the predicate
+    types (with the defaults merged in), a 0/1 flag per option marking the
+    final options, and the names of the static predicates.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    option_names = [option.name for option in options]
+    final_options = config.get("final_options", [])
+    unknown = set(final_options) - set(option_names)
+    for entry in config["predicate_types"]:
+        unknown |= set(entry.get("search_options", [])) - set(option_names)
+    if unknown:
+        raise ValueError(f"{path}: unknown options {sorted(unknown)}; the "
+                         f"options are {option_names}.")
+    predicate_types = [{
+        **_PREDICATE_TYPE_DEFAULTS,
+        **config.get("defaults", {}),
+        **entry
+    } for entry in config["predicate_types"]]
+    is_final = [int(name in final_options) for name in option_names]
+    return predicate_types, is_final, list(
+        config.get("static_predicates", []))
+
+
 def _train_val_model_process(settings: Dict[str, Any], queue: Queue,
                              args: Tuple) -> None:
     """Entry point of a training process for parallel invention.
@@ -209,17 +257,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
         self.gt_ae_matrix: bool = CFG.neupi_gt_ae_matrix
         self.learned_ae_pred_info: Dict = {}
 
-        # load pred settings
-        assert os.path.exists(CFG.neupi_pred_config), "Pred Settings Not Found"
-        config_dict = yaml.safe_load(open(CFG.neupi_pred_config, 'r'))
-        self.pred_config = config_dict['config']
-        self.final_op = config_dict['final_op']
-        self.neupi_non_effect_predicates = config_dict['neupi_non_effect_predicates']
-        if len(self.final_op) == 0:
-            logging.info("Final Op Not Provided, Use All Predicates for All Opertions")
-            self.final_op = [0 for _ in range(len(self._sorted_options))]
-        else:
-            assert len(self.final_op) == len(self._sorted_options), "Final Op Not Match"
+        self.pred_config, self.final_op, self._static_predicate_names = \
+            load_predicate_config(CFG.neupi_pred_config,
+                                  self._sorted_options)
 
         for pred_info in self.pred_config:
             pred_name = pred_info['name']
@@ -246,14 +286,11 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     ae_vector = torch.tensor(ae)
                     ae_vector_two = one2two(ae_vector, CFG.neupi_ae_matrix_channel)
                     gt_ae_vectors.append(ae_vector_two)
-            search_region = [1] * len(self._sorted_options) 
-            if 'search_region' in pred_info:
-                search_region = pred_info['search_region']
-            else:
-                logging.info("Search Region Not Provided, Search All possible effects")
-            if 'decision_b' not in pred_info:
-                logging.info("Quantified Decision Boundary Not Provided, Use 0.5")
-                pred_info['decision_b'] = 0.5
+            search_region = [
+                int(option.name in pred_info['search_options'])
+                for option in self._sorted_options
+            ] if 'search_options' in pred_info else [1] * len(
+                self._sorted_options)
             self.learned_ae_pred_info[dummy_pred] = {
                 'example_data': None,
                 'quantifiers': [], # if this is from a higher-arity predicate
@@ -271,8 +308,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
         # provided predicates
         # this is used to generate the ae matrix
         for pred in sorted(self._initial_predicates):
-            if pred.name in self.neupi_non_effect_predicates:
-                # We don't want to consider predicates that are not effect predicates
+            if pred.name in self._static_predicate_names:
+                # Static predicates are never effects.
                 continue
             # Note that we are using belief learner, so "grounding" is not learned
             pred_types = pred.types
@@ -2108,7 +2145,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         predicates and the best one is added if it improves the score. After
         each added predicate, _expand_candidate_pool() can add candidates.
         If no candidate improves the score while it is still above
-        CFG.domain_aaai_thresh, a random candidate is added ("imagined").
+        CFG.neupi_selection_thresh, a random candidate is added ("imagined").
         If that does not lead to an improvement on the next level, it is
         taken back (with the candidates added after it) and another one is
         imagined, until no candidates are left.
@@ -2196,13 +2233,13 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 pool_before_imagined = None
                 self._expand_candidate_pool([c.predicate for c in selected],
                                             pool)
-                if best_score < CFG.domain_aaai_thresh:
+                if best_score < CFG.neupi_selection_thresh:
                     logging.info(f"Search Done at level {level} with score "
                                  f"{best_score}")
                     break
                 level += 1
                 continue
-            if best_score <= CFG.domain_aaai_thresh:
+            if best_score <= CFG.neupi_selection_thresh:
                 break
             logging.info(f"Hill-Climbing Got Stuck at level {level} and not "
                          "good enough...Force to Next Level")
@@ -2251,7 +2288,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 if pred in self._initial_predicates:
                     continue
                 new_predicate.add(pred)
-            # Step 3: Compute the AAAI Objective for each "possible" matrix/predicate set
+            # Step 3: Select predicates by the planning-effort score of each candidate set
             # 1. construct atom dataset for all the predicates
             traj4search = [init_atom_traj[i] for i in range(int(num_traj * CFG.neupi_pred_search_dataset))]
             s = time.time()
@@ -2264,7 +2301,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
             # Note that need to use full _train_tasks
             score_function = _OperatorBeliefScoreFunction(
                     atom_dataset_part, self._train_tasks, self.ae_row_names,
-                    CFG.neupi_aaai_metric)
+                    CFG.neupi_selection_metric)
             self._learned_predicates, self.ae_matrix_tgt, self.ae_col_names_all, self.ae_col_ent_idx = \
                     self._select_predicates_by_score_search(
                     huge_matrix, colind2info, score_function)

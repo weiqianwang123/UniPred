@@ -10,12 +10,9 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env blocks_onclear --approach ivntr \
-        --seed $seed --offline_data_method "demo" \
-        --disable_harmlessness_check True \
+        --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
         --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
-        --neupi_gt_ae_matrix False \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --sesame_task_planner "astar" \
         --num_train_tasks 500 \
@@ -26,10 +23,8 @@ do
         --neupi_entropy_w 0.0 \
         --neupi_loss_w 1.0 \
         --neupi_equ_dataset 0.05 \
-        --neupi_pred_search_dataset 1.0 \
-        --bilevel_plan_without_sim False \
         --execution_monitor expected_atoms \
-        --domain_aaai_thresh 6000000 \
+        --neupi_selection_thresh 6000000 \
         --approach_dir "saved_approaches/open_models/blocks_pos/ivntr_$seed" \
         --neupi_load_pretrained "saved_approaches/open_models/blocks_pos/ivntr_$seed" \
         --log_file logs/blocks_pos/ivntr_ood_$seed.log; then
@@ -56,22 +51,15 @@ do
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
     if python3 predicators/main.py --env blocks_onclear --approach ivntr \
-        --seed $seed --offline_data_method "demo" \
-        --disable_harmlessness_check True \
+        --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
         --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
-        --neupi_gt_ae_matrix False \
         --sesame_task_planner "astar" \
         --num_train_tasks 500 \
         --load_data \
-        --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --neupi_do_normalization True \
-        --neupi_entropy_w 0.5 \
-        --neupi_loss_w 0.5 \
         --neupi_equ_dataset 1.0 \
-        --neupi_pred_search_dataset 1.0 \
-        --bilevel_plan_without_sim False \
         --execution_monitor expected_atoms \
         --load_approach \
         --load_neupi_from_json True \

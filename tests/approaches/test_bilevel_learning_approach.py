@@ -7,7 +7,7 @@ import torch
 
 from predicators import utils
 from predicators.approaches.bilevel_learning_approach import \
-    BilevelLearningApproach, PredicateCandidate
+    BilevelLearningApproach, PredicateCandidate, load_predicate_config
 from predicators.envs import get_or_create_env
 from predicators.ground_truth_models import get_gt_options
 from predicators.structs import Predicate
@@ -71,12 +71,11 @@ def _candidate(name):
 
 def _make_approach(tmp_path, approach_cls):
     config = tmp_path / "pred.yaml"
-    config.write_text("final_op: []\nneupi_non_effect_predicates: []\n"
-                      "config: []\n")
+    config.write_text("predicate_types: []\n")
     utils.reset_config({
         "env": "blocks",
         "neupi_pred_config": str(config),
-        "domain_aaai_thresh": 10,
+        "neupi_selection_thresh": 10,
     })
     env = get_or_create_env("blocks")
     return approach_cls(set(), get_gt_options("blocks"), env.types,
@@ -153,3 +152,28 @@ def test_model_artifact_path():
         model_dir, "iter_0_1_ae_vector_good.pth")
     with pytest.raises(AssertionError):
         artifact_path(os.path.join(model_dir, "weights.pth"), "guidance")
+
+
+def test_load_predicate_config(tmp_path):
+    """Defaults are merged into every predicate type, final options are
+    named, and unknown option names are errors."""
+    utils.reset_config({"env": "blocks"})
+    options = sorted(get_gt_options("blocks"), key=lambda o: o.name)
+    names = [o.name for o in options]
+    path = tmp_path / "pred.yaml"
+    path.write_text(f"final_options: [{names[1]}]\n"
+                    "static_predicates: [Given]\n"
+                    "defaults: {epochs: 3, gumbel_temp: 0.5}\n"
+                    "predicate_types:\n"
+                    "  - {name: p, types: [block], epochs: 7}\n"
+                    f"  - {{name: q, types: [block], "
+                    f"search_options: [{names[0]}]}}\n")
+    types, is_final, static = load_predicate_config(str(path), options)
+    assert [t["epochs"] for t in types] == [7, 3]
+    assert all(t["gumbel_temp"] == 0.5 and t["decision_b"] == 0.5
+               for t in types)
+    assert is_final == [int(i == 1) for i in range(len(options))]
+    assert static == ["Given"]
+    path.write_text("final_options: [Fly]\npredicate_types: []\n")
+    with pytest.raises(ValueError, match="unknown options"):
+        load_predicate_config(str(path), options)

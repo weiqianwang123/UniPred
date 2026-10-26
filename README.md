@@ -70,6 +70,14 @@ Upstream base: centaur-ai/IVNTR at commit f12b1ae.
   for plans found with simulation: the atoms expected after each option are
   checked when the option terminates, and the agent replans if they do not
   hold.
+- **Clearer configuration.** The predicate config names options and
+  predicates instead of using 0/1 lists in sorted-option order, and shares
+  training settings through a `defaults` block. The selection settings named
+  after a venue are renamed (`domain_aaai_thresh` -> `neupi_selection_thresh`,
+  `neupi_aaai_metric` -> `neupi_selection_metric`,
+  `neupi_aaai_expected_nodes_upper_bound` ->
+  `neupi_selection_nodes_upper_bound`), and scripts no longer pass flags
+  that equal their defaults.
 - **Packaging.** `pyproject.toml` with pinned core dependencies (Python 3.10,
   numpy < 2, gym 0.23.1, torch >= 2.1) and Fast Downward as a git submodule.
 
@@ -137,8 +145,24 @@ python predicators/main.py --env satellites --approach grammar_search_invention 
 
 The neural predicate types IVNTR searches over, their network and training
 hyperparameters and the search thresholds are set in
-`predicators/config/<domain>/pred.yaml` (`--neupi_pred_config`). For a quick
-run, copy that file and reduce `epochs`, `num_iter` and `batch_vect_num`.
+`predicators/config/<domain>/pred.yaml` (`--neupi_pred_config`):
+
+```yaml
+final_options: [UseCamera, UseGeiger, UseInfraRed]  # options that only achieve goals
+static_predicates: [HasCamera, ...]  # given predicates that never change
+defaults: {batch_size: 512, loss_thresh: 0.005, ...}  # merged into every type
+predicate_types:
+  - name: neural_b_p3
+    types: [satellite, object]
+    ent_idx: [0, 0]  # which option argument of each type
+    epochs: 200
+    num_iter: 70  # search iterations, batch_vect_num vectors each
+    max_num_vectors: 1  # optional: stop once this many vectors are kept
+```
+
+`load_predicate_config()` in `predicators/approaches/bilevel_learning_approach.py`
+documents every key. For a quick run, copy the file and reduce `epochs`,
+`num_iter` and `batch_vect_num` in `defaults`.
 
 ## Extension hooks
 
