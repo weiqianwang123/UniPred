@@ -1,3 +1,3 @@
-# Table II "UniPred-Qwen".
+# Qwen through DashScope's OpenAI-compatible API (DASHSCOPE_API_KEY).
 llm_provider: qwen
 llm_model: qwen-plus

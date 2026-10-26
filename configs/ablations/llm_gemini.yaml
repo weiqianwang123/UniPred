@@ -1,0 +1,3 @@
+# Table II "UniPred-Gemini": UniPred with Gemini instead of the default
+# LLM.
+include: ../llm/gemini.yaml

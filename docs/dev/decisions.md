@@ -117,3 +117,16 @@ design. Each entry says what was chosen and why.
   back for repair, at most three times; failing to reach a goal is not.
   Prompts show at most twelve features per object, so crop features of
   image domains do not flood them; the policy receives all features.
+
+## Paper tables
+
+- **Domains of the averaged tables.** Tools is not part of this release.
+  Table V (paper: Satellites, Blocks, Tools, Packing) averages Satellites,
+  Blocks and Packing; Table VII (paper: "the three simulated domains",
+  whose IVNTR numbers are those of Satellites, Blocks and Tools) averages
+  Satellites and Blocks.
+- **Averages** are taken per seed over the domains, then reported as mean
+  ± sample standard deviation over the seeds.
+- **Run names.** scripts/run.sh names an output directory after the config
+  and its overlays (unipred+no_semantic), so ablations never overwrite the
+  full method's results; the table scripts skip seeds that have results.

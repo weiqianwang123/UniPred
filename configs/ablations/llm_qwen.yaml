@@ -1,0 +1,2 @@
+# Table II "UniPred-Qwen": UniPred with Qwen instead of the default LLM.
+include: ../llm/qwen.yaml
