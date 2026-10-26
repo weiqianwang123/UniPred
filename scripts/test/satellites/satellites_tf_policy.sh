@@ -12,7 +12,6 @@ do
     if python3 predicators/main.py --env satellites --approach transformer_nsrt_policy \
         --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --load_data \
         --gnn_layer_size 128 \
@@ -48,7 +47,6 @@ do
         --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --domain_sampler_data_filter "none" \
         --load_data \
         --gnn_layer_size 128 \
         --gnn_batch_size 512 \

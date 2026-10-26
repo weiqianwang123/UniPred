@@ -10,12 +10,13 @@ from typing import List, Optional, Set, Callable
 import logging
 from gym.spaces import Box
 
-from predicators import utils
+from predicators import hooks, utils
 from predicators.approaches.bilevel_planning_approach import \
     BilevelPlanningApproach
 from predicators.approaches import ApproachFailure
 from predicators.planning import _sesame_plan_for_mdp
-from predicators.ground_truth_models import get_gt_nsrts
+from predicators.ground_truth_models import get_gt_atoms_closure, \
+    get_gt_nsrts
 from predicators.option_model import _OptionModelBase
 from predicators.settings import CFG
 from predicators.structs import NSRT, ParameterizedOption, Predicate, Task, \
@@ -48,6 +49,11 @@ class OracleApproach(BilevelPlanningApproach):
         if nsrts is None:
             nsrts = get_gt_nsrts(CFG.env, self._initial_predicates,
                                  self._initial_options)
+        # Derived predicates of the ground-truth NSRTs, if any.
+        self._gt_atoms_closure = get_gt_atoms_closure(
+            CFG.env, self._initial_predicates)
+        if self._gt_atoms_closure is not None:
+            hooks.check_closure_settings()
         logging.info(f"Using {len(nsrts)} NSRTs: {nsrts}")
         self._sorted_options = sorted(self._initial_options,
                                       key=lambda o: o.name)
@@ -156,7 +162,10 @@ class OracleApproach(BilevelPlanningApproach):
     
     def _solve(self, task: Task, timeout: int) -> Callable[[State], Action]:
         if 'reward' not in CFG.offline_data_method:
-            return super()._solve(task, timeout)
+            if self._gt_atoms_closure is None:
+                return super()._solve(task, timeout)
+            with hooks.temporary_atoms_closure(self._gt_atoms_closure):
+                return super()._solve(task, timeout)
         else:
             # collect demonstration data with its original graph and reward
             logging.info("Collecting demonstration data with original graph and reward")

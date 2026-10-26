@@ -177,3 +177,24 @@ def test_load_predicate_config(tmp_path):
     path.write_text("final_options: [Fly]\npredicate_types: []\n")
     with pytest.raises(ValueError, match="unknown options"):
         load_predicate_config(str(path), options)
+
+
+def test_predicate_config_include(tmp_path):
+    """An included config is read first; defaults and same-named types are
+    updated, other types are kept."""
+    utils.reset_config({"env": "blocks"})
+    options = sorted(get_gt_options("blocks"), key=lambda o: o.name)
+    (tmp_path / "base.yaml").write_text(
+        "description: base\n"
+        "defaults: {epochs: 3, num_iter: 5}\n"
+        "predicate_types:\n"
+        "  - {name: p, types: [block], num_iter: 1}\n"
+        "  - {name: q, types: [block]}\n")
+    (tmp_path / "pred.yaml").write_text(
+        "include: base.yaml\n"
+        "defaults: {num_iter: 70}\n"
+        "predicate_types:\n"
+        "  - {name: p, epochs: 9}\n")
+    types, _, _ = load_predicate_config(str(tmp_path / "pred.yaml"), options)
+    assert [(t["name"], t["epochs"], t["num_iter"]) for t in types] == \
+        [("p", 9, 1), ("q", 3, 70)]

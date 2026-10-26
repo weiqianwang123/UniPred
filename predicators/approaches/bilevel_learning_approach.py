@@ -73,6 +73,32 @@ _PREDICATE_TYPE_DEFAULTS = {
 }
 
 
+def read_predicate_config(path: str) -> Dict:
+    """Read a predicate config file, resolving its include.
+
+    With ``include: other.yaml`` (relative to the file), the other file is
+    read first; then the defaults of this file update its defaults, a
+    predicate type of this file updates the type with the same name (or is
+    added), and the other keys of this file replace its keys.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    if "include" not in config:
+        return config
+    base = read_predicate_config(
+        os.path.join(os.path.dirname(path), config.pop("include")))
+    merged = {**base, **config}
+    merged["defaults"] = {
+        **base.get("defaults", {}),
+        **config.get("defaults", {})
+    }
+    types = {t["name"]: dict(t) for t in base.get("predicate_types", [])}
+    for entry in config.get("predicate_types", []):
+        types[entry["name"]] = {**types.get(entry["name"], {}), **entry}
+    merged["predicate_types"] = list(types.values())
+    return merged
+
+
 def load_predicate_config(
     path: str, options: Sequence[ParameterizedOption]
 ) -> Tuple[List[Dict], List[int], List[str]]:
@@ -80,6 +106,7 @@ def load_predicate_config(
 
     The YAML file has these keys::
 
+        include: other.yaml  # optional, see read_predicate_config()
         final_options: [UseCamera]  # options that only achieve goals
         static_predicates: [HasCamera]  # given predicates, never effects
         defaults: {epochs: 100, ...}  # merged into every predicate type
@@ -94,8 +121,7 @@ def load_predicate_config(
     types (with the defaults merged in), a 0/1 flag per option marking the
     final options, and the names of the static predicates.
     """
-    with open(path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = read_predicate_config(path)
     option_names = [option.name for option in options]
     final_options = config.get("final_options", [])
     unknown = set(final_options) - set(option_names)
@@ -2540,10 +2566,15 @@ class BilevelLearningApproach(NSRTLearningApproach):
     def _solve(self, task: Task, timeout: int) -> Callable[[State], Action]:
         # Unless the learned samplers are used, plan with the ground-truth
         # samplers of the matching dummy NSRTs.
-        dummy_nsrts = get_dummy_nsrts(CFG.env, self._initial_predicates,
-                                      self._initial_options)
+        nsrts = self._get_current_nsrts()
+        if not CFG.neupi_gt_sampler and all(n._sampler is not None
+                                            for n in nsrts):
+            dummy_nsrts = set()
+        else:
+            dummy_nsrts = get_dummy_nsrts(CFG.env, self._initial_predicates,
+                                          self._initial_options)
         new_nsrts = []
-        for nsrt in self._get_current_nsrts():
+        for nsrt in nsrts:
             if (not CFG.neupi_gt_sampler) and (nsrt._sampler is not None):
                 logging.info(f"Using fully learned NSRT for {nsrt.name}")
                 new_nsrts.append(nsrt)

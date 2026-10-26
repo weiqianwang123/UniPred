@@ -10,7 +10,6 @@ do
         --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --domain_sampler_data_filter "none" \
         --in_domain_test True \
         --load_data \
         --timeout 5 \
@@ -42,7 +41,6 @@ do
         --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \
         --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
@@ -72,7 +70,6 @@ do
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
         --in_domain_test True \
-        --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \
         --log_file logs/final/satellites/sim/random_options_in_domain_$seed.log; then
@@ -102,7 +99,6 @@ do
         --seed $seed \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
-        --domain_sampler_data_filter "none" \
         --load_data \
         --timeout 5 \
         --log_file logs/final/satellites/sim/random_options_ood_$seed.log; then

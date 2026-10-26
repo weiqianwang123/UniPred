@@ -2771,13 +2771,20 @@ def compute_necessary_atoms_seq(
         goal: Set[GroundAtom]) -> List[Set[GroundAtom]]:
     """Given a skeleton and a corresponding atoms sequence, return a
     'necessary' atoms sequence that includes only the necessary image at each
-    step."""
+    step.
+
+    The necessary atoms at a step are kept to those in the atoms sequence:
+    with STRIPS operators this changes nothing, and derived atoms (see
+    predicators/hooks.py), which can become true without being an add
+    effect, are only necessary once they hold.
+    """
     necessary_atoms_seq = [set(goal)]
     necessary_image = set(goal)
     for t in range(len(atoms_seq) - 2, -1, -1):
         curr_nsrt = skeleton[t]
         necessary_image -= set(curr_nsrt.add_effects)
         necessary_image |= set(curr_nsrt.preconditions)
+        necessary_image &= atoms_seq[t]
         necessary_atoms_seq = [set(necessary_image)] + necessary_atoms_seq
     return necessary_atoms_seq
 

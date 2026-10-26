@@ -17,7 +17,9 @@ Derived atoms are invisible to delete-relaxation reachability analysis,
 so while a closure is installed the planner skips the dr-reachability
 filter on ground NSRTs and the dr-reachability goal check. Fast Downward
 cannot call the closure, so planning with "fdopt" or "fdsat" raises an
-error while a closure is installed.
+error while a closure is installed, and delete-relaxation heuristics would
+treat derived preconditions as unreachable; check_closure_settings() checks
+both before a long run.
 """
 
 from __future__ import annotations
@@ -25,9 +27,14 @@ from __future__ import annotations
 import contextlib
 from typing import Callable, Collection, Iterator, Optional, Set
 
+from predicators.settings import CFG
 from predicators.structs import GroundAtom, Object
 
 AtomsClosure = Callable[[Set[GroundAtom], Set[Object]], Set[GroundAtom]]
+
+# Derived atoms are never operator effects, so delete-relaxation heuristics
+# treat derived preconditions as unreachable.
+DELETE_RELAXATION_HEURISTICS = ("hadd", "hmax", "hff", "hsa", "lmcut")
 
 _ATOMS_CLOSURE: Optional[AtomsClosure] = None
 
@@ -66,3 +73,16 @@ def temporary_atoms_closure(
         yield
     finally:
         set_atoms_closure(previous)
+
+
+
+def check_closure_settings() -> None:
+    """Raise if the planner settings cannot plan with an atoms closure."""
+    if CFG.sesame_task_planner != "astar":
+        raise ValueError("Planning with derived predicates needs "
+                         "--sesame_task_planner astar.")
+    if CFG.sesame_task_planning_heuristic in DELETE_RELAXATION_HEURISTICS:
+        raise ValueError(
+            "Planning with derived predicates needs a heuristic that sees "
+            "derived atoms, such as --sesame_task_planning_heuristic "
+            "goal_count.")

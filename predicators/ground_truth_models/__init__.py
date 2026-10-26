@@ -1,6 +1,6 @@
 """Implements ground-truth NSRTs and options."""
 import abc
-from typing import Dict, List, Sequence, Set
+from typing import Dict, List, Optional, Sequence, Set
 from typing import Type as TypingType
 from typing import TypeVar, Union
 
@@ -8,6 +8,7 @@ from gym.spaces import Box
 
 from predicators import utils
 from predicators.envs import BaseEnv, get_or_create_env
+from predicators.hooks import AtomsClosure
 from predicators.settings import CFG
 from predicators.structs import NSRT, ParameterizedOption, Predicate, Type
 
@@ -46,6 +47,18 @@ class GroundTruthNSRTFactory(abc.ABC):
                   options: Dict[str, ParameterizedOption]) -> Set[NSRT]:
         """Create NSRTs for the given env name."""
         raise NotImplementedError("Override me!")
+
+    @classmethod
+    def get_atoms_closure(
+            cls, env_name: str,
+            predicates: Dict[str, Predicate]) -> Optional[AtomsClosure]:
+        """Return the atoms closure (see predicators/hooks.py) that computes
+        the derived predicates among the given ones, if the NSRTs use any.
+
+        By default, the NSRTs use no derived predicates.
+        """
+        del env_name, predicates  # unused
+        return None
 
 
 class DummyNSRTFactory(abc.ABC):
@@ -132,6 +145,16 @@ def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
     """Create ground truth NSRTs for an env."""
     return _get_filtered_nsrts(GroundTruthNSRTFactory, env_name,
                                predicates_to_keep, options_to_keep)
+
+
+def get_gt_atoms_closure(
+        env_name: str,
+        predicates_to_keep: Set[Predicate]) -> Optional[AtomsClosure]:
+    """The atoms closure of the ground-truth NSRTs of an env, or None."""
+    factory = _get_factory(GroundTruthNSRTFactory, env_name)
+    return factory.get_atoms_closure(env_name,
+                                     {p.name: p
+                                      for p in predicates_to_keep})
 
 
 def get_dummy_nsrts(env_name: str, predicates_to_keep: Set[Predicate],

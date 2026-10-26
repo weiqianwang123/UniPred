@@ -11,7 +11,6 @@ do
     if python3 predicators/main.py --env blocks_onclear --approach random_nsrt \
         --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --in_domain_test True \
         --load_data \
@@ -43,7 +42,6 @@ do
     if python3 predicators/main.py --env blocks_onclear --approach random_nsrt \
         --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --load_data \
         --timeout 5 \
@@ -74,7 +72,6 @@ do
     if python3 predicators/main.py --env blocks_onclear --approach random_options \
         --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --in_domain_test True \
         --load_data \
@@ -105,7 +102,6 @@ do
     if python3 predicators/main.py --env blocks_onclear --approach random_options \
         --seed $seed \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --load_data \
         --timeout 5 \

@@ -210,3 +210,21 @@ def test_pddl_domain_drops_derived_effects():
                                        derived_predicates={_ALL_IN_BOX})
     assert "AllInBox" not in without.split(":effect")[1]
     assert "(InBox ?b)" in without.split(":effect")[1]
+
+
+def test_necessary_atoms_with_derived_atoms():
+    """A derived precondition is only necessary once the closure makes it
+    true, not from the start of the plan."""
+    preds = {_IN_BOX, _ON_TABLE, _ALL_IN_BOX, _DONE}
+    state, _, _, goal = _toy_task()
+    task = Task(state, goal)
+    hooks.set_atoms_closure(_all_in_box_closure)
+    utils.reset_config({"env": "blocks", "sesame_task_planner": "astar"})
+    plan, _, _ = run_task_plan_once(task, _toy_nsrts(), preds, {_BLOCK},
+                                    timeout=10, seed=0,
+                                    task_planning_heuristic="goal_count")
+    necessary = utils.compute_necessary_atoms_seq(
+        plan, skeleton_atoms_sequence(task, plan, preds), goal)
+    all_in_box = GroundAtom(_ALL_IN_BOX, [])
+    assert [all_in_box in atoms for atoms in necessary] == \
+        [False, False, True, False]
