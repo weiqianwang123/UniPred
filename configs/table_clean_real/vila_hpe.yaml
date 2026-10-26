@@ -1,0 +1,7 @@
+# Table III "ViLa-HPE": a VLM plans the skills from the scene's image.
+include: base.yaml
+approach: vila
+vila_mode: hpe
+# Read for the domain description.
+neupi_pred_config: configs/table_clean_real/predicates.yaml
+vila_constraints: configs/table_clean_real/vila_constraints.txt

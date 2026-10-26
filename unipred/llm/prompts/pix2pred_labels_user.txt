@@ -1,0 +1,12 @@
+# Task and domain
+$description
+
+# Predicates
+$predicates
+
+# Scene
+Objects: $objects
+The image shows the scene.
+
+# Requested output
+List the atoms of these predicates that are true in the image.

@@ -1,0 +1,16 @@
+# Task and domain
+$description
+
+Skills (with the types of their arguments):
+$skills
+$constraints
+# Demonstrations
+$demos
+
+# Scene
+Objects: $objects
+Goal: $goal
+The last image shows the scene.
+
+# Requested output
+Write the plan for the goal.

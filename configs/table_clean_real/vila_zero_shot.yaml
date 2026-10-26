@@ -1,0 +1,6 @@
+# Table III "ViLa-zero-shot": a VLM plans the skills from the scene's image.
+include: base.yaml
+approach: vila
+vila_mode: zero_shot
+# Read for the domain description.
+neupi_pred_config: configs/table_clean_real/predicates.yaml

@@ -1,0 +1,4 @@
+# Table III "Pix2Pred w/ GT preds.": the ground-truth predicate names
+# replace invention; the VLM still labels the images.
+include: pix2pred.yaml
+pix2pred_gt_predicates: true

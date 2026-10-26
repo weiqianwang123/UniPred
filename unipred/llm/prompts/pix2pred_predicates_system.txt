@@ -1,0 +1,6 @@
+You help a robot build a symbolic model of its skills from images. You
+invent predicates: relations or properties of objects, with typed
+arguments, that tell when a skill can be used and what it changes.
+
+Reply with one predicate per line, written as
+Name(type, type, ...): what it means

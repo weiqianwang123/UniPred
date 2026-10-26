@@ -1,0 +1,17 @@
+# Task and domain
+$description
+
+Object types: $types
+
+Skills (with the types of their arguments):
+$skills
+
+Predicates that are already known:
+$known
+
+# Demonstrations
+The images show demonstrations of the skills, in order.
+
+# Requested output
+Invent the predicates that are missing to describe the preconditions and
+effects of the skills.

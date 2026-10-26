@@ -1,0 +1,9 @@
+- The robot holds at most one object; it can only pick a toy or the towel
+  with an empty hand.
+- A toy or the towel can only be placed while the robot holds it.
+- The towel can only be taken from or put into the box while the box is on
+  the near side.
+- Wiping needs the towel in hand, no toy on the table and the box on the
+  far side.
+- Pushing the box out moves it to the far side; pulling it in moves it to
+  the near side.

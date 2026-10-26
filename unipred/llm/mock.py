@@ -7,9 +7,10 @@ A JSON file given by ``--llm_mock_responses`` can provide canned replies::
 The first entry whose task matches and whose "contains" text occurs in the
 prompt is returned. Otherwise, simple rules give valid, deterministic
 answers: PDDL completion invents one predicate per allowed type list, and
-effect proposals walk through the ADD and DEL candidates, and Code as
-Policy gets a policy that always uses the first skill it can fill with
-objects.
+effect proposals walk through the ADD and DEL candidates, Code as Policy
+gets a policy that always uses the first skill it can fill with objects,
+ViLa a plan of that one skill, and Pix2Pred one predicate per object type
+with no true atoms.
 """
 
 from __future__ import annotations
@@ -36,6 +37,14 @@ def mock_response(system: str, user: str, task: str,
         return _propose_effects(user)
     if task == "code_as_policy":
         return _write_policy(user)
+    if task == "vila":
+        return _plan_skills(user)
+    if task == "pix2pred_predicates":
+        types = user.split("Object types: ", 1)[1].split("\n", 1)[0]
+        return "\n".join(f"Mock{t.strip().capitalize()}({t.strip()}): mock"
+                         for t in types.split(","))
+    if task == "pix2pred_labels":
+        return "(none)"
     raise ValueError(f"The mock LLM cannot answer task {task!r}.")
 
 
@@ -124,3 +133,19 @@ def policy(state, goal):
             return name, objects, [0.0] * num_params
     raise RuntimeError("no skill can be filled with objects")
 ```"""
+
+
+def _plan_skills(user: str) -> str:
+    objects = re.findall(r"(\w+) \((\w+)\)",
+                         user.split("\nObjects: ")[-1].split("\n", 1)[0])
+    for name, types in re.findall(r"^- (\w+)\(([^)]*)\)$", user,
+                                  re.MULTILINE):
+        args: List[str] = []
+        for object_type in [t.strip() for t in types.split(",")]:
+            fitting = [o for o, t in objects if t == object_type and o not in args]
+            if not fitting:
+                break
+            args.append(fitting[0])
+        else:
+            return f"{name}({', '.join(args)})"
+    raise ValueError("No skill in the prompt can be filled with objects.")
