@@ -7,14 +7,19 @@ login) and "mock" (no network; see unipred/llm/mock.py). Keys are read from
 the environment, after loading ``.env.local`` and ``.env`` from the working
 directory and the repository root.
 
+A request may attach images (files), for the VLM baselines; the mock
+provider ignores them.
+
 Responses are cached on disk under ``CFG.llm_cache_dir``, keyed by the
-provider, model, sampling parameters, prompt and attempt number, so a rerun
-with the same seed replays the same answers without new API calls. Every
-request and its reply can also be appended to a JSON-lines log (log_path).
+provider, model, sampling parameters, prompt, images and attempt number, so
+a rerun with the same seed replays the same answers without new API calls.
+Every request and its reply can also be appended to a JSON-lines log
+(log_path).
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -23,7 +28,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from predicators.settings import CFG
 
@@ -117,14 +122,17 @@ class LLMClient:
                  system: str,
                  user: str,
                  task: str,
-                 attempt: int = 0) -> str:
-        """Return the model's reply to a system and a user message.
+                 attempt: int = 0,
+                 images: Sequence[str] = ()) -> str:
+        """Return the model's reply to a system and a user message, with
+        images (files) attached to the user message.
 
         The task names the kind of request (for example
         "pddl_completion"); the mock provider answers by task. Retries of
         the same request must pass increasing attempt numbers, so that
         they are cached separately.
         """
+        images = list(images)
         request = {
             "provider": self.provider,
             "model": self.model,
@@ -136,6 +144,8 @@ class LLMClient:
             "task": task,
             "attempt": attempt,
         }
+        if images:
+            request["images"] = [_file_digest(path) for path in images]
         cache_path = self._cache_path(request)
         cached = False
         if cache_path is not None and cache_path.exists():
@@ -144,7 +154,7 @@ class LLMClient:
             with open(cache_path, "r", encoding="utf-8") as f:
                 response = json.load(f)["response"]
         else:
-            response = self._call_with_retries(system, user, task)
+            response = self._call_with_retries(system, user, task, images)
             if cache_path is not None:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(cache_path, "w", encoding="utf-8") as f:
@@ -158,6 +168,7 @@ class LLMClient:
                         "cached": cached,
                         "system": system,
                         "user": user,
+                        "images": images,
                         "response": response
                     }) + "\n")
         return response
@@ -169,10 +180,11 @@ class LLMClient:
             json.dumps(request, sort_keys=True).encode("utf-8")).hexdigest()
         return self._cache_dir / self.provider / f"{digest}.json"
 
-    def _call_with_retries(self, system: str, user: str, task: str) -> str:
+    def _call_with_retries(self, system: str, user: str, task: str,
+                           images: List[str]) -> str:
         for attempt in range(self.retry_attempts):
             try:
-                return self._call(system, user, task)
+                return self._call(system, user, task, images)
             except Exception as err:  # pylint: disable=broad-except
                 if self.provider == "mock" or \
                         attempt == self.retry_attempts - 1:
@@ -183,18 +195,19 @@ class LLMClient:
                 time.sleep(wait)
         raise RuntimeError("retry_attempts must be positive")
 
-    def _call(self, system: str, user: str, task: str) -> str:
+    def _call(self, system: str, user: str, task: str,
+              images: List[str]) -> str:
         self.usage["calls"] += 1
         if self.provider == "mock":
             from unipred.llm.mock import mock_response  # pylint: disable=import-outside-toplevel
             return mock_response(system, user, task, self._mock_responses)
         if self.provider in ("openai", "qwen"):
-            return self._call_openai(system, user)
+            return self._call_openai(system, user, images)
         if self.provider == "codex":
-            return self._call_codex(system, user)
-        return self._call_gemini(system, user)
+            return self._call_codex(system, user, images)
+        return self._call_gemini(system, user, images)
 
-    def _call_openai(self, system: str, user: str) -> str:
+    def _call_openai(self, system: str, user: str, images: List[str]) -> str:
         if self._backend is None:
             from openai import OpenAI  # pylint: disable=import-outside-toplevel
             base_url = self.base_url or (_QWEN_BASE_URL if self.provider
@@ -210,8 +223,17 @@ class LLMClient:
                 "role": "system",
                 "content": system
             }, {
-                "role": "user",
-                "content": user
+                "role":
+                "user",
+                "content": [{
+                    "type": "text",
+                    "text": user
+                }] + [{
+                    "type": "image_url",
+                    "image_url": {
+                        "url": _data_url(path)
+                    }
+                } for path in images]
             }])
         if response.usage is not None:
             self.usage["prompt_tokens"] += response.usage.prompt_tokens
@@ -219,8 +241,9 @@ class LLMClient:
                 response.usage.completion_tokens
         return response.choices[0].message.content or ""
 
-    def _call_gemini(self, system: str, user: str) -> str:
+    def _call_gemini(self, system: str, user: str, images: List[str]) -> str:
         import google.generativeai as genai  # pylint: disable=import-outside-toplevel
+        from PIL import Image  # pylint: disable=import-outside-toplevel
         if self._backend is None:
             genai.configure(api_key=_api_key("gemini"))
             self._backend = genai
@@ -228,7 +251,7 @@ class LLMClient:
         # request.
         model = genai.GenerativeModel(self.model, system_instruction=system)
         response = model.generate_content(
-            user,
+            [user] + [Image.open(path) for path in images],
             generation_config=genai.types.GenerationConfig(
                 temperature=self.temperature,
                 max_output_tokens=self.max_tokens),
@@ -239,7 +262,7 @@ class LLMClient:
             self.usage["completion_tokens"] += metadata.candidates_token_count
         return response.text or ""
 
-    def _call_codex(self, system: str, user: str) -> str:
+    def _call_codex(self, system: str, user: str, images: List[str]) -> str:
         """Ask the local Codex CLI. It runs as an agent, so it gets an empty
         working directory and a read-only sandbox, and is told to answer
         with text only."""
@@ -253,8 +276,8 @@ class LLMClient:
                 "--sandbox", "read-only", "--skip-git-repo-check",
                 "--ephemeral", "--ignore-user-config", "--color", "never",
                 "-C", workdir, "-o",
-                str(reply_path), "-"
-            ]
+                str(reply_path)
+            ] + [f"--image={path}" for path in images] + ["-"]
             result = subprocess.run(command,
                                     input=prompt,
                                     capture_output=True,
@@ -266,3 +289,17 @@ class LLMClient:
                                    f"{result.returncode}: "
                                    f"{result.stderr.strip()[-500:]}")
             return reply_path.read_text(encoding="utf-8")
+
+
+def _file_digest(path: str) -> str:
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _data_url(path: str) -> str:
+    """An image file as a data URL."""
+    suffix = Path(path).suffix.lower().lstrip(".") or "png"
+    mime = "jpeg" if suffix in ("jpg", "jpeg") else suffix
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("ascii")
+    return f"data:image/{mime};base64,{data}"
