@@ -5,8 +5,12 @@ import subprocess
 import sys
 
 import pytest
+import torch
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# As unipred.main does (--torch_num_threads): the models are small.
+torch.set_num_threads(1)
 
 
 @pytest.fixture(scope="session", name="processed")

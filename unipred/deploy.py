@@ -18,6 +18,7 @@ import sys
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
+import torch
 from PIL import Image
 
 from predicators import utils
@@ -49,6 +50,7 @@ class Deployment:
             utils.update_config(utils.parse_args())
         finally:
             sys.argv = argv
+        torch.set_num_threads(CFG.torch_num_threads)
         env = create_new_env(CFG.env, do_cache=True, use_gui=False)
         if not isinstance(env, OfflineRealEnv):
             raise ValueError(f"{CFG.env} is not a real-robot domain.")
