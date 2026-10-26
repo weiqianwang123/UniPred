@@ -27,7 +27,7 @@ from predicators.envs import get_or_create_env
 from predicators.ground_truth_models import get_gt_options
 from predicators.structs import GroundAtom, Object, State
 import unipred  # pylint: disable=unused-import
-from unipred.perception.detector import fake_colors
+from unipred.perception.detector import Detector, fake_colors
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.join(_HERE, "..", "..", "..")
@@ -47,8 +47,12 @@ def _pixel(x: float, y: float) -> Tuple[int, int]:
             int(round(height - 5 - (y + 0.15) / 1.15 * (height - 10))))
 
 
-def _render(state: State, colors: Dict[str, Tuple[int, int, int]]) -> Image:
+def _render(
+    state: State, colors: Dict[str, Tuple[int, int, int]]
+) -> Tuple[Image.Image, Dict[str, List[float]]]:
+    """The top-down image of a state and the box drawn for each object."""
     image = Image.new("RGB", _SIZE, _BACKGROUND)
+    boxes: Dict[str, List[float]] = {}
     draw = ImageDraw.Draw(image)
     by_type: Dict[str, List[Object]] = {}
     for obj in sorted(state, key=lambda o: o.name):
@@ -56,6 +60,7 @@ def _render(state: State, colors: Dict[str, Tuple[int, int, int]]) -> Image:
     table = by_type["table"][0]
     (x0, y1), (x1, y0) = _pixel(0, 0), _pixel(1, 1)
     draw.rectangle([x0, y0, x1, y1], fill=colors["table"])
+    boxes[table.name] = [x0, y0, x1 + 1, y1 + 1]
     if state.get(table, "is_clean") < 0.5:
         for x, y in _DIRT_SPOTS:
             px, py = _pixel(x, y)
@@ -66,6 +71,7 @@ def _render(state: State, colors: Dict[str, Tuple[int, int, int]]) -> Image:
         hx, hy = _HALF[obj.type.name]
         draw.rectangle([px - hx, py + dy - hy, px + hx, py + dy + hy],
                        fill=colors[obj.type.name])
+        boxes[obj.name] = [px - hx, py + dy - hy, px + hx + 1, py + dy + hy + 1]
 
     for box in by_type["box"]:
         _rect(box, box)
@@ -80,7 +86,25 @@ def _render(state: State, colors: Dict[str, Tuple[int, int, int]]) -> Image:
     # A held object is drawn just beyond the gripper.
     for obj in held:
         _rect(obj, robot, dy=-9)
-    return image
+    return image, boxes
+
+
+def _boxes_to_give(image: Image.Image, boxes: Dict[str, List[float]],
+                   objects: Dict[str, str],
+                   prompts: Dict[str, str]) -> Dict[str, List[float]]:
+    """The boxes of the objects whose type the fake detector does not count
+    right in the image (overlapping objects of a type merge into one
+    region): the recording gives them instead."""
+    counts: Dict[str, int] = {}
+    for detection in Detector("fake", prompts).detect(np.asarray(image)):
+        counts[detection.object_type] = counts.get(detection.object_type,
+                                                   0) + 1
+    given = {}
+    for object_type in set(objects.values()):
+        names = [n for n, t in objects.items() if t == object_type]
+        if counts.get(object_type, 0) != len(names):
+            given.update({n: boxes[n] for n in names})
+    return given
 
 
 def _atoms(atoms: List[GroundAtom]) -> List:
@@ -140,8 +164,12 @@ def main() -> None:
     for name, split, states, options, goal in sessions:
         directory = os.path.join(args.out, name)
         os.makedirs(directory, exist_ok=True)
+        objects = {o.name: o.type.name for o in sorted(states[0])}
+        given = []
         for i, state in enumerate(states):
-            _render(state, colors).save(os.path.join(directory, f"{i}.png"))
+            image, boxes = _render(state, colors)
+            image.save(os.path.join(directory, f"{i}.png"))
+            given.append(_boxes_to_give(image, boxes, objects, prompts))
         session = {
             "split": split,
             "objects": {o.name: o.type.name
@@ -153,9 +181,11 @@ def main() -> None:
             "objects": [obj.name for obj in o.objects]
         } for o in options]
         atoms = [_atoms(list(utils.abstract(s, predicates))) for s in states]
-        for file_name, content in (("session.json", session),
-                                   ("actions.json", actions),
-                                   ("atoms.json", atoms)):
+        files = [("session.json", session), ("actions.json", actions),
+                 ("atoms.json", atoms)]
+        if any(given):
+            files.append(("boxes.json", given))
+        for file_name, content in files:
             with open(os.path.join(directory, file_name), "w",
                       encoding="utf-8") as f:
                 f.write(_dumps(content) + "\n")
