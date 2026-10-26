@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 
 from predicators.gnn.gnn_utils import _create_super_graph, discrete_graph
+from predicators.settings import CFG
 from predicators.structs import DummyPredicate, Type
 
 
@@ -525,7 +526,12 @@ def get_quantified_binary_edges(binary_output: Dict, binary_output_: Dict,
                                 action_ent: Dict,
                                 node_type_graph: Dict, pred_type0: str, 
                                 pred_type1: str, ent_idx: List[int], quantifier: str, quantified_type_idx: List[int],
-                                w_negation: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+                                w_negation: bool,
+                                rng: np.random.Generator) -> Tuple[torch.Tensor, torch.Tensor]:
+    """The predicate's values before and after a transition, for the
+    action's arguments (quantified over the quantified types). If the
+    action has too few arguments of a predicate type, an object of that
+    type is drawn with rng."""
     # get the types for the nodes in one sub graph
     # these node idx are for the predicate(?arg0, ?arg1)
     node_id0, node_id1 = None, None
@@ -542,14 +548,14 @@ def get_quantified_binary_edges(binary_output: Dict, binary_output_: Dict,
             # action objs do not have enough objects for this predicate
             # random pick one
             assert len(node_type_graph[pred_type1]) > ent1
-            node_id0 = [np.random.choice(node_type_graph[pred_type0])]
+            node_id0 = [rng.choice(node_type_graph[pred_type0])]
         else:
             node_id0 = [action_ent[pred_type0][ent0]]
         if len(action_ent[pred_type1]) <= ent1:
             # action objs do not have enough objects for this predicate
             # random pick one
             assert len(node_type_graph[pred_type0]) > ent0
-            node_id1 = [np.random.choice(node_type_graph[pred_type1])]
+            node_id1 = [rng.choice(node_type_graph[pred_type1])]
         else:
             node_id1 = [action_ent[pred_type1][ent1]]
     elif len(quantified_type_idx) == 1:
@@ -700,6 +706,7 @@ def distill_learned_ae_vector(val_dataloader: torch.utils.data.DataLoader,
     # Per option: how often the predicate did not change, was added and
     # was deleted.
     ae_vector_dict = {k: [0, 0, 0] for k in ae_row_name_dict}
+    rng = np.random.default_rng(CFG.seed)
 
     pred_model.train(False)
     pred_model.to(device)
@@ -805,7 +812,8 @@ def distill_learned_ae_vector(val_dataloader: torch.utils.data.DataLoader,
                         action_ent[act_type].append(act_node_ids[acti_i].item())
                 sample_edges, sample_edges_ = get_quantified_binary_edges(
                     binary_output, binary_output_, action_ent, node_type_graph, pred_type0, 
-                    pred_type1, ent_idx, quantifier, quantified_type_idx, w_negation)
+                    pred_type1, ent_idx, quantifier, quantified_type_idx, w_negation,
+                    rng)
                 # effect
                 # no change
                 if torch.equal(sample_edges, sample_edges_):
@@ -847,6 +855,7 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
     if (final_ae_vec[:, 0].sum() == 0) or (final_ae_vec[:, 1].sum() == 0):
         # delete-only or add-only effect predicates
         ap_vec = torch.zeros([len(ae_row_name_dict.keys()), 2]) # 0: exists, 1: not exists
+        rng = np.random.default_rng(CFG.seed)
         
         pred_model.train(False)
         pred_model.to(device)
@@ -948,7 +957,8 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
                             action_ent[act_type].append(act_node_ids[acti_i].item())
                     sample_edges, sample_edges_ = get_quantified_binary_edges(
                         binary_output, binary_output_, action_ent, node_type_graph, pred_type0, 
-                        pred_type1, ent_idx, quantifier, quantified_type_idx, w_negation)
+                        pred_type1, ent_idx, quantifier, quantified_type_idx, w_negation,
+                    rng)
                     if equiv_effect(sample_edges, sample_edges_, final_ae_vec[action_id]):
                         # precondition
                         if sample_edges:

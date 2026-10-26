@@ -428,13 +428,13 @@ class GraphDictDataset(Dataset):
         return sample
     
 class GraphTransC2DDataset(Dataset):
-    """A Dataset that combine all the data pairs in two lists."""
+    """A Dataset of transition pairs, in the given order (the caller
+    shuffles with its own seeded generator)."""
 
     def __init__(self, data_list: List[Dict]
                  ):
         self.data_list = data_list
         logging.info(f"Created transition dataset with {len(data_list)} transition pairs")
-        np.random.shuffle(self.data_list)
 
     def __len__(self):
         return len(self.data_list)

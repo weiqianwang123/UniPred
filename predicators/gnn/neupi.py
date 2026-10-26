@@ -993,12 +993,12 @@ class MCTSNode:
             # non-zero loss is too large, wrong element wise supervision
             self.value = -np.inf
 
-    def expand(self, zero_loss):
+    def expand(self, zero_loss, rng: np.random.Generator):
         # Expand up to batch_size untried actions
-        next_state = self.get_successor(zero_loss)
+        next_state = self.get_successor(zero_loss, rng)
         return MCTSNode(next_state, level=self.level+1, parent=self)
 
-    def get_successor(self, zero_loss):
+    def get_successor(self, zero_loss, rng: np.random.Generator):
         local_zero_loss = zero_loss.copy()
         # non-zero indexes
         non_zero_indexes = np.where(self.state != 0)[0]
@@ -1025,7 +1025,7 @@ class MCTSNode:
         if not self.is_fully_expanded():
             # randomly select one
             list_next_states = list(self.next_states)
-            list_idx = np.random.choice(len(list_next_states))
+            list_idx = rng.choice(len(list_next_states))
             next_state = np.array(list_next_states[list_idx])
             self.next_states.remove(tuple(next_state))
             return next_state
@@ -1038,8 +1038,10 @@ class HierachicalMCTSearcher(abc.ABC):
     def __init__(self, 
                  dim_num: int, \
                  frontier_max_level: int, \
-                 guidance_th: float) -> None:
+                 guidance_th: float,
+                 rng: np.random.Generator) -> None:
         self.visits = 0  # Total visits for UCT calculation
+        self._rng = rng
         self.guidance_th = min(guidance_th * dim_num / 2, 0.5)
         self.frontier_max_level = frontier_max_level
         root = MCTSNode(np.zeros(dim_num, dtype=np.int32), 0)
@@ -1119,7 +1121,7 @@ class HierachicalMCTSearcher(abc.ABC):
                     assert not node.is_fully_expanded()
                     assert node.value > -np.inf
                     node.visits += 1
-                    child = node.expand(self.global_zero_loss)
+                    child = node.expand(self.global_zero_loss, self._rng)
                     if tuple(child.state) not in self.evaluated_values:
                         self.evaluated_values.add(tuple(child.state))
                         # logging.info(f"Propose Child node: {child.state}")

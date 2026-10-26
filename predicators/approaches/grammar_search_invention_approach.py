@@ -1192,7 +1192,7 @@ class GrammarSearchInventionApproach(NSRTLearningApproach):
                             col = samples[:, d]
                             minimum = col.min()
                             maximum = col.max()
-                            null_hypothesis = np.random.uniform(
+                            null_hypothesis = self._rng.uniform(
                                 minimum, maximum, len(col))
                             p_value = kstest(col, null_hypothesis).pvalue
 

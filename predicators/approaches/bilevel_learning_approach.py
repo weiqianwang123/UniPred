@@ -1577,7 +1577,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
             symbolic_search_model = HierachicalMCTSearcher(
                                             len(self.ae_row_names),
                                             pred_config['search_tree_max_level'], \
-                                            pred_config['guidance_thresh'])
+                                            pred_config['guidance_thresh'],
+                                            self._rng)
             # 4.2 Start the Bi-level Optimization Process for Training
             logging.info("Training from scratch.")
             ## Launch training code.
