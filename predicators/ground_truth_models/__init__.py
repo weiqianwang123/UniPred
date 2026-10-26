@@ -1,15 +1,15 @@
 """Implements ground-truth NSRTs and options."""
 import abc
-from pathlib import Path
 from typing import Dict, List, Sequence, Set
+from typing import Type as TypingType
+from typing import TypeVar, Union
 
 from gym.spaces import Box
 
 from predicators import utils
 from predicators.envs import BaseEnv, get_or_create_env
 from predicators.settings import CFG
-from predicators.structs import NSRT, LiftedDecisionList, \
-    ParameterizedOption, Predicate, Type
+from predicators.structs import NSRT, ParameterizedOption, Predicate, Type
 
 
 class GroundTruthOptionFactory(abc.ABC):
@@ -47,8 +47,9 @@ class GroundTruthNSRTFactory(abc.ABC):
         """Create NSRTs for the given env name."""
         raise NotImplementedError("Override me!")
 
+
 class DummyNSRTFactory(abc.ABC):
-    """Parent class for ground-truth NSRT definitions."""
+    """Parent class for dummy (sampler-free) NSRT definitions."""
 
     @classmethod
     @abc.abstractmethod
@@ -64,192 +65,80 @@ class DummyNSRTFactory(abc.ABC):
         """Create NSRTs for the given env name."""
         raise NotImplementedError("Override me!")
 
-class GroundTruthLDLBridgePolicyFactory(abc.ABC):
-    """Ground-truth policies implemented with LDLs saved in text files."""
 
-    @classmethod
-    @abc.abstractmethod
-    def get_env_names(cls) -> Set[str]:
-        """Get the env names that this factory builds bridge policies for."""
-        raise NotImplementedError("Override me!")
+_FactoryT = TypeVar("_FactoryT")
 
-    @classmethod
-    @abc.abstractmethod
-    def _get_ldl_file(cls) -> Path:
-        """Get the path to the LDL file."""
-        raise NotImplementedError("Override me!")
 
-    @classmethod
-    def get_ldl_bridge_policy(cls, env_name: str, types: Set[Type],
-                              predicates: Set[Predicate],
-                              options: Set[ParameterizedOption],
-                              nsrts: Set[NSRT]) -> LiftedDecisionList:
-        """Create LDL bridge policy for the given env name."""
-        del env_name, options  # not used
-        ldl_file = cls._get_ldl_file()
-        with open(ldl_file, "r", encoding="utf-8") as f:
-            ldl_str = f.read()
-        return utils.parse_ldl_from_str(ldl_str, types, predicates, nsrts)
+def _get_factory(base_cls: TypingType[_FactoryT],
+                 env_name: str) -> _FactoryT:
+    """Return the unique registered factory of the given kind for an env."""
+    matches = [
+        cls for cls in utils.get_all_subclasses(base_cls)
+        if not cls.__abstractmethods__ and env_name in cls.get_env_names()
+    ]
+    if not matches:
+        raise NotImplementedError(f"No {base_cls.__name__} registered for "
+                                  f"env: {env_name}")
+    if len(matches) > 1:
+        names = sorted(cls.__name__ for cls in matches)
+        raise ValueError(f"Multiple {base_cls.__name__} classes registered "
+                         f"for env {env_name}: {names}")
+    return matches[0]()
 
 
 def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
     """Create ground truth options for an env."""
     env = get_or_create_env(env_name)
-    for cls in utils.get_all_subclasses(GroundTruthOptionFactory):
-        # print(cls.get_env_names())
-        if not cls.__abstractmethods__ and env_name in cls.get_env_names():
-            factory = cls()
-            types = {t.name: t for t in env.types}
-            predicates = {p.name: p for p in env.predicates}
-            options = factory.get_options(env_name, types, predicates,
-                                          env.action_space)
-            break
-    if env_name == "pybullet_blocks":
-        from predicators.ground_truth_models.blocks.options import \
-            PyBulletBlocksGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = PyBulletBlocksGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "blocks":
-        from predicators.ground_truth_models.blocks.options import \
-            BlocksGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = BlocksGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "pybullet_blocks_img":
-        from predicators.ground_truth_models.blocks_img.options import \
-            PyBulletBlocksImgGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = PyBulletBlocksImgGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "blocks_img":
-        from predicators.ground_truth_models.blocks.options import \
-            BlocksImgGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = BlocksImgGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "blocks_onclear":
-        from predicators.ground_truth_models.blocks_onclear.options import \
-            BlocksOnClearGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = BlocksOnClearGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "view_plan_trivial":
-        from predicators.ground_truth_models.view_plan.options import \
-            ViewPlanGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = ViewPlanGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "view_plan_hard":
-        from predicators.ground_truth_models.view_plan_hard.options import \
-            ViewPlanHardGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = ViewPlanHardGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "satellites":
-        from predicators.ground_truth_models.satellites.options import \
-            SatellitesGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = SatellitesGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    elif env_name == "blocks_onclear":
-        from predicators.ground_truth_models.blocks_onclear.options import \
-            BlocksOnClearGroundTruthOptionFactory
-        types = {t.name: t for t in env.types}
-        predicates = {p.name: p for p in env.predicates}
-        options = BlocksOnClearGroundTruthOptionFactory().get_options(
-            env_name, types, predicates, env.action_space)
-    else:
-        raise NotImplementedError("Ground-truth options not implemented for "
-                                  f"env: {env_name}")
+    factory = _get_factory(GroundTruthOptionFactory, env_name)
+    types = {t.name: t for t in env.types}
+    predicates = {p.name: p for p in env.predicates}
+    options = factory.get_options(env_name, types, predicates,
+                                  env.action_space)
     # Seed the options for reproducibility.
     for option in options:
         option.params_space.seed(CFG.seed)
     return options
 
 
+def _get_filtered_nsrts(
+        base_cls: Union[TypingType[GroundTruthNSRTFactory],
+                        TypingType[DummyNSRTFactory]], env_name: str,
+        predicates_to_keep: Set[Predicate],
+        options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
+    """Create NSRTs from the registered factory of the given kind, keeping only
+    the given predicates and the NSRTs whose options are kept."""
+    env = get_or_create_env(env_name)
+    env_options = get_gt_options(env_name)
+    assert predicates_to_keep.issubset(env.predicates)
+    assert options_to_keep.issubset(env_options)
+    factory = _get_factory(base_cls, env_name)
+    # Give all predicates and options, then filter based on kept ones at the
+    # end of this function. This is easier than filtering within the factory.
+    types = {t.name: t for t in env.types}
+    predicates = {p.name: p for p in env.predicates}
+    options = {o.name: o for o in env_options}
+    nsrts = factory.get_nsrts(env_name, types, predicates, options)
+    final_nsrts = set()
+    for nsrt in nsrts:
+        if nsrt.option not in options_to_keep:
+            continue
+        nsrt = nsrt.filter_predicates(predicates_to_keep)
+        final_nsrts.add(nsrt)
+    return final_nsrts
+
+
 def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
                  options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
-    """Create ground truth options for an env."""
-    env = get_or_create_env(env_name)
-    env_options = get_gt_options(env_name)
-    assert predicates_to_keep.issubset(env.predicates)
-    assert options_to_keep.issubset(env_options)
-    for cls in utils.get_all_subclasses(GroundTruthNSRTFactory):
-        if not cls.__abstractmethods__ and env_name in cls.get_env_names():
-            factory = cls()
-            # Give all predicates and options, then filter based on kept ones
-            # at the end of this function. This is easier than filtering within
-            # the factory itself.
-            types = {t.name: t for t in env.types}
-            predicates = {p.name: p for p in env.predicates}
-            options = {o.name: o for o in env_options}
-            nsrts = factory.get_nsrts(env_name, types, predicates, options)
-            break
-    else:  # pragma: no cover
-        raise NotImplementedError("Ground-truth NSRTs not implemented for "
-                                  f"env: {env_name}")
-    # Filter out excluded predicates from NSRTs, and filter out NSRTs whose
-    # options are excluded.
-    final_nsrts = set()
-    for nsrt in nsrts:
-        if nsrt.option not in options_to_keep:
-            continue
-        nsrt = nsrt.filter_predicates(predicates_to_keep)
-        final_nsrts.add(nsrt)
-    return final_nsrts
+    """Create ground truth NSRTs for an env."""
+    return _get_filtered_nsrts(GroundTruthNSRTFactory, env_name,
+                               predicates_to_keep, options_to_keep)
+
 
 def get_dummy_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
-                 options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
-    """Create ground truth options for an env."""
-    env = get_or_create_env(env_name)
-    env_options = get_gt_options(env_name)
-    assert predicates_to_keep.issubset(env.predicates)
-    assert options_to_keep.issubset(env_options)
-    for cls in utils.get_all_subclasses(DummyNSRTFactory):
-        if not cls.__abstractmethods__ and env_name in cls.get_env_names():
-            factory = cls()
-            # Give all predicates and options, then filter based on kept ones
-            # at the end of this function. This is easier than filtering within
-            # the factory itself.
-            types = {t.name: t for t in env.types}
-            predicates = {p.name: p for p in env.predicates}
-            options = {o.name: o for o in env_options}
-            nsrts = factory.get_nsrts(env_name, types, predicates, options)
-            break
-    else:  # pragma: no cover
-        raise NotImplementedError("Ground-truth NSRTs not implemented for "
-                                  f"env: {env_name}")
-    # Filter out excluded predicates from NSRTs, and filter out NSRTs whose
-    # options are excluded.
-    final_nsrts = set()
-    for nsrt in nsrts:
-        if nsrt.option not in options_to_keep:
-            continue
-        nsrt = nsrt.filter_predicates(predicates_to_keep)
-        final_nsrts.add(nsrt)
-    return final_nsrts
-
-def get_gt_ldl_bridge_policy(env_name: str, types: Set[Type],
-                             predicates: Set[Predicate],
-                             options: Set[ParameterizedOption],
-                             nsrts: Set[NSRT]) -> LiftedDecisionList:
-    """Create a lifted decision list for an oracle bridge policy."""
-    for cls in utils.get_all_subclasses(GroundTruthLDLBridgePolicyFactory):
-        if not cls.__abstractmethods__ and env_name in cls.get_env_names():
-            factory = cls()
-            return factory.get_ldl_bridge_policy(env_name, types, predicates,
-                                                 options, nsrts)
-    raise NotImplementedError("Ground-truth bridge policy not implemented for "
-                              f"env: {env_name}")
+                    options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
+    """Create dummy (sampler-free) NSRTs for an env."""
+    return _get_filtered_nsrts(DummyNSRTFactory, env_name, predicates_to_keep,
+                               options_to_keep)
 
 
 def parse_config_included_options(env: BaseEnv) -> Set[ParameterizedOption]:

@@ -50,15 +50,6 @@ def create_approach(name: str, initial_predicates: Set[Predicate],
                            types, action_space, train_tasks)
 
     # Handle main approaches.
-    try:
-        cls = _get_approach_cls_from_name(name)
-    except NotImplementedError:
-        assert name in ["mb_shooting", "bilevel_learning"]
-        if name == "mb_shooting":
-            cls = MBShootingApproach
-        elif name == "bilevel_learning":
-            cls = BilevelLearningApproach
-        else:
-            raise NotImplementedError(f"Unknown approach: {name}")
+    cls = _get_approach_cls_from_name(name)
     return cls(initial_predicates, initial_options, types, action_space,
                train_tasks)

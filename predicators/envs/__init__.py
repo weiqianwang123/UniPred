@@ -25,11 +25,7 @@ def create_new_env(name: str,
             env = cls(use_gui)
             break
     else:
-        if name == "pickplace_stair":
-            from predicators.envs.pick_place import PickPlaceEnv
-            env = PickPlaceEnv(use_gui)
-        else:
-            raise NotImplementedError(f"Unknown env: {name}")
+        raise NotImplementedError(f"Unknown env: {name}")
     if do_cache:
         _MOST_RECENT_ENV_INSTANCE[name] = env
     return env

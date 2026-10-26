@@ -3331,18 +3331,16 @@ def import_submodules(path: List[str], name: str) -> None:
     """Load all submodules on the given path.
 
     Useful for finding subclasses of an abstract base class
-    automatically.
+    automatically. Import errors are not caught: a submodule with a missing
+    dependency must fail loudly instead of silently dropping out of the
+    registry.
     """
     if not TYPE_CHECKING:
         for _, module_name, _ in pkgutil.walk_packages(path):
             if "__init__" not in module_name:
-                try:
-                    # Important! We use an absolute import here to avoid issues
-                    # with isinstance checking when using relative imports.
-                    importlib.import_module(f"{name}.{module_name}")
-                except ModuleNotFoundError:
-                    # Handle the case where the module doesn't exist
-                    pass
+                # Important! We use an absolute import here to avoid issues
+                # with isinstance checking when using relative imports.
+                importlib.import_module(f"{name}.{module_name}")
 
 
 def update_config(args: Dict[str, Any]) -> None:
