@@ -1,8 +1,8 @@
 [
- {"option": "PickToyFromTable", "objects": ["robot", "toy0", "table"]},
- {"option": "PlaceToyInBox", "objects": ["robot", "toy0", "box"]},
  {"option": "PickToyFromTable", "objects": ["robot", "toy1", "table"]},
  {"option": "PlaceToyInBox", "objects": ["robot", "toy1", "box"]},
+ {"option": "PickToyFromTable", "objects": ["robot", "toy0", "table"]},
+ {"option": "PlaceToyInBox", "objects": ["robot", "toy0", "box"]},
  {"option": "PickWiperFromBox", "objects": ["robot", "wiper", "box"]},
  {"option": "PushBoxOut", "objects": ["robot", "box"]},
  {"option": "WipeTable", "objects": ["robot", "wiper", "table", "box"]},

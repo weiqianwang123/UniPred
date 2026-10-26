@@ -2,6 +2,7 @@
 and for offline planning evaluation."""
 
 import dataclasses
+import os
 
 import pytest
 
@@ -90,3 +91,35 @@ def test_oracle_plans_are_valid_and_errors_are_explained(processed):
         get_gt_atoms_closure(env.get_name(), env.predicates))
     assert problem is not None and "step 1" in problem \
         and "HoldingToy" in problem
+
+
+def test_processed_crops_follow_the_annotated_objects(processed):
+    """The processed boxes belong to the objects the annotations name: in
+    every keyframe where the robot holds a toy, that toy's box is the toy
+    box nearest the robot's (a fixture or recording that names its toys
+    otherwise than left to right in the first keyframe swaps them)."""
+    # pylint: disable=import-outside-toplevel
+    import pickle
+    with open(os.path.join(processed, "processed.pkl"), "rb") as f:
+        sessions = pickle.load(f)["sessions"]
+    checked = 0
+    for session in sessions:
+        toys = [n for n, t in session["objects"].items() if t == "toy"]
+        for keyframe in session["keyframes"]:
+            held = [
+                args[1] for name, args in keyframe["atoms"] or []
+                if name == "HoldingToy"
+            ]
+            if not held or len(toys) < 2:
+                continue
+            robot = keyframe["boxes"]["robot"]
+
+            def _distance(name: str, robot=robot, keyframe=keyframe) -> float:
+                box = keyframe["boxes"][name]
+                return abs(box[0] + box[2] - robot[0] - robot[2]) + abs(
+                    box[1] + box[3] - robot[1] - robot[3])
+
+            assert min(toys, key=_distance) == held[0], (session["name"],
+                                                         keyframe["image"])
+            checked += 1
+    assert checked > 0

@@ -15,7 +15,7 @@ import argparse
 import json
 import os
 import tempfile
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 import yaml
@@ -112,6 +112,10 @@ def _atoms(atoms: List[GroundAtom]) -> List:
                   for a in atoms)
 
 
+def _renamed(atoms: List, name: Callable[[str], str]) -> List:
+    return sorted([n, [name(a) for a in args]] for n, args in atoms)
+
+
 def _dumps(content: object) -> str:
     """JSON with one line per list entry or mapping item."""
     if isinstance(content, list) and content:
@@ -164,23 +168,44 @@ def main() -> None:
     for name, split, states, options, goal in sessions:
         directory = os.path.join(args.out, name)
         os.makedirs(directory, exist_ok=True)
-        objects = {o.name: o.type.name for o in sorted(states[0])}
+        renders = [_render(state, colors) for state in states]
+        # The raw format names the objects of a type left to right in the
+        # first keyframe (by their boxes' centres): rename them so.
+        first = renders[0][1]
+        rename = {}
+        by_type: Dict[str, List[str]] = {}
+        for obj in sorted(states[0], key=lambda o: o.name):
+            by_type.setdefault(obj.type.name, []).append(obj.name)
+        for object_type, names in by_type.items():
+            if len(names) > 1:
+                order = sorted(names,
+                               key=lambda n: (first[n][0] + first[n][2],
+                                              first[n][1] + first[n][3]))
+                rename.update({n: f"{object_type}{k}"
+                               for k, n in enumerate(order)})
+
+        def _name(old: str) -> str:
+            return rename.get(old, old)
+
+        objects = {_name(o.name): o.type.name for o in sorted(states[0])}
         given = []
-        for i, state in enumerate(states):
-            image, boxes = _render(state, colors)
+        for i, (image, boxes) in enumerate(renders):
             image.save(os.path.join(directory, f"{i}.png"))
+            boxes = {_name(n): b for n, b in boxes.items()}
             given.append(_boxes_to_give(image, boxes, objects, prompts))
         session = {
             "split": split,
-            "objects": {o.name: o.type.name
-                        for o in sorted(states[0])},
-            "goal": _atoms(list(goal)),
+            "objects": dict(sorted(objects.items())),
+            "goal": _renamed(_atoms(list(goal)), _name),
         }
         actions = [{
             "option": o.name,
-            "objects": [obj.name for obj in o.objects]
+            "objects": [_name(obj.name) for obj in o.objects]
         } for o in options]
-        atoms = [_atoms(list(utils.abstract(s, predicates))) for s in states]
+        atoms = [
+            _renamed(_atoms(list(utils.abstract(s, predicates))), _name)
+            for s in states
+        ]
         files = [("session.json", session), ("actions.json", actions),
                  ("atoms.json", atoms)]
         if any(given):

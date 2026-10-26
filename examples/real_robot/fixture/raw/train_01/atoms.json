@@ -1,8 +1,8 @@
 [
  [["BoxNear", ["box"]], ["HandEmpty", ["robot"]], ["ToyOnTable", ["toy0", "table"]], ["ToyOnTable", ["toy1", "table"]], ["WiperInBox", ["wiper", "box"]]],
- [["BoxNear", ["box"]], ["HoldingToy", ["robot", "toy1"]], ["ToyOnTable", ["toy0", "table"]], ["WiperInBox", ["wiper", "box"]]],
- [["BoxNear", ["box"]], ["HandEmpty", ["robot"]], ["ToyInBox", ["toy1", "box"]], ["ToyOnTable", ["toy0", "table"]], ["WiperInBox", ["wiper", "box"]]],
- [["BoxNear", ["box"]], ["HoldingToy", ["robot", "toy0"]], ["ToyInBox", ["toy1", "box"]], ["WiperInBox", ["wiper", "box"]]],
+ [["BoxNear", ["box"]], ["HoldingToy", ["robot", "toy0"]], ["ToyOnTable", ["toy1", "table"]], ["WiperInBox", ["wiper", "box"]]],
+ [["BoxNear", ["box"]], ["HandEmpty", ["robot"]], ["ToyInBox", ["toy0", "box"]], ["ToyOnTable", ["toy1", "table"]], ["WiperInBox", ["wiper", "box"]]],
+ [["BoxNear", ["box"]], ["HoldingToy", ["robot", "toy1"]], ["ToyInBox", ["toy0", "box"]], ["WiperInBox", ["wiper", "box"]]],
  [["BoxNear", ["box"]], ["HandEmpty", ["robot"]], ["ToyInBox", ["toy0", "box"]], ["ToyInBox", ["toy1", "box"]], ["WiperInBox", ["wiper", "box"]]],
  [["BoxNear", ["box"]], ["HoldingWiper", ["robot", "wiper"]], ["ToyInBox", ["toy0", "box"]], ["ToyInBox", ["toy1", "box"]]],
  [["BoxFar", ["box"]], ["HoldingWiper", ["robot", "wiper"]], ["ToyInBox", ["toy0", "box"]], ["ToyInBox", ["toy1", "box"]]],
