@@ -29,15 +29,20 @@ SHIFT_PARAMS = (0.15, 0.3)
 def _place_sampler(state: State, goal: Set[GroundAtom],
                    rng: np.random.Generator,
                    objects: Sequence[Object]) -> Array:
-    """A spot where the held item fits in the region's current bounds."""
+    """A spot where the held item fits in the region's current bounds, or
+    the region's centre if it does not fit (when the operator is used
+    although its preconditions do not hold, e.g. by a policy baseline)."""
     del goal  # unused
     _, item, region = objects
     scene = state.simulator_state
     left, right = PackingEnv.region_bounds(scene, region.name)
     half = PackingEnv.item_sizes[scene.item_sizes[item.name]] / 2
-    x = rng.uniform(left + half, right - half)
-    return np.array([(x - state.get(region, "x")) / PLACE_RANGE],
-                    dtype=np.float32)
+    low, high = left + half, right - half
+    if low > high:
+        low = high = (left + right) / 2
+    x = rng.uniform(low, high)
+    param = (x - state.get(region, "x")) / PLACE_RANGE
+    return np.array([np.clip(param, -1.0, 1.0)], dtype=np.float32)
 
 
 def _shift_sampler(state: State, goal: Set[GroundAtom],

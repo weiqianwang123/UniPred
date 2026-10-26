@@ -6,7 +6,7 @@ import pytest
 from predicators import utils
 from predicators.approaches.oracle_approach import OracleApproach
 from predicators.envs import create_new_env
-from predicators.ground_truth_models import get_gt_options
+from predicators.ground_truth_models import get_gt_nsrts, get_gt_options
 from predicators.structs import Action
 from unipred.envs.packing import PLACE, SHIFT, PackingEnv
 
@@ -90,3 +90,21 @@ def test_oracle_solves_tasks(env):
                 break
             state = env.simulate(state, policy(state))
         assert task.goal_holds(state)
+
+
+def test_place_sampler_without_room(env):
+    """Placing a large item into a region that is too narrow still samples
+    a parameter in the option's range (policy baselines try this)."""
+    state = env.get_train_tasks()[0].init
+    scene = state.simulator_state
+    large = next(i for i in state.get_objects(env.item_type)
+                 if scene.item_sizes[i.name] == "large")
+    robot = state.get_objects(env.robot_type)[0]
+    region = next(r for r in state.get_objects(env.region_type)
+                  if r.name == "box0_left")
+    nsrt = next(n for n in get_gt_nsrts("packing", env.predicates,
+                                        get_gt_options("packing"))
+                if n.option.name == "PlaceLarge")
+    params = nsrt.sampler(state, set(), np.random.default_rng(0),
+                          [robot, large, region])
+    assert nsrt.option.params_space.contains(params)
