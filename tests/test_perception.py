@@ -115,3 +115,15 @@ def test_missing_detector_weights_name_the_path(tmp_path):
     with pytest.raises(FileNotFoundError,
                        match=str(tmp_path / "grounding_dino")):
         Detector("groundingdino_sam2", {"toy": "toy"})
+
+
+def test_tiny_crops_and_slivers():
+    """The fake encoder gives finite features for crops of any size, and
+    the fake detector ignores slivers of a few pixels."""
+    encoder = CropEncoder("fake")
+    for shape in ((1, 2, 3), (2, 1, 3), (3, 3, 3)):
+        crop = np.full(shape, 200, dtype=np.uint8)
+        assert np.all(np.isfinite(encoder.encode([crop])))
+    detector = Detector("fake", {"robot": "robot gripper", "toy": "toy"})
+    image = _scene_image([("toy", (10, 10, 20, 20)), ("toy", (40, 40, 42, 41))])
+    assert len(detector.detect(image)) == 1

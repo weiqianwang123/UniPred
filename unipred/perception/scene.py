@@ -110,6 +110,11 @@ class ScenePerceiver:
                         masks[n] if self._mask_crops else None) for n in names
         ]
         features = dict(zip(names, self.encoder.encode(crops)))
+        for name, vector in features.items():
+            if not np.all(np.isfinite(vector)):
+                raise PerceptionError(
+                    f"The features of {name} (box {boxes[name]}) are not "
+                    "finite.")
         return SceneObservation(boxes, masks, features)
 
 

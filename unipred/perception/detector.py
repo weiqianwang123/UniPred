@@ -8,7 +8,8 @@ Backends:
 - "fake": no network weights, for tests and the synthetic fixture of
   examples/real_robot. The objects of each type are drawn as regions of the
   colour fake_colors() gives the type; the detector returns every connected
-  region of that colour.
+  region of that colour of at least FAKE_MIN_AREA pixels (smaller ones are
+  slivers of objects covered by others).
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from scipy import ndimage
 from unipred.perception import weights
 
 Box = Tuple[float, float, float, float]  # x0, y0, x1, y1 in pixels
+FAKE_MIN_AREA = 9
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,8 @@ class Detector:
             labels, num = ndimage.label(close)
             for region in range(1, num + 1):
                 mask = labels == region
+                if mask.sum() < FAKE_MIN_AREA:
+                    continue
                 ys, xs = np.nonzero(mask)
                 box = (float(xs.min()), float(ys.min()), float(xs.max() + 1),
                        float(ys.max() + 1))
