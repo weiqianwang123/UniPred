@@ -6,7 +6,7 @@ import logging
 from typing import Any, Collection, Dict, List, Optional, Set, Tuple
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators.nsrt_learning.option_learning import \
     KnownOptionsOptionLearner, _OptionLearnerBase, create_option_learner

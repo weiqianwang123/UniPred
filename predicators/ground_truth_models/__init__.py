@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Sequence, Set
 from typing import Type as TypingType
 from typing import TypeVar, Union
 
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.envs import BaseEnv, get_or_create_env

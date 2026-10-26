@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional, Set
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.settings import CFG

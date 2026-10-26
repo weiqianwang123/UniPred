@@ -3,7 +3,7 @@
 from typing import List, Set
 from typing import Type as TypingType
 
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.approaches.base_approach import ApproachFailure, \

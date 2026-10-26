@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, \
     Sequence, Set, Tuple
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from scipy.stats import kstest
 from sklearn.mixture import GaussianMixture as GMM
 

@@ -10,7 +10,7 @@ from predicators.ground_truth_models import get_dummy_nsrts
 from predicators.approaches import ApproachFailure, BaseApproach, ApproachTimeout
 from predicators.structs import Action, State, Task
 from predicators.option_model import create_option_model
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from predicators.settings import CFG
 from predicators.planning import task_plan_grounding
 from predicators.structs import Action, ParameterizedOption, Predicate, State, Task, \

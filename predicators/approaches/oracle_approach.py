@@ -8,7 +8,7 @@ generated at all.
 
 from typing import List, Optional, Set, Callable
 import logging
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import hooks, utils
 from predicators.approaches.bilevel_planning_approach import \

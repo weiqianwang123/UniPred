@@ -12,7 +12,7 @@ from typing import ClassVar, Dict, List, Optional, Sequence, Set, Tuple
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from matplotlib import patches
 
 from predicators.envs import BaseEnv

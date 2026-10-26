@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Any, Callable, List, Optional, Sequence, Set
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators.settings import CFG
 from predicators.structs import Action, Dataset, InteractionRequest, \

@@ -9,7 +9,7 @@ import dill as pkl
 import torch
 import torch.nn
 import torch.optim
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from torch.utils.data import DataLoader
 
 from predicators import utils

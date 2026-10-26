@@ -14,7 +14,7 @@ import json
 import logging
 from z3 import Bool, Not, Or, Solver, is_true, sat
 from tqdm import tqdm
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from typing import Any, Callable, Collection, Dict, FrozenSet, List, \
     NamedTuple, Optional, Sequence, Set, Tuple, TypeVar
 

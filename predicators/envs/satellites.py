@@ -24,7 +24,7 @@ from typing import ClassVar, List, Optional, Sequence, Set
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.envs import BaseEnv

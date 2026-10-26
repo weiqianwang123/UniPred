@@ -14,7 +14,7 @@ from typing import Any, Callable, Collection, DefaultDict, Dict, Iterator, \
 
 import numpy as np
 import PIL.Image
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from numpy.typing import NDArray
 from tabulate import tabulate
 

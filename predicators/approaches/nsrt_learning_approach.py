@@ -9,7 +9,7 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 import dill as pkl
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.approaches.bilevel_planning_approach import \

@@ -3,6 +3,7 @@ models)."""
 
 import sys
 
+import dill
 import pytest
 
 from predicators import utils
@@ -43,6 +44,17 @@ def test_ground_truth_models(env_name):
     nsrts = get_gt_nsrts(env_name, predicates, options)
     assert nsrts
     assert {nsrt.option for nsrt in nsrts}.issubset(options)
+
+
+def test_options_survive_pickling():
+    """Saved datasets and approaches contain options and their parameter
+    spaces; they must load again (gym's spaces did not with NumPy >=
+    1.25)."""
+    utils.reset_config({"env": "satellites"})
+    for option in get_gt_options("satellites"):
+        loaded = dill.loads(dill.dumps(option))
+        assert loaded.name == option.name
+        assert loaded.params_space.contains(option.params_space.sample())
 
 
 @pytest.mark.parametrize("env_name", ["satellites", "blocks_onclear"])

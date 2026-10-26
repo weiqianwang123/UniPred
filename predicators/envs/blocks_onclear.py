@@ -19,7 +19,7 @@ from typing import Sequence, Set, List, Dict, Tuple, Optional
 
 from predicators.envs.blocks import BlocksEnv
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from predicators.structs import Object, Predicate, State, Type, Action, Array, \
     GroundAtom, EnvironmentTask
 

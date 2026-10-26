@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import pathos.multiprocessing as mp
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from matplotlib import patches
 from numpy.typing import NDArray
 from PIL import ImageDraw, ImageFont

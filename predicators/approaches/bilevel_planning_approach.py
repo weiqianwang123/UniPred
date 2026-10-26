@@ -7,7 +7,7 @@ import abc
 import logging
 from typing import Any, Callable, List, Optional, Sequence, Set, Tuple
 
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.approaches import ApproachFailure, ApproachTimeout, \

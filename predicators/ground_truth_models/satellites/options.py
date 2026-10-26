@@ -3,7 +3,7 @@
 from typing import Dict, Sequence, Set
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.ground_truth_models import GroundTruthOptionFactory
