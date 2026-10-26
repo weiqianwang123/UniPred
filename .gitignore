@@ -22,7 +22,8 @@ wandb/
 .env
 .env.local
 
-# Model weights
+# Model weights (scripts/install.sh --weights)
+/weights/
 *.pth
 *.pt
 *.ckpt
