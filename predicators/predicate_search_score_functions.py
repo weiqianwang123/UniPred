@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import abc
+import contextlib
+import dataclasses
 import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Collection, Dict, FrozenSet, List, Sequence, \
-    Set, Tuple, Optional
+from typing import Callable, Collection, Dict, FrozenSet, List, Optional, \
+    Sequence, Set, Tuple
 
 import numpy as np
+import torch
 
-from predicators import utils
+from predicators import hooks, utils
 from predicators.nsrt_learning.segmentation import segment_trajectory
 from predicators.nsrt_learning.strips_learning import learn_strips_operators
 from predicators.planning import PlanningFailure, PlanningTimeout, task_plan, \
@@ -120,57 +123,80 @@ class _PredicateSearchScoreFunction(abc.ABC):
 
 @dataclass(frozen=True, eq=False, repr=False)
 class _OperatorBeliefScoreFunction(abc.ABC):
-    """A score function for guiding search over predicate **sets**."""
+    """Score effect predicates and their action-effect (AE) matrix by learning
+    operators from the matrix and estimating the planning effort on the
+    demonstrations (lower is better)."""
     _atom_dataset: List[GroundAtomTrajectory]  # data with all candidates
     _train_tasks: List[Task]  # all of the train tasks
-    _row_names: List[ParameterizedOption] # all of the option names
-    metric_name: str # num_nodes_created or num_nodes_expanded
+    _row_names: List[ParameterizedOption]  # all of the option names
+    metric_name: str  # num_nodes_created or num_nodes_expanded
 
-    def evaluate(self, candidate_ae_matrix: np.ndarray, \
-                candidate_predicates: List[Predicate], \
-                predicates_ent_idx: List[List[int]], \
-                strips_learner: str) -> float:
-        total_cost = len(candidate_predicates)
+    def evaluate(
+            self,
+            candidate_ae_matrix: torch.Tensor,
+            candidate_predicates: List[Predicate],
+            predicates_ent_idx: List[List[int]],
+            strips_learner: str,
+            operator_predicates: Optional[Collection[Predicate]] = None,
+            atoms_closure: Optional[hooks.AtomsClosure] = None) -> float:
+        """Get the score of the candidate predicates.
+
+        The first len(predicates_ent_idx) candidate predicates are the
+        effect predicates, one per column of candidate_ae_matrix; the
+        remaining ones can only appear in preconditions.
+
+        If operator_predicates is given, only the effect predicates in it
+        become operator effects (for example, only the basic predicates
+        when the others are derived from them); all candidate predicates
+        can still appear in preconditions. If atoms_closure is given, it is
+        installed as the atoms closure (see hooks.py) while planning with
+        the learned operators.
+        """
         logging.info(f"Evaluating predicates: {candidate_predicates}, with "
-                        f"total cost {total_cost}")
+                     f"total cost {len(candidate_predicates)}")
         assert candidate_ae_matrix.shape[0] == len(self._row_names)
-        # assert candidate_ae_matrix.shape[1] == len(candidate_predicates)
-        start_time = time.perf_counter()
         pruned_atom_data = utils.prune_ground_atom_dataset(
-            self._atom_dataset,
-            set(candidate_predicates))
+            self._atom_dataset, set(candidate_predicates))
         segmented_trajs = [
             segment_trajectory(ll_traj, set(candidate_predicates), atom_seq)
             for (ll_traj, atom_seq) in pruned_atom_data
         ]
         low_level_trajs = [ll_traj for ll_traj, _ in pruned_atom_data]
         del pruned_atom_data
+        effect_predicates = candidate_predicates[:len(predicates_ent_idx)]
+        learning_predicates = effect_predicates
+        learning_ent_idx = predicates_ent_idx
+        learning_ae_matrix = candidate_ae_matrix
+        learning_trajs = segmented_trajs
+        if operator_predicates is not None:
+            keep = [
+                i for i, pred in enumerate(effect_predicates)
+                if pred in operator_predicates
+            ]
+            learning_predicates = [effect_predicates[i] for i in keep]
+            learning_ent_idx = [predicates_ent_idx[i] for i in keep]
+            learning_ae_matrix = candidate_ae_matrix[:, keep]
+            frozen = set(effect_predicates) - set(learning_predicates)
+            learning_trajs = [[
+                _without_effects_on(segment, frozen) for segment in segments
+            ] for segments in segmented_trajs]
+        operator_belief = {
+            'row_names': self._row_names,
+            'col_names': learning_predicates,
+            'col_ent_idx': learning_ent_idx,
+            'ae_matrix': learning_ae_matrix
+        }
         try:
-            # delete the pre-condition only predicates now
-            candidate_predicates = candidate_predicates[:len(predicates_ent_idx)]
-            operator_belief = {
-                'row_names': self._row_names,
-                'col_names': candidate_predicates,
-                'col_ent_idx': predicates_ent_idx,
-                'ae_matrix': candidate_ae_matrix
-            }
-            if 'belief' in strips_learner:
-                pnads = learn_strips_operators(low_level_trajs,
-                                            self._train_tasks,
-                                            set(candidate_predicates),
-                                            segmented_trajs,
-                                            verify_harmlessness=False,
-                                            verbose=True,
-                                            annotations=None,
-                                            operator_belief=operator_belief)
-            else:
-                pnads = learn_strips_operators(low_level_trajs,
-                                            self._train_tasks,
-                                            set(candidate_predicates),
-                                            segmented_trajs,
-                                            verify_harmlessness=False,
-                                            verbose=True,
-                                            annotations=None)
+            pnads = learn_strips_operators(
+                low_level_trajs,
+                self._train_tasks,
+                set(learning_predicates),
+                learning_trajs,
+                verify_harmlessness=False,
+                verbose=True,
+                annotations=None,
+                operator_belief=operator_belief
+                if 'belief' in strips_learner else {})
         except TimeoutError:
             logging.info(
                 "Warning: Operator Learning timed out! Skipping evaluation.")
@@ -180,28 +206,31 @@ class _OperatorBeliefScoreFunction(abc.ABC):
         if len(pnads) == 0:
             logging.info("Warning: No operators learned! Skipping evaluation.")
             # larger than any possible score
-            op_score = CFG.neupi_aaai_expected_nodes_upper_bound * len(self._train_tasks) * 2
-            return op_score
+            return CFG.neupi_aaai_expected_nodes_upper_bound * \
+                len(self._train_tasks) * 2
         for pnad in pnads:
             logging.debug(
                 f"Operator {pnad.op.name} has {len(pnad.datastore)} datapoints."
             )
         strips_ops = [pnad.op for pnad in pnads]
         option_specs = [pnad.option_spec for pnad in pnads]
-        op_score = self.evaluate_with_operators(candidate_predicates,
+        closure_context = hooks.temporary_atoms_closure(atoms_closure) \
+            if atoms_closure is not None else contextlib.nullcontext()
+        with closure_context:
+            return self.evaluate_with_operators(effect_predicates,
                                                 low_level_trajs,
                                                 segmented_trajs, strips_ops,
                                                 option_specs)
-        
-        return op_score
 
     def evaluate_with_operators(self,
-                                candidate_predicates: FrozenSet[Predicate],
+                                candidate_predicates: Collection[Predicate],
                                 low_level_trajs: List[LowLevelTrajectory],
                                 segmented_trajs: List[List[Segment]],
                                 strips_ops: List[STRIPSOperator],
                                 option_specs: List[OptionSpec],
                                 max_traj_used: Optional[int] = -1) -> float:
+        """Get the expected planning effort of the operators on the
+        demonstrations."""
         assert self.metric_name in ("num_nodes_created", "num_nodes_expanded")
         score = 0.0
         seen_demos = 0
@@ -230,12 +259,12 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             try:
                 heuristic = utils.create_task_planning_heuristic(
                     CFG.sesame_task_planning_heuristic, init_atoms, goal,
-                    ground_nsrts, set(candidate_predicates),
-                    objects)
-            except:
-                # If the heuristic is not defined, we will skip this trajectory
-                # assuming the task can't be solved
+                    ground_nsrts, set(candidate_predicates), objects)
+            except Exception:  # pylint: disable=broad-except
+                # The heuristic cannot be built for these operators, so
+                # count this demonstration as unsolvable.
                 score += CFG.neupi_aaai_expected_nodes_upper_bound
+                continue
             # The expected time needed before a low-level plan is found. We
             # approximate this using node creations and by adding a penalty
             # for every skeleton after the first to account for backtracking.
@@ -258,7 +287,8 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                                   CFG.seed,
                                   CFG.grammar_search_task_planning_timeout,
                                   max_skeletons,
-                                  use_visited_state_set=False)
+                                  use_visited_state_set=False,
+                                  objects=objects)
             try:
                 for idx, (_, plan_atoms_sequence,
                           metrics) in enumerate(generator):
@@ -310,224 +340,22 @@ class _OperatorBeliefScoreFunction(abc.ABC):
         exponent = abs(demo_len - plan_len)
         p = CFG.grammar_search_expected_nodes_optimal_demo_prob
         return p * (1 - p)**exponent
-    
-@dataclass(frozen=True, eq=False, repr=False)
-class _BiSimBeliefScoreFunction(abc.ABC):
-    """A score function for guiding search over predicate **sets**."""
-    _initial_predicates: Set[Predicate]  # predicates given by the environment
-    _atom_dataset: List[GroundAtomTrajectory]  # data with all candidates
-    _train_tasks: List[Task]  # all of the train tasks
-    _row_names: List[ParameterizedOption] # all of the option names
-    metric_name: str # num_nodes_created or num_nodes_expanded
-    heuristic_names: Sequence[str] = field(default=("exact", ), init=False)
-    demos_only: bool = field(default=True)
-
-    def evaluate(self, candidate_ae_matrix: np.ndarray, \
-                candidate_predicates: List[Predicate], \
-                predicates_ent_idx: List[List[int]], \
-                strips_learner: str) -> float:
-        total_cost = len(candidate_predicates)
-        logging.info(f"Evaluating predicates: {candidate_predicates}, with "
-                        f"total cost {total_cost}")
-        assert candidate_ae_matrix.shape[0] == len(self._row_names)
-        # assert candidate_ae_matrix.shape[1] == len(candidate_predicates)
-        start_time = time.perf_counter()
-        pruned_atom_data = utils.prune_ground_atom_dataset(
-            self._atom_dataset,
-            set(candidate_predicates))
-        segmented_trajs = [
-            segment_trajectory(ll_traj, set(candidate_predicates), atom_seq)
-            for (ll_traj, atom_seq) in pruned_atom_data
-        ]
-        low_level_trajs = [ll_traj for ll_traj, _ in pruned_atom_data]
-        del pruned_atom_data
-        try:
-            # delete the pre-condition only predicates now
-            candidate_predicates = candidate_predicates[:len(predicates_ent_idx)]
-            operator_belief = {
-                'row_names': self._row_names,
-                'col_names': candidate_predicates,
-                'col_ent_idx': predicates_ent_idx,
-                'ae_matrix': candidate_ae_matrix
-            }
-            if 'belief' in strips_learner:
-                pnads = learn_strips_operators(low_level_trajs,
-                                            self._train_tasks,
-                                            set(candidate_predicates),
-                                            segmented_trajs,
-                                            verify_harmlessness=False,
-                                            verbose=True,
-                                            annotations=None,
-                                            operator_belief=operator_belief)
-            else:
-                pnads = learn_strips_operators(low_level_trajs,
-                                            self._train_tasks,
-                                            set(candidate_predicates),
-                                            segmented_trajs,
-                                            verify_harmlessness=False,
-                                            verbose=True,
-                                            annotations=None)
-        except TimeoutError:
-            logging.info(
-                "Warning: Operator Learning timed out! Skipping evaluation.")
-            return float('inf')
-        logging.debug(
-            f"Learned {len(pnads)} operators for this predicate-matrix set.")
-        if len(pnads) == 0:
-            logging.info("Warning: No operators learned! Skipping evaluation.")
-            # larger than any possible score
-            op_score = CFG.neupi_aaai_expected_nodes_upper_bound * len(self._train_tasks) * 2
-            return op_score
-        for pnad in pnads:
-            logging.debug(
-                f"Operator {pnad.op.name} has {len(pnad.datastore)} datapoints."
-            )
-        strips_ops = [pnad.op for pnad in pnads]
-        option_specs = [pnad.option_spec for pnad in pnads]
-        op_score = self.evaluate_with_operators(candidate_predicates,
-                                                low_level_trajs,
-                                                segmented_trajs, strips_ops,
-                                                option_specs)
-        
-        return op_score
-
-    def evaluate_with_operators(self,
-                                candidate_predicates: FrozenSet[Predicate],
-                                low_level_trajs: List[LowLevelTrajectory],
-                                segmented_trajs: List[List[Segment]],
-                                strips_ops: List[STRIPSOperator],
-                                option_specs: List[OptionSpec]) -> float:
-        # Lower scores are better.
-        scores = {name: 0.0 for name in self.heuristic_names}
-        seen_demos = 0
-        seen_nondemos = 0
-        max_demos = CFG.grammar_search_max_demos
-        max_nondemos = CFG.grammar_search_max_nondemos
-        assert len(low_level_trajs) == len(segmented_trajs)
-        demo_atom_sets = {
-            frozenset(a)
-            for ll_traj, seg_traj in zip(low_level_trajs, segmented_trajs)
-            if ll_traj.is_demo
-            for a in utils.segment_trajectory_to_atoms_sequence(seg_traj)
-        }
-        for ll_traj, seg_traj in zip(low_level_trajs, segmented_trajs):
-            # Skip this trajectory if it's not a demo and we don't want demos.
-            if self.demos_only and not ll_traj.is_demo:
-                continue
-            # Skip this trajectory if we've exceeded a budget.
-            if (ll_traj.is_demo and seen_demos == max_demos) or (
-                    not ll_traj.is_demo and seen_nondemos == max_nondemos):
-                continue
-            if ll_traj.is_demo:
-                seen_demos += 1
-            else:
-                seen_nondemos += 1
-            atoms_sequence = utils.segment_trajectory_to_atoms_sequence(
-                seg_traj)
-            init_atoms = atoms_sequence[0]
-            objects = set(ll_traj.states[0])
-            goal = self._train_tasks[ll_traj.train_task_idx].goal
-            ground_ops = {
-                op
-                for strips_op in strips_ops
-                for op in utils.all_ground_operators(strips_op, objects)
-            }
-            for heuristic_name in self.heuristic_names:
-                heuristic_fn = self._generate_heuristic(
-                    heuristic_name, init_atoms, objects, goal, strips_ops,
-                    option_specs, ground_ops, candidate_predicates)
-                scores[heuristic_name] += self._evaluate_atom_trajectory(
-                    atoms_sequence, heuristic_fn, ground_ops, demo_atom_sets,
-                    ll_traj.is_demo)
-        score = min(scores.values())
-        return CFG.grammar_search_heuristic_based_weight * score
-
-    def _generate_heuristic(
-        self,
-        heuristic_name: str,
-        init_atoms: Set[GroundAtom],
-        objects: Set[Object],
-        goal: Set[GroundAtom],
-        strips_ops: Sequence[STRIPSOperator],
-        option_specs: Sequence[OptionSpec],
-        ground_ops: Set[_GroundSTRIPSOperator],
-        candidate_predicates: Collection[Predicate],
-    ) -> Callable[[Set[GroundAtom]], float]:
-        cache: Dict[FrozenSet[GroundAtom], float] = {}
-
-        assert heuristic_name == "exact"
-
-        # It's important for efficiency that we only ground once, and create
-        # the heuristic once, for every task.
-        dummy_nsrts = utils.ops_and_specs_to_dummy_nsrts(
-            strips_ops, option_specs)
-        ground_nsrts, reachable_atoms = task_plan_grounding(
-            init_atoms, objects, dummy_nsrts)
-        heuristic = utils.create_task_planning_heuristic(
-            CFG.sesame_task_planning_heuristic, init_atoms, goal, ground_nsrts,
-            set(candidate_predicates) | self._initial_predicates, objects)
-
-        def _task_planning_h(atoms: Set[GroundAtom]) -> float:
-            """Run task planning and return the length of the skeleton, or inf
-            if no skeleton is found."""
-            if frozenset(atoms) in cache:
-                return cache[frozenset(atoms)]
-            try:
-                skeleton, atoms_sequence, _ = next(
-                    task_plan(atoms,
-                              goal,
-                              ground_nsrts,
-                              reachable_atoms,
-                              heuristic,
-                              CFG.seed,
-                              CFG.grammar_search_task_planning_timeout,
-                              max_skeletons_optimized=1))
-            except (PlanningFailure, PlanningTimeout):
-                return float("inf")
-            assert atoms_sequence[0] == atoms
-            for i, actual_atoms in enumerate(atoms_sequence):
-                cache[frozenset(actual_atoms)] = float(len(skeleton) - i)
-            return cache[frozenset(atoms)]
-
-        return _task_planning_h
 
 
-    def _evaluate_atom_trajectory(self, atoms_sequence: List[Set[GroundAtom]],
-                                  heuristic_fn: Callable[[Set[GroundAtom]],
-                                                         float],
-                                  ground_ops: Set[_GroundSTRIPSOperator],
-                                  demo_atom_sets: Set[FrozenSet[GroundAtom]],
-                                  is_demo: bool) -> float:
-        assert is_demo
-        score = 0.0
-        for i in range(len(atoms_sequence) - 1):
-            atoms, next_atoms = atoms_sequence[i], atoms_sequence[i + 1]
-            ground_op_demo_lpm = -np.inf  # total log prob mass for demo actions
-            ground_op_total_lpm = -np.inf  # total log prob mass for all actions
-            for predicted_next_atoms in utils.get_successors_from_ground_ops(
-                    atoms, ground_ops, unique=False):
-                # Compute the heuristic for the successor atoms.
-                h = heuristic_fn(predicted_next_atoms)
-                # Compute the probability that the correct next atoms would be
-                # output under an energy-based policy.
-                k = CFG.grammar_search_energy_based_temperature
-                log_p = -k * h
-                ground_op_total_lpm = np.logaddexp(log_p, ground_op_total_lpm)
-                # Check whether the successor atoms match the demonstration.
-                if predicted_next_atoms == next_atoms:
-                    ground_op_demo_lpm = np.logaddexp(log_p,
-                                                      ground_op_demo_lpm)
-            # If there is a demonstration state that is a dead-end under the
-            # operators, immediately return a very bad score, because planning
-            # with these operators would never be able to recover the demo.
-            if ground_op_demo_lpm == -np.inf:
-                return float("inf")
-            # Accumulate the log probability of each (state, action) in this
-            # demonstrated trajectory.
-            trans_log_prob = ground_op_demo_lpm - ground_op_total_lpm
-            score += -trans_log_prob  # remember that lower is better
-        return score
-    
+def _without_effects_on(segment: Segment,
+                        predicates: Set[Predicate]) -> Segment:
+    """Return a copy of the segment in which the atoms of the given
+    predicates keep their initial values, so they are not effects."""
+    final_atoms = {
+        atom
+        for atom in segment.final_atoms if atom.predicate not in predicates
+    } | {
+        atom
+        for atom in segment.init_atoms if atom.predicate in predicates
+    }
+    return dataclasses.replace(segment, final_atoms=final_atoms)
+
+
 @dataclass(frozen=True, eq=False, repr=False)
 class _OperatorLearningBasedScoreFunction(_PredicateSearchScoreFunction):
     """A score function that learns operators given the set of predicates."""
@@ -685,7 +513,8 @@ class _TaskPlanningScoreFunction(_OperatorLearningBasedScoreFunction):
                               heuristic,
                               CFG.seed,
                               CFG.grammar_search_task_planning_timeout,
-                              max_skeletons_optimized=1))
+                              max_skeletons_optimized=1,
+                              objects=objects))
                 assert "num_nodes_expanded" in metrics
                 node_expansions = metrics["num_nodes_expanded"]
                 assert node_expansions < node_expansion_upper_bound
@@ -767,7 +596,8 @@ class _ExpectedNodesScoreFunction(_OperatorLearningBasedScoreFunction):
                                   CFG.seed,
                                   CFG.grammar_search_task_planning_timeout,
                                   max_skeletons,
-                                  use_visited_state_set=False)
+                                  use_visited_state_set=False,
+                                  objects=objects)
             try:
                 for idx, (_, plan_atoms_sequence,
                           metrics) in enumerate(generator):
@@ -1140,7 +970,8 @@ class _ExactHeuristicBasedScoreFunction(_HeuristicBasedScoreFunction):
                               heuristic,
                               CFG.seed,
                               CFG.grammar_search_task_planning_timeout,
-                              max_skeletons_optimized=1))
+                              max_skeletons_optimized=1,
+                              objects=objects))
             except (PlanningFailure, PlanningTimeout):
                 return float("inf")
             assert atoms_sequence[0] == atoms

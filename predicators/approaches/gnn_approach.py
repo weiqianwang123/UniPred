@@ -173,19 +173,10 @@ class GNNApproach(BaseApproach, Generic[_Output]):
             num_validation = max(1, int(len(inputs) * 0.1))
         else:
             num_validation = 0
-        if not CFG.neupi_bug:
-            train_inputs = graph_inputs[num_validation:]
-            train_targets = graph_targets[num_validation:]
-            val_inputs = graph_inputs[:num_validation]
-            val_targets = graph_targets[:num_validation]
-        else:
-            logging.info("Running in debug mode; Val will be the same as train.")
-            train_inputs = graph_inputs
-            train_targets = graph_targets
-            # random sample 10% of the data for validation
-            val_ids = np.random.choice(len(graph_inputs), num_validation, replace=False)
-            val_inputs = [graph_inputs[i] for i in val_ids]
-            val_targets = [graph_targets[i] for i in val_ids]
+        train_inputs = graph_inputs[num_validation:]
+        train_targets = graph_targets[num_validation:]
+        val_inputs = graph_inputs[:num_validation]
+        val_targets = graph_targets[:num_validation]
         train_dataset = GraphDictDataset(train_inputs, train_targets)
         val_dataset = GraphDictDataset(val_inputs, val_targets)
         ## Set up Adam optimizer and dataloaders.

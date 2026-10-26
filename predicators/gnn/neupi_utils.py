@@ -6,7 +6,6 @@ import collections
 import logging
 import time
 import itertools
-from tqdm import tqdm
 from itertools import combinations
 from typing import Any, Callable, Dict, List, Optional, OrderedDict, Tuple, Set
 
@@ -129,28 +128,6 @@ def select_columns(matrix, provided_matrix, k):
         # Yield the matrix formed by selecting k columns and the column indices
         combined_matrix = torch.cat([provided_matrix, matrix[:, combo]], dim=1)
         yield combined_matrix, combo
-
-def check_neupi_all_ae_vectors(model_paths: List[str]) -> None:
-    """Check if all the autoencoder models have the same number of vectors."""
-    ae_vectors = []
-    ae_guidance = []
-    for model_path in tqdm(model_paths):
-        vec_path = model_path.replace('model', 'ae_vector')
-        guidance_path = model_path.replace('model', 'guidance')
-        ae_vec = torch.load(vec_path)
-        ae_guid = torch.load(guidance_path)
-        ae_vectors.append(ae_vec.clone())
-        ae_guidance.append(ae_guid.clone())
-    tgt_vect = torch.zeros_like(ae_vectors[0])
-    tgt_vect[1, 1] = 1
-    tgt_vect[2, 0] = 1
-    for i in range(len(ae_vectors)):
-        if torch.equal(ae_vectors[i], tgt_vect):
-            logging.info(f"Model {i} has the same vector as the target vector:")
-            logging.info(f"Add: {ae_vectors[i][:,0]}")
-            logging.info(f"Delete: {ae_vectors[i][:,1]}")
-            logging.info(f"Guidance: {ae_guidance[i]}")
-    return
 
 def get_single_neupi_prediction(model: Any,
                                 single_input: Dict,

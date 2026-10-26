@@ -5,8 +5,16 @@ Anything that varies between runs should be a command-line arg
 """
 
 from collections import defaultdict
-from types import SimpleNamespace
-from typing import Any, Dict, Set
+from types import FunctionType, SimpleNamespace
+from typing import Any, Callable, Dict, List, Set
+
+from predicators.args import create_arg_parser
+
+# Functions registered by extensions that return extra arg-specific settings.
+_ARG_SPECIFIC_SETTINGS_FNS: List[Callable[[Dict[str, Any]], Dict[str,
+                                                                   Any]]] = []
+# Settings classes registered by extensions.
+_REGISTERED_SETTINGS_CLASSES: List[type] = []
 
 
 class GlobalSettings:
@@ -318,7 +326,7 @@ class GlobalSettings:
         """A workaround for global settings that are derived from the
         experiment-specific args."""
 
-        return dict(
+        settings = dict(
             # The method used for perception.
             perceiver="trivial",
             # When checking if a policy solves a task, we run the policy for at
@@ -363,6 +371,9 @@ class GlobalSettings:
             # the two objects are "touching".
             grammar_search_euclidean_const_multiplier=1e-6,
         )
+        for settings_fn in _ARG_SPECIFIC_SETTINGS_FNS:
+            settings.update(settings_fn(args))
+        return settings
 
 
 def get_allowed_query_type_names() -> Set[str]:
@@ -378,6 +389,55 @@ def get_allowed_query_type_names() -> Set[str]:
             "_MockQuery",
         }
     return set()
+
+
+def register_settings(settings_cls: type) -> None:
+    """Add the public attributes of settings_cls as new global settings.
+
+    Extensions of predicators define their settings in a class with the
+    same layout as GlobalSettings and register it once at import time.
+    The new names are then accepted as command line flags by
+    utils.parse_args() and restored to their defaults by
+    utils.reset_config(), exactly like the built-in settings.
+    Registering a name that is already a setting or a command line arg
+    raises a ValueError. Registering the same class twice is a no-op.
+    """
+    if settings_cls in _REGISTERED_SETTINGS_CLASSES:
+        return
+    new_settings = {
+        name: value
+        for name, value in vars(settings_cls).items()
+        if not name.startswith("_") and not isinstance(
+            value, (classmethod, staticmethod, FunctionType))
+    }
+    arg_names = {
+        action.dest
+        for action in create_arg_parser(env_required=False,
+                                        approach_required=False,
+                                        seed_required=False)._actions  # pylint: disable=protected-access
+    }
+    for name in new_settings:
+        if hasattr(GlobalSettings, name) or name in arg_names or \
+                hasattr(CFG, name):
+            raise ValueError(f"Cannot register setting {name} of "
+                             f"{settings_cls.__name__}: the name is taken.")
+    for name, value in new_settings.items():
+        setattr(GlobalSettings, name, value)
+        setattr(CFG, name, value)
+    _REGISTERED_SETTINGS_CLASSES.append(settings_cls)
+
+
+def register_arg_specific_settings(
+        settings_fn: Callable[[Dict[str, Any]], Dict[str, Any]]) -> None:
+    """Register a function that maps the parsed args to extra arg-specific
+    settings (for example, defaults that depend on the env).
+
+    Its output is merged into GlobalSettings.get_arg_specific_settings(),
+    after the built-in values, so it can override them. Values passed on
+    the command line still take precedence.
+    """
+    if settings_fn not in _ARG_SPECIFIC_SETTINGS_FNS:
+        _ARG_SPECIFIC_SETTINGS_FNS.append(settings_fn)
 
 
 _attr_to_value = {}

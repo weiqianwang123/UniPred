@@ -148,7 +148,8 @@ class NSRTLearningApproach(BilevelPlanningApproach):
                                             heuristic,
                                             CFG.seed,
                                             timeout=10000000,
-                                            max_skeletons_optimized=10000000):
+                                            max_skeletons_optimized=10000000,
+                                            objects=objects):
                 # Here, we are assuming that task_plan() generates skeletons
                 # of increasing length. If the demonstration length is
                 # exceeded, we can break.

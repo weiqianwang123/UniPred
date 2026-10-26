@@ -297,8 +297,9 @@ def _create_neural_sampler(variables: Sequence[Variable],
     hid_sizes=CFG.mlp_classifier_hid_sizes,
     n_reinitialize_tries=CFG.sampler_mlp_classifier_n_reinitialize_tries,
     weight_init="default")
-    classifier_weights = torch.load(cls_weights)
-    classifier_info = torch.load(cls_info)
+    classifier_weights = torch.load(cls_weights, map_location="cpu")
+    # The info dicts hold numpy arrays, written by _learn_neural_sampler().
+    classifier_info = torch.load(cls_info, weights_only=False)
     x_dims = classifier_info['x_dims']
     input_shift = classifier_info['input_shift']
     input_scale = classifier_info['input_scale']
@@ -327,8 +328,8 @@ def _create_neural_sampler(variables: Sequence[Variable],
             use_torch_gpu=CFG.use_torch_gpu,
             train_print_every=CFG.pytorch_train_print_every)
         
-    regressor_weights = torch.load(reg_weights)
-    regressor_info = torch.load(reg_info)
+    regressor_weights = torch.load(reg_weights, map_location="cpu")
+    regressor_info = torch.load(reg_info, weights_only=False)
     x_dims = regressor_info['x_dims']
     y_dim = regressor_info['y_dim']
     input_shift = regressor_info['input_shift']

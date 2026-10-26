@@ -3039,10 +3039,18 @@ def _atoms_to_pyperplan_facts(
 ############################## End Pyperplan Glue ##############################
 
 
-def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
-                       predicates: Collection[Predicate],
-                       types: Collection[Type], domain_name: str) -> str:
-    """Create a PDDL domain str from STRIPSOperators or NSRTs."""
+def create_pddl_domain(
+        operators: Collection[NSRTOrSTRIPSOperator],
+        predicates: Collection[Predicate],
+        types: Collection[Type],
+        domain_name: str,
+        derived_predicates: Collection[Predicate] = frozenset()
+) -> str:
+    """Create a PDDL domain str from STRIPSOperators or NSRTs.
+
+    Atoms of derived predicates (see BaseEnv.derived_predicates) are
+    left out of the operator effects.
+    """
     # Sort everything to ensure determinism.
     preds_lst = sorted(predicates)
     # Case 1: no type hierarchy.
@@ -3073,9 +3081,22 @@ def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
             else:
                 child_type_str = " ".join(t.name for t in child_types)
                 types_str += f"\n    {child_type_str} - {parent_type.name}"
-    ops_lst = sorted(operators)
+    strips_ops = [
+        op if isinstance(op, STRIPSOperator) else op.op
+        for op in sorted(operators)
+    ]
+    if derived_predicates:
+
+        def _basic(atoms: Set[LiftedAtom]) -> Set[LiftedAtom]:
+            return {a for a in atoms if a.predicate not in derived_predicates}
+
+        strips_ops = [
+            op.copy_with(add_effects=_basic(op.add_effects),
+                         delete_effects=_basic(op.delete_effects))
+            for op in strips_ops
+        ]
     preds_str = "\n    ".join(pred.pddl_str() for pred in preds_lst)
-    ops_strs = "\n\n  ".join(op.pddl_str() for op in ops_lst)
+    ops_strs = "\n\n  ".join(op.pddl_str() for op in strips_ops)
     return f"""(define (domain {domain_name})
   (:requirements :typing)
   (:types {types_str})
@@ -3566,8 +3587,13 @@ def null_sampler(state: State, goal: Set[GroundAtom], rng: np.random.Generator,
 
 @functools.lru_cache(maxsize=None)
 def get_git_commit_hash() -> str:
-    """Return the hash of the current git commit."""
-    out = subprocess.check_output(["git", "rev-parse", "HEAD"])
+    """Return the hash of the current git commit, or "unknown" outside of a
+    git repository."""
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                      stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
     return out.decode("ascii").strip()
 
 

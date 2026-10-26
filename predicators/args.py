@@ -37,7 +37,6 @@ def create_arg_parser(env_required: bool = True,
     # normally (without loading) from there.
     parser.add_argument("--restart_learning", action="store_true")
     parser.add_argument("--load_data", action="store_true")
-    parser.add_argument("--neupi_bug", action="store_true")
     parser.add_argument("--load_atoms", action="store_true")
     parser.add_argument("--save_atoms", action="store_true")
     parser.add_argument("--skip_until_cycle", default=-1, type=int)

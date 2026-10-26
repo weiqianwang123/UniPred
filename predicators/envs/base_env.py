@@ -89,6 +89,19 @@ class BaseEnv(abc.ABC):
         return self.goal_predicates
 
     @property
+    def derived_predicates(self) -> Set[Predicate]:
+        """Get the subset of self.predicates whose truth values are derived
+        from other predicates.
+
+        No operator changes a derived predicate directly. When planning
+        with them, install an atoms closure (see predicators/hooks.py)
+        that recomputes them, and pass them to utils.create_pddl_domain()
+        so that they are not written as operator effects. By default, an
+        environment has no derived predicates.
+        """
+        return set()
+
+    @property
     @abc.abstractmethod
     def types(self) -> Set[Type]:
         """Get the set of types that are given with this environment."""
