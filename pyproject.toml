@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "predicators"
+version = "0.1.0"
+description = "Bilevel planning and predicate learning (IVNTR) library used by UniPred."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24,<2",
+    "gym==0.23.1",
+    "torch>=2.1",
+    "scipy",
+    "scikit-learn",
+    "matplotlib",
+    "dill>=0.3.8",
+    "cloudpickle",
+    "pathos",
+    "tqdm",
+    "pyyaml",
+    "tabulate",
+    "natsort",
+    "pyperplan==2.1",
+    "imageio>=2.22,<3",
+    "imageio-ffmpeg",
+    "opencv-python>=4.5,<4.12",
+    "pillow",
+    "z3-solver>=4.12",
+]
+
+[project.optional-dependencies]
+wandb = ["wandb"]
+develop = ["pytest", "pylint", "mypy", "types-PyYAML", "yapf", "isort"]
+
+[tool.setuptools.packages.find]
+include = ["predicators", "predicators.*"]
+
+[tool.setuptools.package-data]
+predicators = ["config/*/*.yaml"]
