@@ -5,6 +5,8 @@ that can be overridden on the command line (``--llm_model gpt-4o``) or in
 an experiment config (see unipred/config.py).
 """
 
+import os
+
 from predicators.settings import register_settings
 
 
@@ -49,6 +51,22 @@ class UniPredSettings:
     unipred_semantic_names = True
     # Stage 4: derived-aware predicate selection (Algorithm 1).
     unipred_derived_selection = False
+    # Perception (unipred/perception): the directory that scripts/install.sh
+    # downloads the weights into (default: $UNIPRED_WEIGHTS_DIR), and the
+    # encoder of object crops ("dinov3", "resnet18", "fake" for tests, or
+    # "auto": DINOv3 if installed, else ResNet-18).
+    perception_weights_dir = os.environ.get("UNIPRED_WEIGHTS_DIR", "")
+    perception_encoder = "auto"
+
+    # Packing: numbers of boxes and of large and small items in train and
+    # out-of-distribution test tasks.
+    packing_num_boxes_train = 2
+    packing_num_large_train = 1
+    packing_num_small_train = 2
+    packing_num_boxes_test = 3
+    packing_num_large_test = 2
+    packing_num_small_test = 2
+
     # Table Clean Sim: number of toys in train and out-of-distribution test
     # tasks.
     table_clean_sim_num_toys_train = 2

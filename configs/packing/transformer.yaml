@@ -1,0 +1,3 @@
+# Transformer baseline (Table II): like gnn.yaml with a transformer policy.
+include: gnn.yaml
+approach: transformer_nsrt_policy

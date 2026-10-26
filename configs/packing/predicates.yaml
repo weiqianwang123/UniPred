@@ -1,0 +1,42 @@
+# What UniPred knows and learns about Packing (passed as
+# --neupi_pred_config; see configs/satellites/predicates.yaml for the
+# format).
+
+description: >-
+  A robot packs items into boxes. Each box is split by a movable divider
+  into a left and a right region, and each region holds at most one item.
+  Items are small or large. A small item fits any region; a large item only
+  fits a region that was made wide by shifting the divider of its box, which
+  is only possible while both regions of the box are empty. The robot holds
+  at most one item at a time and has one placing skill for small items and
+  one for large items.
+
+known_predicates:
+  - {name: Packed, effects: {PlaceSmall: add, PlaceLarge: add}}
+  - {name: IsSmall, precondition_of: [PlaceSmall]}
+  - {name: IsLarge, precondition_of: [PlaceLarge]}
+  - {name: SameBox, precondition_of: [Shift]}
+
+static_predicates: [IsSmall, IsLarge, SameBox]
+
+defaults:
+  architecture: {type: MLP, layer_size: 128, initializer: xavier}
+  optimizer: {type: AdamW, kwargs: {lr: 0.001}}
+  lr_scheduler: {type: StepLR, kwargs: {step_size: 50, gamma: 0.2}}
+  batch_size: 512
+  epochs: 100
+  gumbel_temp: 0.7
+  val_freq: 10
+  guidance_thresh: 0.05
+  loss_thresh: 0.005
+  num_iter: 10
+  batch_vect_num: 4
+  matrix_vec_try: 20
+  max_num_vectors: 1
+
+predicate_types:
+  - {name: neural_u_robot, types: [robot], ent_idx: [0]}
+  - {name: neural_u_item, types: [item], ent_idx: [0]}
+  - {name: neural_u_region, types: [region], ent_idx: [0]}
+  - {name: neural_b_robot_item, types: [robot, item], ent_idx: [0, 0]}
+  - {name: neural_b_item_region, types: [item, region], ent_idx: [0, 0]}

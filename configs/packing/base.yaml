@@ -1,0 +1,19 @@
+# Packing: put every item into a box, shifting dividers so the items fit.
+# Train with two boxes and three items (one large), test with three boxes
+# and four items (two large).
+# Region widths, region contents and item sizes are only visible in the
+# image crop features, from which the hidden predicates must be invented;
+# Free is derived (ForAll ?item. Not In(?item, ?region)). Centered only
+# guards the ground-truth Shift operator.
+env: packing
+excluded_predicates: HandEmpty,Holding,OnTable,In,Wide,Centered,Free
+num_train_tasks: 50
+num_test_tasks: 50
+timeout: 10
+# The simulator's hidden scene is part of the state (see envs/packing.py).
+allow_state_allclose_comparison_despite_simulator_state: true
+# The atoms closure of the derived predicates needs A*. Items and regions
+# are interchangeable, so A* skips atom sets it has already reached.
+sesame_task_planner: astar
+sesame_use_visited_state_set: true
+execution_monitor: expected_atoms
