@@ -1,0 +1,8 @@
+# GNN baseline (Table II): a relational policy trained by behavior cloning
+# to choose options and their objects; the ground-truth samplers give the
+# continuous parameters, and test tasks are solved by shooting.
+include: base.yaml
+approach: gnn_nsrt_policy
+gnn_layer_size: 128
+gnn_batch_size: 512
+gnn_option_policy_solve_with_shooting: true
