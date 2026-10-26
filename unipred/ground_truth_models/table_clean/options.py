@@ -1,10 +1,17 @@
 """Ground-truth options of Table Clean, shared by the simulated and the real
-domain (the real robot runs its own skills with the same names)."""
+domain.
 
-from typing import Dict, Sequence, Set
+In the simulated domain, each option applies one primitive of
+TableCleanSimEnv at the pose of one of its object arguments. The real
+domain has the same option names and types; a robot executes them through
+its own skills (see examples/real_robot), so their policies are not run
+there.
+"""
+
+from typing import Callable, Dict, Sequence, Set
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.ground_truth_models import GroundTruthOptionFactory
@@ -13,14 +20,14 @@ from predicators.structs import Action, Array, Object, ParameterizedOption, \
 from unipred.envs.table_clean_sim import PICK, PLACE, PULL_IN, PUSH_OUT, \
     WIPE, TableCleanSimEnv
 
-_ENV = TableCleanSimEnv
+_Policy = Callable[[State, Dict, Sequence[Object], Array], Action]
 
 
 def _act(primitive: int, x: float, y: float) -> Action:
     return Action(np.array([primitive, x, y], dtype=np.float32))
 
 
-def _at(primitive: int, index: int):
+def _at(primitive: int, index: int) -> _Policy:
     """A policy that applies the primitive at the pose of an argument."""
 
     def _policy(state: State, memory: Dict, objects: Sequence[Object],
@@ -38,20 +45,10 @@ def _place_in_box(state: State, memory: Dict, objects: Sequence[Object],
     choose the spot inside the box."""
     del memory  # unused
     box = objects[2]
-    offset = 0.7 * _ENV.box_half_size * np.clip(params, -1, 1)
+    offset = 0.7 * TableCleanSimEnv.box_half_size * np.clip(params, -1, 1)
     return _act(PLACE,
                 state.get(box, "x") + offset[0],
                 state.get(box, "y") + offset[1])
-
-
-def _place_on_table(state: State, memory: Dict, objects: Sequence[Object],
-                    params: Array) -> Action:
-    """Place the held object on the free part of the table; params in
-    [0, 1]^2 choose the spot."""
-    del state, memory, objects  # unused
-    (x0, x1), (y0, y1) = _ENV.free_x, _ENV.free_y
-    u, v = np.clip(params, 0, 1)
-    return _act(PLACE, x0 + u * (x1 - x0), y0 + v * (y1 - y0))
 
 
 class TableCleanGroundTruthOptionFactory(GroundTruthOptionFactory):
@@ -68,31 +65,25 @@ class TableCleanGroundTruthOptionFactory(GroundTruthOptionFactory):
         robot, toy, wiper = types["robot"], types["toy"], types["wiper"]
         box, table = types["box"], types["table"]
         offset_space = Box(-1, 1, (2, ))
-        spot_space = Box(0, 1, (2, ))
+        option = utils.SingletonParameterizedOption
         return {
-            utils.SingletonParameterizedOption(
-                "PickToyFromTable", _at(PICK, 1), types=[robot, toy, table]),
-            utils.SingletonParameterizedOption("PlaceToyInBox",
-                                               _place_in_box,
-                                               types=[robot, toy, box],
-                                               params_space=offset_space),
-            utils.SingletonParameterizedOption(
-                "PickWiperFromBox", _at(PICK, 1),
-                types=[robot, wiper, box, table]),
-            utils.SingletonParameterizedOption(
-                "PickWiperFromTable", _at(PICK, 1),
-                types=[robot, wiper, table]),
-            utils.SingletonParameterizedOption("PlaceWiperOnTable",
-                                               _place_on_table,
-                                               types=[robot, wiper, table],
-                                               params_space=spot_space),
-            utils.SingletonParameterizedOption(
-                "PlaceWiperInBox", _place_in_box,
-                types=[robot, wiper, box, table], params_space=offset_space),
-            utils.SingletonParameterizedOption(
-                "PushBoxOut", _at(PUSH_OUT, 1), types=[robot, box, table]),
-            utils.SingletonParameterizedOption(
-                "PullBoxIn", _at(PULL_IN, 1), types=[robot, box, table]),
-            utils.SingletonParameterizedOption(
-                "WipeTable", _at(WIPE, 2), types=[robot, wiper, table, box]),
+            option("PickToyFromTable",
+                   _at(PICK, 1),
+                   types=[robot, toy, table]),
+            option("PlaceToyInBox",
+                   _place_in_box,
+                   types=[robot, toy, box],
+                   params_space=offset_space),
+            option("PickWiperFromBox",
+                   _at(PICK, 1),
+                   types=[robot, wiper, box]),
+            option("PlaceWiperInBox",
+                   _place_in_box,
+                   types=[robot, wiper, box],
+                   params_space=offset_space),
+            option("PushBoxOut", _at(PUSH_OUT, 1), types=[robot, box]),
+            option("PullBoxIn", _at(PULL_IN, 1), types=[robot, box]),
+            option("WipeTable",
+                   _at(WIPE, 2),
+                   types=[robot, wiper, table, box]),
         }

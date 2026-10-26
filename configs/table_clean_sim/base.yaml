@@ -1,9 +1,10 @@
-# Table Clean Sim: put every toy into the box and wipe the table. Train with
-# two toys from a standard start, test with three toys and unseen starts.
-# The excluded predicates are hidden and must be invented; NoToyOnTable is
-# derived (ForAll ?toy. Not ToyOnTable(?toy, ?table)).
+# Table Clean Sim: put every toy into the box, wipe the table and put the
+# wiper back. Train with two toys from the standard start, test with three
+# toys and unseen starts. The excluded predicates are hidden and must be
+# invented; NoToyOnTable is derived (ForAll ?toy. Not ToyOnTable(?toy,
+# ?table)).
 env: table_clean_sim
-excluded_predicates: HoldingToy,ToyOnTable,WiperOnTable,WiperInBox,BoxNear,BoxFar,NoToyOnTable
+excluded_predicates: HandEmpty,HoldingToy,HoldingWiper,ToyOnTable,BoxNear,BoxFar,NoToyOnTable
 num_train_tasks: 50
 num_test_tasks: 50
 timeout: 10

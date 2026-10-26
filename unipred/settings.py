@@ -49,10 +49,10 @@ class UniPredSettings:
     unipred_semantic_names = True
     # Stage 4: derived-aware predicate selection (Algorithm 1).
     unipred_derived_selection = False
-    # Table Clean: number of toys in train and out-of-distribution test
+    # Table Clean Sim: number of toys in train and out-of-distribution test
     # tasks.
-    table_clean_num_toys_train = 2
-    table_clean_num_toys_test = 3
+    table_clean_sim_num_toys_train = 2
+    table_clean_sim_num_toys_test = 3
 
     # Validation loss that maps to score 0 in the LLM feedback; the
     # acceptance threshold (loss_thresh of the predicate config) maps

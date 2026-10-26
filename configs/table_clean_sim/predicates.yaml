@@ -3,28 +3,18 @@
 # format).
 
 description: >-
-  A robot cleans a table: it puts every toy into a box and wipes the dirt
-  off the table with a towel (the wiper). It holds at most one object at a
-  time and pushes or pulls the box only with an empty hand. The box is on
-  the near side of the table or on the far side. Wiping is not possible
-  while a toy is on the table, because it would sweep the toy away, or
-  while the box is on the near side, because it is in the way. The towel
-  can only be taken from or put into the box while the box is on the near
-  side.
+  A robot cleans a table: it puts every toy into a box, wipes the dirt off
+  the table with a towel (the wiper) and puts the towel back into the box.
+  It holds at most one object at a time. The box is on the near side of the
+  table or on the far side. Wiping is not possible while a toy is on the
+  table, because it would sweep the toy away, or while the box is on the
+  near side, because it is in the way. The towel can only be taken from or
+  put into the box while the box is on the near side.
 
 known_predicates:
   - {name: ToyInBox, effects: {PlaceToyInBox: add}}
   - {name: TableClean, effects: {WipeTable: add}}
-  - name: HandEmpty
-    effects: {PickToyFromTable: del, PickWiperFromBox: del,
-              PickWiperFromTable: del, PlaceToyInBox: add,
-              PlaceWiperOnTable: add, PlaceWiperInBox: add}
-    precondition_of: [PickToyFromTable, PickWiperFromBox,
-                      PickWiperFromTable, PushBoxOut, PullBoxIn]
-  - name: HoldingWiper
-    effects: {PickWiperFromBox: add, PickWiperFromTable: add,
-              PlaceWiperOnTable: del, PlaceWiperInBox: del}
-    precondition_of: [PlaceWiperOnTable, PlaceWiperInBox, WipeTable]
+  - {name: WiperInBox, effects: {PickWiperFromBox: del, PlaceWiperInBox: add}}
 
 defaults:
   architecture: {type: MLP, layer_size: 128, initializer: xavier}
@@ -40,15 +30,10 @@ defaults:
   batch_vect_num: 4
   matrix_vec_try: 20
   max_num_vectors: 1
-  # Only the toy-table predicate has derived forms that matter (no toy on
-  # the table); skipping the others keeps the candidate pool small.
-  generate_derived: false
 
 predicate_types:
+  - {name: neural_u_robot, types: [robot], ent_idx: [0]}
+  - {name: neural_u_box, types: [box], ent_idx: [0], max_num_vectors: 2}
   - {name: neural_b_robot_toy, types: [robot, toy], ent_idx: [0, 0]}
-  - {name: neural_b_toy_table, types: [toy, table], ent_idx: [0, 0],
-     generate_derived: true}
-  - {name: neural_b_wiper_table, types: [wiper, table], ent_idx: [0, 0]}
-  - {name: neural_b_wiper_box, types: [wiper, box], ent_idx: [0, 0]}
-  - {name: neural_b_box_table, types: [box, table], ent_idx: [0, 0],
-     max_num_vectors: 2}
+  - {name: neural_b_robot_wiper, types: [robot, wiper], ent_idx: [0, 0]}
+  - {name: neural_b_toy_table, types: [toy, table], ent_idx: [0, 0]}

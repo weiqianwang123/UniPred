@@ -6,26 +6,25 @@ derived predicate ForAll ?toy. Not ToyOnTable(?toy, ?table), computed by
 the atoms closure of get_atoms_closure() while planning.
 """
 
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
 from predicators.ground_truth_models import GroundTruthNSRTFactory
 from predicators.hooks import AtomsClosure
-from predicators.structs import NSRT, LiftedAtom, ParameterizedOption, \
-    Predicate, Type, Variable
+from predicators.structs import NSRT, Array, GroundAtom, LiftedAtom, Object, \
+    ParameterizedOption, Predicate, State, Type, Variable
 from predicators.utils import null_sampler
 from unipred.derived.closure import make_closure
 from unipred.derived.rules import DerivedRule
 
 
-def _uniform_sampler(low: float, high: float):
-
-    def _sampler(state, goal, rng: np.random.Generator, objects):
-        del state, goal, objects  # unused
-        return rng.uniform(low, high, size=2).astype(np.float32)
-
-    return _sampler
+def _place_sampler(state: State, goal: Set[GroundAtom],
+                   rng: np.random.Generator,
+                   objects: Sequence[Object]) -> Array:
+    """A spot inside the box (see _place_in_box in options.py)."""
+    del state, goal, objects  # unused
+    return rng.uniform(-1, 1, size=2).astype(np.float32)
 
 
 class TableCleanGroundTruthNSRTFactory(GroundTruthNSRTFactory):
@@ -59,22 +58,28 @@ class TableCleanGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         box = Variable("?box", types["box"])
         table = Variable("?table", types["table"])
 
-        def _atoms(*specs):
+        def _atoms(specs: Sequence[Tuple]) -> Set[LiftedAtom]:
             return {
                 LiftedAtom(predicates[name], list(args))
                 for name, *args in specs
             }
 
-        def _nsrt(name, parameters, pre, add, delete, sampler=null_sampler):
-            return NSRT(name, parameters, _atoms(*pre), _atoms(*add),
-                        _atoms(*delete), set(), options[name], parameters,
-                        sampler)
+        def _nsrt(name: str,
+                  parameters: Sequence[Variable],
+                  pre: Sequence[Tuple],
+                  add: Sequence[Tuple],
+                  delete: Sequence[Tuple] = (),
+                  sampler=null_sampler) -> NSRT:
+            return NSRT(name, list(parameters), _atoms(pre), _atoms(add),
+                        _atoms(delete), set(), options[name],
+                        list(parameters), sampler)
 
         hand_empty = ("HandEmpty", robot)
         holding_toy = ("HoldingToy", robot, toy)
         holding_wiper = ("HoldingWiper", robot, wiper)
-        box_near = ("BoxNear", box, table)
-        box_far = ("BoxFar", box, table)
+        wiper_in_box = ("WiperInBox", wiper, box)
+        box_near = ("BoxNear", box)
+        box_far = ("BoxFar", box)
         return {
             _nsrt("PickToyFromTable", [robot, toy, table],
                   pre=[hand_empty, ("ToyOnTable", toy, table)],
@@ -84,35 +89,25 @@ class TableCleanGroundTruthNSRTFactory(GroundTruthNSRTFactory):
                   pre=[holding_toy],
                   add=[("ToyInBox", toy, box), hand_empty],
                   delete=[holding_toy],
-                  sampler=_uniform_sampler(-1, 1)),
-            _nsrt("PickWiperFromBox", [robot, wiper, box, table],
-                  pre=[hand_empty, ("WiperInBox", wiper, box), box_near],
+                  sampler=_place_sampler),
+            _nsrt("PickWiperFromBox", [robot, wiper, box],
+                  pre=[hand_empty, wiper_in_box, box_near],
                   add=[holding_wiper],
-                  delete=[hand_empty, ("WiperInBox", wiper, box)]),
-            _nsrt("PickWiperFromTable", [robot, wiper, table],
-                  pre=[hand_empty, ("WiperOnTable", wiper, table)],
-                  add=[holding_wiper],
-                  delete=[hand_empty, ("WiperOnTable", wiper, table)]),
-            _nsrt("PlaceWiperOnTable", [robot, wiper, table],
-                  pre=[holding_wiper],
-                  add=[("WiperOnTable", wiper, table), hand_empty],
-                  delete=[holding_wiper],
-                  sampler=_uniform_sampler(0, 1)),
-            _nsrt("PlaceWiperInBox", [robot, wiper, box, table],
+                  delete=[hand_empty, wiper_in_box]),
+            _nsrt("PlaceWiperInBox", [robot, wiper, box],
                   pre=[holding_wiper, box_near],
-                  add=[("WiperInBox", wiper, box), hand_empty],
+                  add=[wiper_in_box, hand_empty],
                   delete=[holding_wiper],
-                  sampler=_uniform_sampler(-1, 1)),
-            _nsrt("PushBoxOut", [robot, box, table],
-                  pre=[hand_empty, box_near],
+                  sampler=_place_sampler),
+            _nsrt("PushBoxOut", [robot, box],
+                  pre=[box_near],
                   add=[box_far],
                   delete=[box_near]),
-            _nsrt("PullBoxIn", [robot, box, table],
-                  pre=[hand_empty, box_far],
+            _nsrt("PullBoxIn", [robot, box],
+                  pre=[box_far],
                   add=[box_near],
                   delete=[box_far]),
             _nsrt("WipeTable", [robot, wiper, table, box],
                   pre=[holding_wiper, ("NoToyOnTable", table), box_far],
-                  add=[("TableClean", table)],
-                  delete=[]),
+                  add=[("TableClean", table)]),
         }
