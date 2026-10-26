@@ -113,7 +113,7 @@ def process_session(directory: str, out_dir: str, domain: Dict,
 
 def main() -> None:
     """Process the sessions given on the command line (see module doc)."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--raw", required=True,
                         help="directory with one folder per session")
     parser.add_argument("--out", required=True)

@@ -21,16 +21,19 @@ import logging
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
-from typing import Collection, Dict, FrozenSet, List, Optional, Sequence, \
-    Set, Tuple, Union
+from typing import TYPE_CHECKING, Collection, Dict, FrozenSet, List, \
+    Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 
 from predicators import utils
 from predicators.structs import LowLevelTrajectory, ParameterizedOption, \
     Predicate, Task, Type
-from unipred.llm.client import LLMClient
 from unipred.llm.names import NameMap, pddl_symbol
+
+if TYPE_CHECKING:
+    # The mock LLM of the client parses PDDL with this module.
+    from unipred.llm.client import LLMClient
 
 # Codes of an effect vector entry, as in IVNTR (see two2one in
 # predicators/gnn/neupi_utils.py).

@@ -94,8 +94,8 @@ def test_real_robot_configs():
     whose predicates use its types."""
     os.chdir(REPO)
     robot = load_robot_config("configs/real_robot.yaml")
-    domain = yaml.safe_load(
-        open("configs/table_clean_real/domain.yaml", encoding="utf-8"))
+    with open("configs/table_clean_real/domain.yaml", encoding="utf-8") as f:
+        domain = yaml.safe_load(f)
     assert set(domain["types"]) <= set(robot["prompts"])
     for types in domain["predicates"].values():
         assert set(types) <= set(domain["types"])

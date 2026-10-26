@@ -118,7 +118,9 @@ def _averaged(per_domain: List[Dict[int, SeedResult]]) -> Dict[int,
             column = [d[seed].values()[i] for d in per_domain]
             values.append(None if any(v is None for v in column) else float(
                 np.mean(column)))
-        averaged[seed] = SeedResult(*values)
+        averaged[seed] = SeedResult(train_success=values[0],
+                                    test_success=values[1],
+                                    learning_time=values[2])
     return averaged
 
 
@@ -151,7 +153,7 @@ def _parse_runs(items: Sequence[str]) -> List[Tuple[str, str]]:
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     """Print the table described by the command line (see module doc)."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--outputs", default="outputs")
     parser.add_argument("--domains", nargs="+", required=True)
     parser.add_argument("--runs", nargs="+", required=True,

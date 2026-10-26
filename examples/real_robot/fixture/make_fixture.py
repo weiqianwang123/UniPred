@@ -125,7 +125,7 @@ def _dumps(content: object) -> str:
 
 def main() -> None:
     """Write the fixture (see module doc)."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--out", default=os.path.join(_HERE, "raw"))
     parser.add_argument("--num_train", type=int, default=4)
     parser.add_argument("--num_test", type=int, default=2)

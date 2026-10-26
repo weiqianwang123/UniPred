@@ -26,7 +26,7 @@ from unipred.deploy import Deployment, load_image, parse_atoms, \
 
 def main() -> None:
     """Plan for the scene given on the command line (see module doc)."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--session", help="a session folder (raw format)")
     parser.add_argument("--image")
     parser.add_argument("--objects", help="name:type,name:type,...")

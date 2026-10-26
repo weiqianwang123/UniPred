@@ -108,8 +108,9 @@ class Pix2PredApproach(BilevelPlanningApproach):
                              f"{sorted(unknown)}, which are not among the "
                              f"predicates {sorted(self._specs)}.")
         self._build_predicates()
-        logging.info("Pix2Pred predicates: " + ", ".join(
-            f"{n}({', '.join(t)})" for n, (t, _) in sorted(self._specs.items())))
+        names = ", ".join(f"{n}({', '.join(t)})"
+                          for n, (t, _) in sorted(self._specs.items()))
+        logging.info(f"Pix2Pred predicates: {names}")
         self._nsrts, _, _ = learn_nsrts_from_data(
             dataset.trajectories,
             self._train_tasks,

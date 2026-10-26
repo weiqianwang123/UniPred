@@ -103,7 +103,7 @@ class CropEncoder:
         """Resize to a square image and normalize as ImageNet models
         expect; channels first."""
         image = Image.fromarray(crop.astype(np.uint8)).convert("RGB").resize(
-            (self._image_size, self._image_size), Image.BILINEAR)
+            (self._image_size, self._image_size), Image.Resampling.BILINEAR)
         pixels = np.asarray(image, dtype=np.float32) / 255.0
         return ((pixels - _IMAGENET_MEAN) / _IMAGENET_STD).transpose(2, 0, 1)
 

@@ -32,7 +32,8 @@ class _Scripted(LLMClient):
         self._replies = list(replies)
         self.prompts = []
 
-    def complete(self, system, user, task, attempt=0):
+    def complete(self, system, user, task, attempt=0, images=()):
+        del task, attempt, images  # unused
         self.prompts.append((system, user))
         return self._replies.pop(0)
 

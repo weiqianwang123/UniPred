@@ -97,9 +97,10 @@ def run_closed_loop(deployment: Deployment, robot: RobotInterface,
             except (ApproachFailure, ApproachTimeout) as err:
                 logging.info(f"No plan: {err}")
                 return False
-            logging.info("Plan: " + ", ".join(
+            steps = ", ".join(
                 f"{n.option.name}({', '.join(o.name for o in n.option_objs)})"
-                for n in plan))
+                for n in plan)
+            logging.info(f"Plan: {steps}")
         if not plan:
             return False
         executed = plan.pop(0)
@@ -111,7 +112,7 @@ def run_closed_loop(deployment: Deployment, robot: RobotInterface,
 
 def main() -> None:
     """Run the loop on a replayed session (see module doc)."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--session",
                         required=True,
                         help="a recorded session folder (raw format)")

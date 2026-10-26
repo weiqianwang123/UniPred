@@ -2,8 +2,9 @@
 
 An EffectProposer proposes effect vectors for one predicate type: first the
 seeds from PDDL completion, then (if it has an LLM client, i.e. the LLM
-loop is on) new proposals from the LLM. The LLM sees the domain, the demonstrations and every earlier
-proposal with the feedback from the classifier trained on it: a score in
+loop is on) new proposals from the LLM. The LLM sees the domain, the
+demonstrations and every earlier proposal with the feedback from the
+classifier trained on it: a score in
 [0, 100] derived from the validation loss, or, without loss feedback,
 only whether the proposal was accepted.
 
