@@ -23,7 +23,7 @@ import logging
 from typing import Dict, List, Optional, Set
 
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from predicators import utils
 from predicators.approaches.bilevel_learning_approach import \
