@@ -11,7 +11,7 @@ The name "CogMan" is due to Leslie Kaelbling.
 import logging
 import time
 from collections import defaultdict
-from typing import Callable, List, Optional, Sequence, Set, Tuple
+from typing import Callable, List, Optional, Set, Tuple
 from typing import Type as TypingType
 
 from predicators import utils
@@ -21,8 +21,7 @@ from predicators.execution_monitoring import BaseExecutionMonitor
 from predicators.perception import BasePerceiver
 from predicators.settings import CFG
 from predicators.structs import Action, Dataset, EnvironmentTask, GroundAtom, \
-    InteractionRequest, InteractionResult, LowLevelTrajectory, Metrics, \
-    Observation, State, Task, Video, _Option
+    LowLevelTrajectory, Metrics, Observation, State, Task, _Option
 
 
 class CogMan:
@@ -35,20 +34,13 @@ class CogMan:
         self._exec_monitor = execution_monitor
         self._current_policy: Optional[Callable[[State], Action]] = None
         self._current_goal: Optional[Set[GroundAtom]] = None
-        self._override_policy: Optional[Callable[[State], Action]] = None
-        self._termination_fn: Optional[Callable[[State], bool]] = None
-        self._current_env_task: Optional[EnvironmentTask] = None
         self._episode_state_history: List[State] = []
         self._episode_action_history: List[Action] = []
-        self._episode_images: Video = []
-        self._episode_num = -1
 
     def reset(self, env_task: EnvironmentTask) -> None:
         """Start a new episode of environment interaction."""
         logging.info("[CogMan] Reset called.")
-        self._episode_num += 1
         task = self._perceiver.reset(env_task)
-        self._current_env_task = env_task
         self._current_goal = task.goal
         self._reset_policy(task)
         self._exec_monitor.reset(task)
@@ -56,33 +48,15 @@ class CogMan:
             self._approach.get_execution_monitoring_info())
         self._episode_state_history = [task.init]
         self._episode_action_history = []
-        self._episode_images = []
-        if CFG.make_cogman_videos:
-            imgs = self._perceiver.render_mental_images(task.init, env_task)
-            self._episode_images.extend(imgs)
 
     def step(self, observation: Observation) -> Optional[Action]:
         """Receive an observation and produce an action, or None for done."""
         state = self._perceiver.step(observation)
-        if CFG.make_cogman_videos:
-            assert self._current_env_task is not None
-            imgs = self._perceiver.render_mental_images(
-                state, self._current_env_task)
-            self._episode_images.extend(imgs)
-
-            # Uncomment for live visualization.
-            # import cv2
-            # cv2.imshow("debug", imgs[0])
-            # cv2.waitKey(0)
-
         # Replace the first step because the state was already added in reset().
         if not self._episode_action_history:
             self._episode_state_history[0] = state
         else:
             self._episode_state_history.append(state)
-        if self._termination_fn is not None and self._termination_fn(state):
-            logging.info("[CogMan] Termination triggered.")
-            return None
         # Check if we should replan.
         if self._exec_monitor.step(state):
             logging.info("[CogMan] Replanning triggered.")
@@ -92,15 +66,9 @@ class CogMan:
             self._exec_monitor.reset(task)
             self._exec_monitor.update_approach_info(
                 self._approach.get_execution_monitoring_info())
-            # We only reset the approach if the override policy is
-            # None, so this below assertion only works in this
-            # case.
-            if self._override_policy is None:
-                assert not self._exec_monitor.step(state)
+            assert not self._exec_monitor.step(state)
         assert self._current_policy is not None
         act = self._current_policy(state)
-        # for dry run envs, no need to update perceiver with action
-        # self._perceiver.update_perceiver_with_action(act)
         self._exec_monitor.update_approach_info(
             self._approach.get_execution_monitoring_info())
         self._episode_action_history.append(act)
@@ -113,10 +81,6 @@ class CogMan:
                 self._episode_action_history):
             state = self._perceiver.step(observation)
             self._episode_state_history.append(state)
-        if CFG.make_cogman_videos:
-            save_prefix = utils.get_config_path_str()
-            outfile = f"{save_prefix}__cogman__episode{self._episode_num}.mp4"
-            utils.save_video(outfile, self._episode_images)
 
     # The methods below provide an interface to the approach. In the future,
     # we may want to move some of these methods into cogman properly, e.g.,
@@ -131,18 +95,9 @@ class CogMan:
         """See BaseApproach docstring."""
         return self._approach.learn_from_offline_dataset(dataset)
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
+    def load(self) -> None:
         """See BaseApproach docstring."""
-        return self._approach.load(online_learning_cycle)
-
-    def get_interaction_requests(self) -> List[InteractionRequest]:
-        """See BaseApproach docstring."""
-        return self._approach.get_interaction_requests()
-
-    def learn_from_interaction_results(
-            self, results: Sequence[InteractionResult]) -> None:
-        """See BaseApproach docstring."""
-        return self._approach.learn_from_interaction_results(results)
+        return self._approach.load()
 
     @property
     def metrics(self) -> Metrics:
@@ -153,43 +108,14 @@ class CogMan:
         """See BaseApproach docstring."""
         return self._approach.reset_metrics()
 
-    def set_override_policy(self, policy: Callable[[State], Action]) -> None:
-        """Used during online interaction."""
-        self._override_policy = policy
-
-    def unset_override_policy(self) -> None:
-        """Give control back to the approach."""
-        self._override_policy = None
-
-    def set_termination_function(
-            self, termination_fn: Callable[[State], bool]) -> None:
-        """Used during online interaction."""
-        self._termination_fn = termination_fn
-
-    def unset_termination_function(self) -> None:
-        """Reset to never willfully terminating."""
-        self._termination_fn = None
-
     def get_current_history(self) -> LowLevelTrajectory:
         """Expose the most recent state, action history for learning."""
         return LowLevelTrajectory(self._episode_state_history,
                                   self._episode_action_history)
 
     def _reset_policy(self, task: Task) -> None:
-        """Call the approach or use the override policy."""
-        if self._override_policy is not None:
-            self._current_policy = self._override_policy
-        else:
-            self._current_policy = self._approach.solve(task,
-                                                        timeout=CFG.timeout)
-            
-    def get_all_mdps(self) -> Tuple[Set[State], Set[State]]:
-        """Get all MDPs from the approach."""
-        pos_mdp, neg_mdp = self._approach.get_all_mdps()
-        return {
-            'pos_mdp': pos_mdp,
-            'neg_mdp': neg_mdp
-        }
+        """Ask the approach for a policy."""
+        self._current_policy = self._approach.solve(task, timeout=CFG.timeout)
 
 def run_episode_and_get_observations(
     cogman: CogMan,

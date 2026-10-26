@@ -1,14 +1,11 @@
 """Create offline datasets by collecting demonstrations."""
 
-import functools
 import logging
 import os
 import re
-from typing import Callable, List, Set
+from typing import List, Set
 
 import dill as pkl
-import matplotlib
-import matplotlib.pyplot as plt
 
 from predicators import utils
 from predicators.approaches import ApproachFailure, ApproachTimeout
@@ -19,18 +16,15 @@ from predicators.execution_monitoring import create_execution_monitor
 from predicators.ground_truth_models import get_gt_options
 from predicators.perception import create_perceiver
 from predicators.settings import CFG
-from predicators.structs import Action, Dataset, MDPDataset, LowLevelTrajectory, \
-    ParameterizedOption, State, Task, LowLevelTrajectoryReward
+from predicators.structs import Dataset, LowLevelTrajectory, \
+    ParameterizedOption, Task
 
 
 def create_demo_data(env: BaseEnv, train_tasks: List[Task],
                      known_options: Set[ParameterizedOption],
-                     annotate_with_gt_ops: bool,
-                     include_reward: bool=False) -> Dataset:
+                     annotate_with_gt_ops: bool) -> Dataset:
     """Create offline datasets by collecting demos."""
-    assert CFG.demonstrator in ("oracle", "human")
     dataset_fname, dataset_fname_template = utils.create_dataset_filename_str(
-        include_reward=include_reward,
         saving_ground_atoms=False)
     os.makedirs(CFG.data_dir, exist_ok=True)
     if CFG.load_data:
@@ -39,23 +33,13 @@ def create_demo_data(env: BaseEnv, train_tasks: List[Task],
                                                  dataset_fname_template,
                                                  dataset_fname)
     else:
-        if include_reward:
-            dataset = _generate_mdps(
-                env,
-                train_tasks,
-                known_options,
-                train_tasks_start_idx=0,
-                annotate_with_gt_ops=annotate_with_gt_ops)
-            logging.info(f"\n\nCREATED {len(dataset.trajectories)} MDPs for offline RL training")
-        else:
-            dataset = _generate_demonstrations(
-                env,
-                train_tasks,
-                known_options,
-                train_tasks_start_idx=0,
-                annotate_with_gt_ops=annotate_with_gt_ops)
-            logging.info(f"\n\nCREATED {len(dataset.trajectories)} DEMONSTRATIONS")
-
+        dataset = _generate_demonstrations(
+            env,
+            train_tasks,
+            known_options,
+            train_tasks_start_idx=0,
+            annotate_with_gt_ops=annotate_with_gt_ops)
+        logging.info(f"\n\nCREATED {len(dataset.trajectories)} DEMONSTRATIONS")
         with open(dataset_fname, "wb") as f:
             pkl.dump(dataset, f)
     return dataset
@@ -144,35 +128,23 @@ def _generate_demonstrations(env: BaseEnv, train_tasks: List[Task],
                              annotate_with_gt_ops: bool) -> Dataset:
     """Use the demonstrator to generate demonstrations, one per training task
     starting from train_tasks_start_idx."""
-    if CFG.demonstrator == "oracle":
-        # Instantiate CogMan with the oracle approach (to be used as the
-        # demonstrator). This requires creating a perceiver and
-        # execution monitor according to settings from CFG.
-        options = get_gt_options(env.get_name())
-        oracle_approach = OracleApproach(
-            env.predicates,
-            options,
-            env.types,
-            env.action_space,
-            train_tasks,
-            task_planning_heuristic=CFG.offline_data_task_planning_heuristic,
-            max_skeletons_optimized=CFG.offline_data_max_skeletons_optimized,
-            bilevel_plan_without_sim=CFG.offline_data_bilevel_plan_without_sim)
-        perceiver = create_perceiver(CFG.perceiver)
-        execution_monitor = create_execution_monitor(CFG.execution_monitor)
-        cogman = CogMan(oracle_approach, perceiver, execution_monitor)
-    else:  # pragma: no cover
-        # Disable all built-in keyboard shortcuts.
-        keymaps = {k for k in plt.rcParams if k.startswith("keymap.")}
-        for k in keymaps:
-            plt.rcParams[k].clear()
-        # Create the environment-specific method for turning events into
-        # actions. This should also log instructions.
-        event_to_action = env.get_event_to_action_fn()
+    # The demonstrator is the oracle approach, run through CogMan.
+    options = get_gt_options(env.get_name())
+    oracle_approach = OracleApproach(
+        env.predicates,
+        options,
+        env.types,
+        env.action_space,
+        train_tasks,
+        task_planning_heuristic=CFG.offline_data_task_planning_heuristic,
+        max_skeletons_optimized=CFG.offline_data_max_skeletons_optimized,
+        bilevel_plan_without_sim=CFG.offline_data_bilevel_plan_without_sim)
+    perceiver = create_perceiver(CFG.perceiver)
+    execution_monitor = create_execution_monitor(CFG.execution_monitor)
+    cogman = CogMan(oracle_approach, perceiver, execution_monitor)
     trajectories = []
     if annotate_with_gt_ops:
         annotations = []
-    num_tasks = min(len(train_tasks), CFG.max_initial_demos)
     for idx, task in enumerate(train_tasks):
         if idx < train_tasks_start_idx:  # ignore demos before this index
             continue
@@ -180,49 +152,18 @@ def _generate_demonstrations(env: BaseEnv, train_tasks: List[Task],
             video_monitor = utils.VideoMonitor(env.render)
         else:
             video_monitor = None
-
-        # Note: we assume in main.py that demonstrations are only generated
-        # for train tasks whose index is less than CFG.max_initial_demos. If
-        # you modify code around here, make sure that this invariant holds.
-        if idx >= CFG.max_initial_demos:
-            break
         try:
-            if CFG.demonstrator == "oracle":
-                # In this case, we use the instantiated cogman to generate
-                # demonstrations. Importantly, we want to access state-action
-                # trajectories, not observation-action ones.
-                env_task = env.get_train_tasks()[idx]
-                cogman.reset(env_task)
-                traj, _, _ = run_episode_and_get_states(
-                    cogman,
-                    env,
-                    "train",
-                    idx,
-                    max_num_steps=CFG.horizon,
-                    exceptions_to_break_on={
-                        utils.OptionExecutionFailure,
-                        utils.HumanDemonstrationFailure,
-                    },
-                    monitor=video_monitor)
-            else:  # pragma: no cover
-                # Otherwise, we get human input demos.
-                caption = (f"Task {idx+1} / {num_tasks}\nPlease demonstrate "
-                           f"achieving the goal:\n{task.goal}")
-                policy = functools.partial(human_demonstrator_policy, env,
-                                           caption, event_to_action)
-                termination_function = task.goal_holds
-                traj, _ = utils.run_policy(
-                    policy,
-                    env,
-                    "train",
-                    idx,
-                    termination_function=termination_function,
-                    max_num_steps=CFG.horizon,
-                    exceptions_to_break_on={
-                        utils.OptionExecutionFailure,
-                        utils.HumanDemonstrationFailure,
-                    },
-                    monitor=video_monitor)
+            # We want state-action trajectories, not observation-action ones.
+            env_task = env.get_train_tasks()[idx]
+            cogman.reset(env_task)
+            traj, _, _ = run_episode_and_get_states(
+                cogman,
+                env,
+                "train",
+                idx,
+                max_num_steps=CFG.horizon,
+                exceptions_to_break_on={utils.OptionExecutionFailure},
+                monitor=video_monitor)
         except (ApproachTimeout, ApproachFailure,
                 utils.EnvironmentFailure) as e:
             logging.warning("WARNING: Approach failed to solve with error: "
@@ -232,10 +173,6 @@ def _generate_demonstrations(env: BaseEnv, train_tasks: List[Task],
         if not task.goal_holds(traj.states[-1]):  # pragma: no cover
             logging.warning("WARNING: Oracle failed on training task.")
             continue
-        if CFG.demonstrator == "human":  # pragma: no cover
-            logging.info("Successfully collected human demonstration of "
-                         f"length {len(traj.states)} for task {idx+1} / "
-                         f"{num_tasks}.")
         # Add is_demo flag and task index information into the trajectory.
         traj = LowLevelTrajectory(traj.states,
                                   traj.actions,
@@ -244,11 +181,10 @@ def _generate_demonstrations(env: BaseEnv, train_tasks: List[Task],
         # To prevent cheating by option learning approaches, remove all oracle
         # options from the trajectory actions, unless the options are known
         # (via CFG.included_options or CFG.option_learner = 'no_learning').
-        if CFG.demonstrator == "oracle":
-            for act in traj.actions:
-                if act.get_option().parent not in known_options:
-                    assert CFG.option_learner != "no_learning"
-                    act.unset_option()
+        for act in traj.actions:
+            if act.get_option().parent not in known_options:
+                assert CFG.option_learner != "no_learning"
+                act.unset_option()
         trajectories.append(traj)
         # If we're also annotating with ground truth operators,
         # then get the last nsrt_plan and add the name of the
@@ -273,213 +209,3 @@ def _generate_demonstrations(env: BaseEnv, train_tasks: List[Task],
     else:
         dataset = Dataset(trajectories)
     return dataset
-
-def _generate_mdps(env: BaseEnv, train_tasks: List[Task],
-                             known_options: Set[ParameterizedOption],
-                             train_tasks_start_idx: int,
-                             annotate_with_gt_ops: bool) -> Dataset:
-    """Use the demonstrator to generate demonstrations, one per training task
-    starting from train_tasks_start_idx."""
-    assert CFG.demonstrator == "oracle", \
-        "Only oracle approach is supported for generating MDPs."
-    assert 'reward' in CFG.offline_data_method, \
-        "Generating MDPs assumes reward-based data generation."
-    # Instantiate CogMan with the oracle approach (to be used as the
-    # demonstrator). This requires creating a perceiver and
-    # execution monitor according to settings from CFG.
-    options = get_gt_options(env.get_name())
-    oracle_approach = OracleApproach(
-        env.predicates,
-        options,
-        env.types,
-        env.action_space,
-        train_tasks,
-        task_planning_heuristic=CFG.offline_data_task_planning_heuristic,
-        max_skeletons_optimized=CFG.offline_data_max_skeletons_optimized,
-        bilevel_plan_without_sim=CFG.offline_data_bilevel_plan_without_sim)
-    perceiver = create_perceiver(CFG.perceiver)
-    execution_monitor = create_execution_monitor(CFG.execution_monitor)
-    cogman = CogMan(oracle_approach, perceiver, execution_monitor)
-
-    trajectories = {}
-    rewards = {}
-    pos_mdps = {}
-    neg_mdps = {}
-    if annotate_with_gt_ops:
-        annotations = []
-
-    num_tasks = min(len(train_tasks), CFG.max_initial_demos)
-    for idx, task in enumerate(train_tasks):
-
-        if idx < train_tasks_start_idx:  # ignore demos before this index
-            continue
-
-        try:                
-            env_task = env.get_train_tasks()[idx]
-            trajectories[idx] = {}
-            rewards[idx] = {}
-            # generate all the mdps and initial traj
-            cogman.unset_override_policy()
-            cogman.reset(env_task)
-            all_mdps = cogman.get_all_mdps()
-            pos_mdps[idx] = all_mdps['pos_mdp']
-            neg_mdps[idx] = all_mdps['neg_mdp']
-
-            for pos_idx in pos_mdps[idx].keys():
-                logging.info(f"Generating MDP for task {idx} with pos idx {pos_idx}")
-                option_plan, nsrt_plan, rw, metrics = pos_mdps[idx][pos_idx]
-                policy = utils.option_plan_to_policy(option_plan)
-                cogman.set_override_policy(policy)
-                cogman.reset(env_task)
-
-                if CFG.make_demo_videos or CFG.make_demo_images:
-                    video_monitor = utils.VideoMonitor(env.render)
-                else:
-                    video_monitor = None
-        
-                traj, _, _ = run_episode_and_get_states(
-                    cogman,
-                    env,
-                    "train",
-                    idx,
-                    max_num_steps=CFG.horizon,
-                    exceptions_to_break_on={
-                        utils.OptionExecutionFailure,
-                        utils.HumanDemonstrationFailure,
-                    },
-                    monitor=video_monitor)
-                assert task.goal_holds(traj.states[-1]), \
-                    "Goal does not hold at the end of the pos trajectory."
-                trajectories[idx][pos_idx] = traj
-                rewards[idx][pos_idx] = rw
-
-                if CFG.make_demo_videos:
-                    assert video_monitor is not None
-                    video = video_monitor.get_video()
-                    outfile = f"{CFG.env}__{CFG.seed}__demo__task{idx}_pos{pos_idx}.mp4"
-                    utils.save_video(outfile, video, rw.copy())
-                if CFG.make_demo_images:
-                    assert video_monitor is not None
-                    video = video_monitor.get_video()
-                    width = len(str(len(train_tasks)))
-                    task_number = str(idx).zfill(width)
-                    outfile_prefix = f"{CFG.env}__{CFG.seed}__demo__task{task_number}_pos{pos_idx}"
-                    utils.save_images(outfile_prefix, video)
-            
-            for neg_idx in neg_mdps[idx].keys():
-                logging.info(f"Generating MDP for task {idx} with neg idx {neg_idx}")
-                option_plan, nsrt_plan, rw, metrics = neg_mdps[idx][neg_idx]
-                policy = utils.option_plan_to_policy(option_plan)
-                cogman.set_override_policy(policy)
-                cogman.reset(env_task)
-
-                if CFG.make_demo_videos or CFG.make_demo_images:
-                    video_monitor = utils.VideoMonitor(env.render)
-                else:
-                    video_monitor = None
-
-                traj, _, _ = run_episode_and_get_states(
-                    cogman,
-                    env,
-                    "train",
-                    idx,
-                    max_num_steps=CFG.horizon,
-                    exceptions_to_break_on={
-                        utils.OptionExecutionFailure,
-                        utils.HumanDemonstrationFailure,
-                    },
-                    monitor=video_monitor)
-                assert not task.goal_holds(traj.states[-1]), \
-                    "Goal holds at the end of the neg trajectory."
-                trajectories[idx][neg_idx] = traj
-                rewards[idx][neg_idx] = rw
-
-                if CFG.make_demo_videos:
-                    assert video_monitor is not None
-                    video = video_monitor.get_video()
-                    outfile = f"{CFG.env}__{CFG.seed}__demo__task{idx}_neg{neg_idx}.mp4"
-                    # note, rw.copy() is used to prevent the reward in dictionary from being overwritten
-                    utils.save_video(outfile, video, rw.copy())
-                if CFG.make_demo_images:
-                    assert video_monitor is not None
-                    video = video_monitor.get_video()
-                    width = len(str(len(train_tasks)))
-                    task_number = str(idx).zfill(width)
-                    outfile_prefix = f"{CFG.env}__{CFG.seed}__demo__task{task_number}_neg{neg_idx}"
-                    utils.save_images(outfile_prefix, video)
-
-        except (ApproachTimeout, ApproachFailure,
-                utils.EnvironmentFailure) as e:
-            logging.warning("WARNING: Approach failed to solve with error: "
-                            f"{e}")
-            continue
-
-    # Add is_demo flag and task index information into the trajectory.
-    all_trajectories = []
-    for task_idx in trajectories.keys():
-        for traj_idx, traj in trajectories[task_idx].items():
-            if traj_idx in pos_mdps[task_idx].keys():
-                is_pos = True
-            else:
-                is_pos = False
-            traj = LowLevelTrajectoryReward(traj.states,
-                                            traj.actions,
-                                            rewards[task_idx][traj_idx],
-                                            is_pos,
-                                            _is_demo=True,
-                                            _train_task_idx=task_idx)
-            
-            # To prevent cheating by option learning approaches, remove all oracle
-            # options from the trajectory actions, unless the options are known
-            # (via CFG.included_options or CFG.option_learner = 'no_learning').
-            if CFG.demonstrator == "oracle":
-                for act in traj.actions:
-                    if act.get_option().parent not in known_options:
-                        assert CFG.option_learner != "no_learning"
-                        act.unset_option()
-            all_trajectories.append(traj)
-            # If we're also annotating with ground truth operators,
-            # then get the last nsrt_plan and add the name of the
-            # nsrt used to the list of annotations.
-            # if annotate_with_gt_ops:
-            #     last_nsrt_plan = oracle_approach.get_last_nsrt_plan()
-            #     annotations.append(list(last_nsrt_plan))
-
-    # if annotate_with_gt_ops:
-    #     dataset = MDPDataset(trajectories, annotations)
-    # else:
-    dataset = MDPDataset(all_trajectories)
-    return dataset
-
-def human_demonstrator_policy(env: BaseEnv, caption: str,
-                              event_to_action: Callable[
-                                  [State, matplotlib.backend_bases.Event],
-                                  Action],
-                              state: State) -> Action:  # pragma: no cover
-    """Collect actions from a human interacting with a GUI."""
-    # Temporarily change the backend to one that supports a GUI.
-    # We do this here because we don't want the rest of the codebase
-    # to use GUI-based Matplotlib.
-    cur_backend = matplotlib.get_backend()
-    matplotlib.use("Qt5Agg")
-    # Render the state.
-    fig = env.render_plt(caption=caption)
-    container = {}
-
-    def _handler(event: matplotlib.backend_bases.Event) -> None:
-        container["action"] = event_to_action(state, event)
-
-    keyboard_cid = fig.canvas.mpl_connect("key_press_event", _handler)
-    mouse_cid = fig.canvas.mpl_connect("button_press_event", _handler)
-    # Hang until either a mouse press or a keyboard press.
-    plt.waitforbuttonpress()
-    fig.canvas.mpl_disconnect(keyboard_cid)
-    fig.canvas.mpl_disconnect(mouse_cid)
-    plt.close()
-    if "action" not in container:
-        logging.warning("WARNING: Event handler failed. Its error message "
-                        "should be printed above. Terminating task.")
-        raise utils.HumanDemonstrationFailure("Event handler failed!")
-    # Revert to the previous backend.
-    matplotlib.use(cur_backend)
-    return container["action"]

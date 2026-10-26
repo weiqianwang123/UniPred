@@ -49,16 +49,13 @@ class NSRTLearningApproach(BilevelPlanningApproach):
         # which we split off into a different function in case
         # subclasses want to make use of it.
         self._learn_nsrts(dataset.trajectories,
-                          online_learning_cycle=None,
                           annotations=(dataset.annotations
                                        if dataset.has_annotations else None))
 
     def _learn_nsrts(self, trajectories: List[LowLevelTrajectory],
-                     online_learning_cycle: Optional[int],
                      annotations: Optional[List[Any]]) -> None:
         dataset_fname, _ = utils.create_dataset_filename_str(
-            saving_ground_atoms=True,
-            online_learning_cycle=online_learning_cycle)
+            saving_ground_atoms=True)
         # If CFG.load_atoms is set, then try to create a GroundAtomTrajectory
         # by loading sets of GroundAtoms directly from a saved file.
         # By default, we don't create a full ground atom dataset, since
@@ -84,14 +81,14 @@ class NSRTLearningApproach(BilevelPlanningApproach):
                                   sampler_learner=CFG.sampler_learner,
                                   annotations=annotations)
         save_path = utils.get_approach_save_path_str()
-        with open(f"{save_path}_{online_learning_cycle}.NSRTs", "wb") as f:
+        with open(f"{save_path}.NSRTs", "wb") as f:
             pkl.dump(self._nsrts, f)
         if CFG.compute_sidelining_objective_value:
             self._compute_sidelining_objective_value(trajectories)
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
+    def load(self) -> None:
         save_path = utils.get_approach_load_path_str()
-        with open(f"{save_path}_{online_learning_cycle}.NSRTs", "rb") as f:
+        with open(f"{save_path}.NSRTs", "rb") as f:
             self._nsrts = pkl.load(f)
         if CFG.pretty_print_when_loading:
             preds, _ = utils.extract_preds_and_types(self._nsrts)

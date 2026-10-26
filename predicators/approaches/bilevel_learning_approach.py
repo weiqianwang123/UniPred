@@ -42,7 +42,7 @@ from predicators.nsrt_learning.nsrt_learning_main import learn_nsrts_from_data
 from predicators.settings import CFG
 from predicators.predicate_search_score_functions import _OperatorBeliefScoreFunction
 from predicators.structs import NSRT, Action, Dataset, DummyPredicate, \
-    GroundAtom, GroundAtomTrajectory, LowLevelTrajectoryReward, \
+    GroundAtom, GroundAtomTrajectory, LowLevelTrajectory, \
     NeuralPredicate, Object, ParameterizedOption, Predicate, State, Task, \
     Type, _Option
 
@@ -2403,7 +2403,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         with open(f"{save_path}.neupi_info", "wb") as f:
             pkl.dump(saved_info, f)
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
+    def load(self) -> None:
         if CFG.load_neupi_from_json:
             self.load_from_json()
         else:
@@ -2520,7 +2520,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         for nsrt in self._nsrts:
             nsrt.option.params_space.seed(CFG.seed)
 
-    def _learn_nsrts(self, trajectories: List[LowLevelTrajectoryReward],
+    def _learn_nsrts(self, trajectories: List[LowLevelTrajectory],
                      atom_dataset: Optional[List[GroundAtomTrajectory]],
                      annotations: Optional[List[Any]]) -> None:
         logging.info("Using the provided ground atom dataset.")

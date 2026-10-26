@@ -1,12 +1,7 @@
 """Base class for an environment."""
 
-import os
 import abc
-import json
-from natsort import natsorted
-import dill as pkl
-from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import List, Optional, Set
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -16,8 +11,7 @@ from gymnasium.spaces import Box
 from predicators import utils
 from predicators.settings import CFG
 from predicators.structs import Action, DefaultEnvironmentTask, \
-    EnvironmentTask, GroundAtom, Object, Observation, Predicate, State, \
-    Type, Video
+    EnvironmentTask, GroundAtom, Observation, Predicate, State, Type, Video
 
 
 class BaseEnv(abc.ABC):
@@ -189,31 +183,13 @@ class BaseEnv(abc.ABC):
     def get_train_tasks(self) -> List[EnvironmentTask]:
         """Return the ordered list of tasks for training."""
         if not self._train_tasks:
-            tasks_fname, _ = utils.create_task_filename_str()
-            if os.path.exists(tasks_fname):
-                files = natsorted(Path(tasks_fname).glob("*.json"))
-                assert len(files) >= CFG.num_train_tasks
-                self._train_tasks = [
-                    self._load_task_from_json(f)
-                    for f in files[:CFG.num_train_tasks]
-                ]
-            else:
-                self._train_tasks = self._generate_train_tasks()
+            self._train_tasks = self._generate_train_tasks()
         return self._train_tasks
 
     def get_test_tasks(self) -> List[EnvironmentTask]:
         """Return the ordered list of tasks for testing / evaluation."""
         if not self._test_tasks:
-            tasks_fname, _ = utils.create_task_filename_str(train=False)
-            if os.path.exists(tasks_fname):
-                files = natsorted(Path(tasks_fname).glob("*.json"))
-                assert len(files) >= CFG.num_test_tasks
-                self._test_tasks = [
-                    self._load_task_from_json(f)
-                    for f in files[:CFG.num_test_tasks]
-                ]
-            else:
-                self._test_tasks = self._generate_test_tasks()
+            self._test_tasks = self._generate_test_tasks()
         return self._test_tasks
 
     @property
@@ -236,76 +212,6 @@ class BaseEnv(abc.ABC):
         assert isinstance(goal, set)
         assert not goal or isinstance(next(iter(goal)), GroundAtom)
         return all(goal_atom.holds(self._current_state) for goal_atom in goal)
-
-    def _load_task_from_json(self, json_file: Path) -> EnvironmentTask:
-        """Create a task from a JSON file.
-
-        By default, we assume JSON files are in the following format:
-
-        {
-            "objects": {
-                <object name>: <type name>
-            }
-            "init": {
-                <object name>: {
-                    <feature name>: <value>
-                }
-            }
-            "goal": {
-                <predicate name> : [
-                    [<object name>]
-                ]
-            }
-        }
-
-        Environments can override this method to handle different formats.
-        """
-        with open(json_file, "r", encoding="utf-8") as f:
-            json_dict = json.load(f)
-        # Parse objects.
-        type_name_to_type = {t.name: t for t in self.types}
-        object_name_to_object: Dict[str, Object] = {}
-        for obj_name, type_name in json_dict["objects"].items():
-            obj_type = type_name_to_type[type_name]
-            obj = Object(obj_name, obj_type)
-            object_name_to_object[obj_name] = obj
-        assert set(object_name_to_object).issubset(set(json_dict["init"])), \
-            "The init state can only include objects in `objects`."
-        assert set(object_name_to_object).issuperset(set(json_dict["init"])), \
-            "The init state must include every object in `objects`."
-        # Parse initial state.
-        init_dict: Dict[Object, Dict[str, float]] = {}
-        for obj_name, obj_dict in json_dict["init"].items():
-            obj = object_name_to_object[obj_name]
-            init_dict[obj] = obj_dict.copy()
-        init_state = utils.create_state_from_dict(init_dict)
-        # Parse goal.
-        goal = self._parse_goal_from_json(json_dict["goal"],
-                                          object_name_to_object)
-        return EnvironmentTask(init_state, goal)
-    
-    def _load_task_from_pkl(self, pkl_file: Path) -> EnvironmentTask:
-        """Create a task from a pickle file.
-        """
-        assert os.path.exists(pkl_file), f"File {pkl_file} does not exist."
-        with open(pkl_file, "rb") as f:
-            test_tasks = pkl.load(f)
-        self._test_tasks = test_tasks
-        return self._test_tasks
-
-    def _parse_goal_from_json(self, spec: Dict[str, List[List[str]]],
-                              id_to_obj: Dict[str, Object]) -> Set[GroundAtom]:
-        """Helper for parsing goals from JSON task specifications."""
-        goal_pred_names = {p.name for p in self.goal_predicates}
-        assert set(spec.keys()).issubset(goal_pred_names)
-        pred_to_args = {p: spec.get(p.name, []) for p in self.goal_predicates}
-        goal: Set[GroundAtom] = set()
-        for pred, args in pred_to_args.items():
-            for id_args in args:
-                obj_args = [id_to_obj[a] for a in id_args]
-                goal_atom = GroundAtom(pred, obj_args)
-                goal.add(goal_atom)
-        return goal
 
     def get_task(self, train_or_test: str, task_idx: int) -> EnvironmentTask:
         """Return the train or test task at the given index."""
@@ -352,18 +258,6 @@ class BaseEnv(abc.ABC):
                                                   action)
         # Copy to prevent external changes to the environment's state.
         return self._current_observation.copy()
-
-    def get_event_to_action_fn(
-            self) -> Callable[[State, matplotlib.backend_bases.Event], Action]:
-        """The optional environment-specific method that is used for generating
-        demonstrations from a human, with a GUI.
-
-        Returns a function that maps state and Matplotlib event to an
-        action in this environment; before returning this function, it's
-        recommended to log some instructions about the controls.
-        """
-        raise NotImplementedError("This environment did not implement an "
-                                  "interface for human demonstrations!")
 
     def get_observation(self) -> Observation:
         """Get the current observation of this environment."""

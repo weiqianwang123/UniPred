@@ -217,12 +217,12 @@ class GNNApproach(BaseApproach, Generic[_Output]):
         }
         self._add_output_specific_fields_to_save_info(info)
         save_path = utils.get_approach_save_path_str()
-        with open(f"{save_path}_None.gnn", "wb") as f:
+        with open(f"{save_path}.gnn", "wb") as f:
             pkl.dump(info, f)
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
+    def load(self) -> None:
         save_path = utils.get_approach_load_path_str()
-        with open(f"{save_path}_{online_learning_cycle}.gnn", "rb") as f:
+        with open(f"{save_path}.gnn", "rb") as f:
             info = pkl.load(f)
         # Initialize fields from loaded dictionary.
         input_example, target_example = info["exemplar"]

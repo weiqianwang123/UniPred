@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import abc
 import copy
 import types
 import itertools
@@ -1350,65 +1349,6 @@ class LowLevelTrajectory:
         return self._train_task_idx
 
 @dataclass(frozen=True, repr=False, eq=False)
-class LowLevelTrajectoryReward:
-    """A structure representing a low-level trajectory, containing a state
-    sequence, action sequence, and optional train task id. This trajectory may
-    or may not be a demonstration.
-
-    Invariant 1: If this trajectory is a demonstration, it must contain
-    a train task idx and achieve the goal in the respective train task. This
-    invariant is checked upon creation of the trajectory (in datasets) because
-    the trajectory does not have a goal, it only has a train task idx.
-
-    Invariant 2: The length of the state sequence is always one greater than
-    the length of the action sequence.
-    """
-    _states: List[State]
-    _actions: List[Action]
-    _rewards: List[float]
-    _is_pos: bool
-    _is_demo: bool = field(default=False)
-    _train_task_idx: Optional[int] = field(default=None)
-
-    def __post_init__(self) -> None:
-        assert len(self._states) == len(self._actions) + 1
-        assert len(self._rewards) == len(self._actions)
-        if self._is_demo:
-            assert self._train_task_idx is not None
-
-    @property
-    def states(self) -> List[State]:
-        """States in the trajectory."""
-        return self._states
-
-    @property
-    def actions(self) -> List[Action]:
-        """Actions in the trajectory."""
-        return self._actions
-    
-    @property
-    def rewards(self) -> List[float]:
-        """Rewards in the trajectory."""
-        return self._rewards
-
-    @property
-    def is_demo(self) -> bool:
-        """Whether this trajectory is a demonstration."""
-        return self._is_demo
-    
-    @property
-    def is_pos(self) -> bool:
-        """Whether this trajectory is a positive demonstration."""
-        return self._is_pos
-
-    @property
-    def train_task_idx(self) -> int:
-        """The index of the train task."""
-        assert self._train_task_idx is not None, \
-            "This trajectory doesn't contain a train task idx!"
-        return self._train_task_idx
-
-@dataclass(frozen=True, repr=False, eq=False)
 class ImageOptionTrajectory:
     """A structure similar to a LowLevelTrajectory where we record images at
     every state (i.e., observations), as well as the option that was executed
@@ -1495,49 +1435,6 @@ class Dataset:
 
     def append(self,
                trajectory: LowLevelTrajectory,
-               annotation: Optional[Any] = None) -> None:
-        """Append one more trajectory and annotation to the dataset."""
-        if annotation is None:
-            assert self._annotations is None
-        else:
-            assert self._annotations is not None
-            self._annotations.append(annotation)
-        self._trajectories.append(trajectory)
-
-@dataclass(repr=False, eq=False)
-class MDPDataset:
-    """A collection of LowLevelTrajectoryReward objects, and optionally, lists of
-    annotations, one per trajectory.
-
-    For example, in interactive learning, an annotation for an offline
-    learning Dataset would be of type List[Set[GroundAtom]] (with
-    predicate classifiers deleted).
-    """
-    _trajectories: List[LowLevelTrajectoryReward]
-    _annotations: Optional[List[Any]] = field(default=None)
-
-    def __post_init__(self) -> None:
-        if self._annotations is not None:
-            assert len(self._trajectories) == len(self._annotations)
-
-    @property
-    def trajectories(self) -> List[LowLevelTrajectoryReward]:
-        """The trajectories in the dataset."""
-        return self._trajectories
-
-    @property
-    def has_annotations(self) -> bool:
-        """Whether this dataset has annotations in it."""
-        return self._annotations is not None
-
-    @property
-    def annotations(self) -> List[Any]:
-        """The annotations in the dataset."""
-        assert self._annotations is not None
-        return self._annotations
-
-    def append(self,
-               trajectory: LowLevelTrajectoryReward,
                annotation: Optional[Any] = None) -> None:
         """Append one more trajectory and annotation to the dataset."""
         if annotation is None:
@@ -1713,125 +1610,6 @@ class PNAD:
 
     def __lt__(self, other: PNAD) -> bool:
         return repr(self) < repr(other)
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class InteractionRequest:
-    """A request for interacting with a training task during online learning.
-    Contains the index for that training task, an acting policy, a query
-    policy, and a termination function. The acting policy may also terminate
-    the interaction by raising `utils.RequestActPolicyFailure`.
-
-    Note: the act_policy will not be called on the state where the
-    termination_function returns True, but the query_policy will be.
-    """
-    train_task_idx: int
-    act_policy: Callable[[State], Action]
-    query_policy: Callable[[State], Optional[Query]]  # query can be None
-    termination_function: Callable[[State], bool]
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class InteractionResult:
-    """The result of an InteractionRequest. Contains a list of states, a list
-    of actions, and a list of responses to queries if provded.
-
-    Invariant: len(states) == len(responses) == len(actions) + 1
-    """
-    states: List[State]
-    actions: List[Action]
-    responses: List[Optional[Response]]
-
-    def __post_init__(self) -> None:
-        assert len(self.states) == len(self.responses) == len(self.actions) + 1
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class Query(abc.ABC):
-    """Base class for a Query."""
-
-    @property
-    def cost(self) -> float:
-        """The cost of making this Query."""
-        raise NotImplementedError("Override me")
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class Response(abc.ABC):
-    """Base class for a Response to a query.
-
-    All responses contain the Query object itself, for convenience.
-    """
-    query: Query
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class GroundAtomsHoldQuery(Query):
-    """A query for whether ground atoms hold in the state."""
-    ground_atoms: Collection[GroundAtom]
-
-    @property
-    def cost(self) -> float:
-        return len(self.ground_atoms)
-
-    def __str__(self) -> str:
-        atoms = ", ".join([str(ga) for ga in self.ground_atoms])
-        return f"Do these hold? {atoms}"
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class GroundAtomsHoldResponse(Response):
-    """A response to a GroundAtomsHoldQuery, providing boolean answers."""
-    holds: Dict[GroundAtom, bool]
-
-    def __str__(self) -> str:
-        if not self.holds:
-            return "No queries"
-        responses = []
-        for ga, b in self.holds.items():
-            suffix = "holds" if b else "does not hold"
-            responses.append(f"{ga} {suffix}")
-        return ", ".join(responses)
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class DemonstrationQuery(Query):
-    """A query requesting a demonstration to finish a train task."""
-    train_task_idx: int
-    info: Optional[Dict] = field(default=None)
-
-    @property
-    def cost(self) -> float:
-        return 1
-
-    def get_info(self, key: Any) -> Any:
-        """Access key from query info."""
-        assert self.info is not None
-        return self.info[key]
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class DemonstrationResponse(Response):
-    """A response to a DemonstrationQuery; provides a LowLevelTrajectory if one
-    can be found by the teacher, otherwise returns None."""
-    teacher_traj: Optional[LowLevelTrajectory]
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class PathToStateQuery(Query):
-    """A query requesting a trajectory that reaches a specific state."""
-    goal_state: State
-
-    @property
-    def cost(self) -> float:
-        return 1
-
-
-@dataclass(frozen=True, eq=False, repr=False)
-class PathToStateResponse(Response):
-    """A response to a PathToStateQuery; provides a LowLevelTrajectory if one
-    can be found by the teacher, otherwise returns None."""
-    teacher_traj: Optional[LowLevelTrajectory]
 
 
 @dataclass(frozen=True, repr=False, eq=False)

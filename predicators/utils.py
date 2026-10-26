@@ -29,7 +29,6 @@ from typing import Type as TypingType
 from typing import TypeVar, Union, cast
 
 import dill as pkl
-import json
 import cloudpickle as cpkl
 import imageio
 import matplotlib
@@ -55,8 +54,7 @@ from predicators.structs import NSRT, Action, Array, DummyOption, \
     NSRTOrSTRIPSOperator, Object, ObjectOrVariable, Observation, OptionSpec, \
     ParameterizedOption, Predicate, Segment, State, STRIPSOperator, Task, \
     Type, Variable, VarToObjSub, Video, _GroundLDLRule, \
-    _GroundNSRT, _GroundSTRIPSOperator, _Option, _TypedEntity, EnvironmentTask, \
-    DummyPredicate
+    _GroundNSRT, _GroundSTRIPSOperator, _Option, _TypedEntity, DummyPredicate
 from predicators.third_party.fast_downward_translator.translate import \
     main as downward_translate
 
@@ -2477,8 +2475,7 @@ def sample_subsets(universe: Sequence[_T], num_samples: int, min_set_size: int,
 
 def create_dataset_filename_str(
         saving_ground_atoms: bool,
-        include_reward: Optional[bool] = False,
-        online_learning_cycle: Optional[int] = None) -> Tuple[str, str]:
+        include_reward: Optional[bool] = False) -> Tuple[str, str]:
     """Generate strings to be used for the filename for a dataset file that is
     about to be saved.
 
@@ -2490,7 +2487,6 @@ def create_dataset_filename_str(
     # Setup the dataset filename for saving/loading GroundAtoms.
     regex = r"(\d+)"
     suffix_str = ""
-    suffix_str += f"__{online_learning_cycle}"
     if saving_ground_atoms:
         suffix_str += "__ground_atoms"
     if include_reward:
@@ -2503,35 +2499,6 @@ def create_dataset_filename_str(
         CFG.data_dir,
         dataset_fname_template.replace(regex, str(CFG.num_train_tasks)))
     return dataset_fname, dataset_fname_template
-
-def create_task_filename_str(train=True) -> Tuple[str, str]:
-    """Generate strings to be used for the filename for a dataset file that is
-    about to be saved.
-
-    Returns a tuple of strings where the first element is the dataset
-    filename itself and the second is a template string used to generate
-    it. If saving_ground_atoms is True, then we will name the file with
-    a "_ground_atoms" suffix.
-    """
-    # Setup the dataset filename for saving/loading GroundAtoms.
-    regex = r"(\d+)"
-    suffix_str = ""
-    # suffix_str += ".task"
-    if train:
-        task_fname_template = (
-            f"{CFG.env}__{CFG.offline_data_method}__{CFG.demonstrator}__"
-            f"{regex}__{CFG.included_options}__{CFG.seed}" + suffix_str)
-        task_fname = os.path.join(
-            CFG.data_dir,
-            task_fname_template.replace(regex, str(CFG.num_train_tasks)))
-    else:
-        task_fname_template = (
-            f"{CFG.env}__"
-            f"{regex}_indomain_{CFG.in_domain_test}_{CFG.seed}" + suffix_str)
-        task_fname = os.path.join(
-            CFG.data_dir,
-            task_fname_template.replace(regex, str(CFG.num_test_tasks)))
-    return task_fname, task_fname_template
 
 def create_ground_atom_dataset(
         trajectories: Sequence[LowLevelTrajectory],
@@ -3459,11 +3426,7 @@ def get_approach_save_path_str() -> str:
 
 def get_approach_load_path_str() -> str:
     """Get a path for loading approaches."""
-    if not CFG.load_experiment_id:
-        experiment_id = CFG.experiment_id
-    else:
-        experiment_id = CFG.load_experiment_id
-    return f"{CFG.approach_dir}/{get_config_path_str(experiment_id)}.saved"
+    return f"{CFG.approach_dir}/{get_config_path_str()}.saved"
 
 
 def parse_args(env_required: bool = True,
@@ -3935,33 +3898,6 @@ def add_text_to_draw_img(
     # Add the text to the image
     draw.text(position, text, fill="red", font=font)
     return draw
-
-def task2json(task: EnvironmentTask, base_path: str):
-    task_dict = {
-        "objects": {},
-        "init": {},
-        "goal": {}
-    }
-    for obj in list(task.init):
-        task_dict["objects"][obj.name] = obj.type.name
-        task_dict["init"][obj.name] = {}
-        for feat_name in obj.type.feature_names:
-            value = task.init.get(obj, feat_name)
-            if isinstance(value, np.float32):
-                value = float(value)
-            if isinstance(value, np.ndarray):
-                value = value.tolist()
-            task_dict["init"][obj.name][feat_name] = \
-                value
-    for goal in list(task.goal):
-        if goal.predicate.name not in task_dict["goal"]:
-            task_dict["goal"][goal.predicate.name] = []
-        goal_objects = goal.objects
-        task_dict["goal"][goal.predicate.name].append(
-            [goal_object.name for goal_object in goal_objects]
-        )
-    with open(base_path, 'w') as f:
-        json.dump(task_dict, f, indent=4)
 
 def parse_json_ivntr_info(json_dict: Dict,
                            init_predicates: set[Predicate],

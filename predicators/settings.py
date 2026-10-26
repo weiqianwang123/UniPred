@@ -6,7 +6,7 @@ Anything that varies between runs should be a command-line arg
 
 from collections import defaultdict
 from types import FunctionType, SimpleNamespace
-from typing import Any, Callable, Dict, List, Set
+from typing import Any, Callable, Dict, List
 
 from predicators.args import create_arg_parser
 
@@ -24,24 +24,15 @@ class GlobalSettings:
     debug = False
     num_train_tasks = 50
     num_test_tasks = 50
-    # Perform online learning for this many cycles or until this many
-    # transitions have been collected, whichever happens first.
-    num_online_learning_cycles = 10
     # Optional {type name: [feature names]} of object features hidden from
     # the neural predicate and GNN inputs. None keeps all features.
     exclude_domain_feat = None
     # Optional {type name: [feature indices]} of object features used as
     # sampler inputs. None keeps all features.
     domain_sampler_data_filter = None
-    online_learning_max_transitions = float("inf")
     # Maximum number of training tasks to give a demonstration for, if the
     # offline_data_method is demo-based.
     max_initial_demos = float("inf")
-    # If this is False, then environment interactions can only take place
-    # on tasks that have no demonstrations.
-    allow_interaction_in_demo_tasks = True
-    # Maximum number of steps to run an InteractionRequest policy.
-    max_num_steps_interaction_request = 100
     # Whether to pretty print predicates and NSRTs when NSRTs are loaded.
     pretty_print_when_loading = False
     # Used for random seeding in test environment.
@@ -51,16 +42,13 @@ class GlobalSettings:
     segmenter = "option_changes"
     # The method to use for generating demonstrations: "oracle" or "human".
     demonstrator = "oracle"
-    force_create_dataset = True
     in_domain_test = False
-    verbose_pddl_matrix = True # print the PDDL matrix using oracle approach
     # DPI for rendering the state. Increase this if video quality is poor.
     # Note that for unit testing, we use a much smaller value by default,
     # which is set in utils.reset_config(). If you want higher-quality videos
     # in unit tests, make sure to pass in a value for `render_state_dpi` into
     # your call to utils.reset_config().
     render_state_dpi = 150
-    approach_wrapper = None
     # Normally, excluding goal predicates does not make sense, because then
     # there is no goal for the agent to plan towards. This is intended to be
     # used by VLM predicate invention, where we want to invent goal predicates
@@ -69,18 +57,6 @@ class GlobalSettings:
     # Normally, State.allclose() raises an error if the simulator state of
     # either of its arguments is not None.
     allow_state_allclose_comparison_despite_simulator_state = False
-
-    # mdp offline dataset settings
-    all_skeleton_found = 1
-    max_num_pos_mdp_traj = 1
-    max_num_neg_mdp_traj = 1
-    mdp_hl_search_timeout = 30 # this is big as we want to get more data for one task
-    mdp_ll_search_timeout = 5
-    mdp_ll_step_fail_rw = -0.0
-    mdp_bad_hl_step = -0.0
-    mdp_fail_last_step = -0.0
-    mdp_good_hl_step_fail_rw = -0.0
-    mdp_bad_hl_step_fail_rw = -0.0
 
     # blocks env parameters
     blocks_num_blocks_train = [4, 5]
@@ -378,21 +354,6 @@ class GlobalSettings:
         for settings_fn in _ARG_SPECIFIC_SETTINGS_FNS:
             settings.update(settings_fn(args))
         return settings
-
-
-def get_allowed_query_type_names() -> Set[str]:
-    """Get the set of names of query types that the teacher is allowed to
-    answer, computed based on the configuration CFG."""
-    if CFG.option_learner == "direct_bc":
-        return {"PathToStateQuery"}
-    if CFG.approach == "unittest":
-        return {
-            "GroundAtomsHoldQuery",
-            "DemonstrationQuery",
-            "PathToStateQuery",
-            "_MockQuery",
-        }
-    return set()
 
 
 def register_settings(settings_cls: type) -> None:

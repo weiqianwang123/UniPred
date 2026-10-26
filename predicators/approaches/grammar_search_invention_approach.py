@@ -936,9 +936,7 @@ class GrammarSearchInventionApproach(NSRTLearningApproach):
         annotations = None
         if dataset.has_annotations:
             annotations = dataset.annotations
-        self._learn_nsrts(dataset.trajectories,
-                          online_learning_cycle=None,
-                          annotations=annotations)
+        self._learn_nsrts(dataset.trajectories, annotations=annotations)
 
     def _select_predicates_by_score_hillclimbing(
             self, candidates: Dict[Predicate, float],

@@ -2,8 +2,7 @@
 
 import abc
 
-from predicators.structs import EnvironmentTask, Observation, State, Task, \
-    Video
+from predicators.structs import EnvironmentTask, Observation, State, Task
 
 
 class BasePerceiver(abc.ABC):
@@ -21,8 +20,3 @@ class BasePerceiver(abc.ABC):
     @abc.abstractmethod
     def step(self, observation: Observation) -> State:
         """Produce a State given the current and past observations."""
-
-    @abc.abstractmethod
-    def render_mental_images(self, observation: Observation,
-                             env_task: EnvironmentTask) -> Video:
-        """Create mental images for the given observation."""

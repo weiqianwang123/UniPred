@@ -25,23 +25,13 @@ def create_arg_parser(env_required: bool = True,
     parser.add_argument("--timeout", default=10, type=float)
     parser.add_argument("--make_test_videos", action="store_true")
     parser.add_argument("--make_failure_videos", action="store_true")
-    parser.add_argument("--make_interaction_videos", action="store_true")
     parser.add_argument("--make_demo_videos", action="store_true")
     parser.add_argument("--make_demo_images", action="store_true")
-    parser.add_argument("--make_cogman_videos", action="store_true")
     parser.add_argument("--load_approach", action="store_true")
-    # In the case of online learning approaches, load_approach by itself
-    # will try to load an approach on *every* online learning cycle.
-    # restart_learning will ensure loading is only done for the
-    # cycle at skip_until_cycle, and then learning will proceed
-    # normally (without loading) from there.
-    parser.add_argument("--restart_learning", action="store_true")
     parser.add_argument("--load_data", action="store_true")
     parser.add_argument("--load_atoms", action="store_true")
     parser.add_argument("--save_atoms", action="store_true")
-    parser.add_argument("--skip_until_cycle", default=-1, type=int)
     parser.add_argument("--experiment_id", default="", type=str)
-    parser.add_argument("--load_experiment_id", default="", type=str)
     parser.add_argument("--log_file", default="", type=str)
     parser.add_argument("--use_gui", action="store_true")
     parser.add_argument('--debug',

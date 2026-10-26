@@ -2,15 +2,14 @@
 
 import abc
 from collections import defaultdict
-from typing import Any, Callable, List, Optional, Sequence, Set
+from typing import Any, Callable, List, Set
 
 import numpy as np
 from gymnasium.spaces import Box
 
 from predicators.settings import CFG
-from predicators.structs import Action, Dataset, InteractionRequest, \
-    InteractionResult, Metrics, ParameterizedOption, Predicate, State, Task, \
-    Type
+from predicators.structs import Action, Dataset, Metrics, \
+    ParameterizedOption, Predicate, State, Task, Type
 from predicators.utils import ExceptionWithInfo
 
 
@@ -88,37 +87,14 @@ class BaseApproach(abc.ABC):
         given dataset.
 
         Also, save the results of learning so they can be loaded in the
-        future via load() with online_learning_cycle = None.
+        future via load().
         """
 
-    def load(self, online_learning_cycle: Optional[int]) -> None:
-        """Load anything from CFG.get_approach_load_path_str().
+    def load(self) -> None:
+        """Load what learn_from_offline_dataset() saved under
+        utils.get_approach_load_path_str().
 
-        Only called if self.is_learning_based. If online_learning_cycle
-        is None, then load the results of learn_from_offline_dataset().
-
-        Otherwise, load the results of the ith call (zero-indexed) to
-        learn_from_interaction_results().
-        """
-
-    def get_interaction_requests(self) -> List[InteractionRequest]:
-        """Based on any learning that has previously occurred, create a list of
-        InteractionRequest objects to give back to the environment.
-
-        The results of these requests will define the data that is
-        received the next learning cycle, when
-        learn_from_interaction_results() is called.
-        """
-        _ = self  # unused, but maybe useful for subclasses
-        return []
-
-    def learn_from_interaction_results(
-            self, results: Sequence[InteractionResult]) -> None:
-        """Given a list of results of the requests returned by
-        get_interaction_requests(), learn whatever.
-
-        Also, save the results of learning so they can be loaded in the
-        future via load() with non-None values of online_learning_cycle.
+        Only called if self.is_learning_based.
         """
 
     @property
@@ -130,31 +106,6 @@ class BaseApproach(abc.ABC):
     def reset_metrics(self) -> None:
         """Reset the metrics dictionary."""
         self._metrics = defaultdict(float)
-
-
-class BaseApproachWrapper(BaseApproach):
-    """Base class for an approach that wraps another approach."""
-
-    def __init__(self, base_approach: BaseApproach,
-                 initial_predicates: Set[Predicate],
-                 initial_options: Set[ParameterizedOption], types: Set[Type],
-                 action_space: Box, train_tasks: List[Task]) -> None:
-        super().__init__(initial_predicates, initial_options, types,
-                         action_space, train_tasks)
-        self._base_approach = base_approach
-
-    def learn_from_offline_dataset(self, dataset: Dataset) -> None:
-        return self._base_approach.learn_from_offline_dataset(dataset)
-
-    def load(self, online_learning_cycle: Optional[int]) -> None:
-        return self._base_approach.load(online_learning_cycle)
-
-    def get_interaction_requests(self) -> List[InteractionRequest]:
-        return self._base_approach.get_interaction_requests()
-
-    def learn_from_interaction_results(
-            self, results: Sequence[InteractionResult]) -> None:
-        return self._base_approach.learn_from_interaction_results(results)
 
 
 class ApproachTimeout(ExceptionWithInfo):
