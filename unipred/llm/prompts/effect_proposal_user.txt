@@ -1,0 +1,21 @@
+# Task and domain
+$description
+
+Incomplete PDDL domain (the types, the robot's actions with their
+parameters, and the known predicates):
+$domain
+
+# Demonstrations
+$demos
+
+# Predicate to learn
+$target($target_types)
+Actions that may ADD it: $add_candidates
+Actions that may DEL it: $del_candidates
+
+# Effect patterns tried so far
+$history
+
+# Requested output
+Propose a new effect pattern for $target that is not in the list above
+and is likely to fit the data. $feedback

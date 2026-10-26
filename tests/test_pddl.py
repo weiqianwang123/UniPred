@@ -9,9 +9,9 @@ from predicators import utils
 from predicators.structs import Action, Predicate, Type
 from unipred.llm.client import LLMClient
 from unipred.llm.names import NameMap
-from unipred.llm.pddl import ADD, DELETE, build_partial_domain, \
-    complete_domain, extract_proposals, load_known_predicates, parse_domain, \
-    proposals_to_seeds
+from unipred.llm.pddl import ADD, DELETE, PromptContext, \
+    build_partial_domain, complete_domain, extract_proposals, \
+    load_known_predicates, parse_domain, proposals_to_seeds
 
 _ROBOT = Type("robot", [])
 _TOY = Type("toy", [])
@@ -110,8 +110,9 @@ def test_complete_domain_with_canned_reply(tmp_path):
     client = LLMClient("mock", "mock", 0.2, 100, 10, 2,
                        mock_responses=str(responses))
     names = NameMap(_OPTIONS, _PREDICATES, semantic=True)
-    proposals = complete_domain(client, "(define (domain robot))", "", "",
-                                {("robot", "toy")}, _OPTIONS, names)
+    context = PromptContext("", "(define (domain robot))", "")
+    proposals = complete_domain(client, context, {("robot", "toy")},
+                                _OPTIONS, names)
     assert [p.name for p in proposals] == ["holding"]
     target = Predicate("neural_b_robot_toy", [_ROBOT, _TOY],
                        lambda s, o: True)
@@ -119,5 +120,5 @@ def test_complete_domain_with_canned_reply(tmp_path):
     seeds = proposals_to_seeds(proposals, [target, other])
     assert [list(s) for s in seeds[target]] == [[ADD, DELETE]]
     assert seeds[other] == []
-    assert complete_domain(client, "", "", "", {("toy", )}, _OPTIONS,
-                           names) == []
+    assert complete_domain(client, PromptContext("", "", ""), {("toy", )},
+                           _OPTIONS, names) == []

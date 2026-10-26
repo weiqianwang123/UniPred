@@ -9,7 +9,8 @@ directory and the repository root.
 
 Responses are cached on disk under ``CFG.llm_cache_dir``, keyed by the
 provider, model, sampling parameters, prompt and attempt number, so a rerun
-with the same seed replays the same answers without new API calls.
+with the same seed replays the same answers without new API calls. Every
+request and its reply can also be appended to a JSON-lines log (log_path).
 """
 
 from __future__ import annotations
@@ -69,7 +70,8 @@ class LLMClient:
                  cache_dir: str = "",
                  mock_responses: str = "",
                  reasoning_effort: str = "low",
-                 codex_command: str = "codex") -> None:
+                 codex_command: str = "codex",
+                 log_path: str = "") -> None:
         self.provider = provider.lower()
         self.model = model
         self.temperature = temperature
@@ -81,6 +83,7 @@ class LLMClient:
         self._mock_responses = mock_responses
         self.reasoning_effort = reasoning_effort
         self._codex_command = codex_command
+        self._log_path = Path(log_path) if log_path else None
         self._backend: Any = None
         self.usage = {
             "calls": 0,
@@ -92,7 +95,9 @@ class LLMClient:
             raise ValueError(f"Unknown LLM provider: {provider}")
 
     @classmethod
-    def from_settings(cls, temperature: Optional[float] = None) -> LLMClient:
+    def from_settings(cls,
+                      temperature: Optional[float] = None,
+                      log_path: str = "") -> LLMClient:
         """Create a client from the llm_* settings."""
         return cls(provider=CFG.llm_provider,
                    model=CFG.llm_model,
@@ -105,7 +110,8 @@ class LLMClient:
                    cache_dir=CFG.llm_cache_dir,
                    mock_responses=CFG.llm_mock_responses,
                    reasoning_effort=CFG.llm_reasoning_effort,
-                   codex_command=CFG.llm_codex_command)
+                   codex_command=CFG.llm_codex_command,
+                   log_path=log_path)
 
     def complete(self,
                  system: str,
@@ -131,15 +137,29 @@ class LLMClient:
             "attempt": attempt,
         }
         cache_path = self._cache_path(request)
+        cached = False
         if cache_path is not None and cache_path.exists():
+            cached = True
             self.usage["cached"] += 1
             with open(cache_path, "r", encoding="utf-8") as f:
-                return json.load(f)["response"]
-        response = self._call_with_retries(system, user, task)
-        if cache_path is not None:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump({**request, "response": response}, f, indent=1)
+                response = json.load(f)["response"]
+        else:
+            response = self._call_with_retries(system, user, task)
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump({**request, "response": response}, f, indent=1)
+        if self._log_path is not None:
+            with open(self._log_path, "a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps({
+                        "task": task,
+                        "attempt": attempt,
+                        "cached": cached,
+                        "system": system,
+                        "user": user,
+                        "response": response
+                    }) + "\n")
         return response
 
     def _cache_path(self, request: Dict[str, Any]) -> Optional[Path]:

@@ -31,12 +31,13 @@ def mock_response(system: str, user: str, task: str,
     if task == "pddl_completion":
         return _complete_pddl(user)
     if task == "effect_proposal":
-        return _propose_effects(system, user)
+        return _propose_effects(user)
     raise ValueError(f"The mock LLM cannot answer task {task!r}.")
 
 
 def _signatures(user: str) -> List[Tuple[str, ...]]:
-    section = user.split("Allowed argument types of new predicates:", 1)[-1]
+    section = user.split("New predicates may only take these argument types",
+                         1)[-1]
     return [
         tuple(t.strip() for t in match.split(","))
         for match in re.findall(r"^- \(([^)]*)\)", section, re.MULTILINE)
@@ -73,16 +74,17 @@ def _complete_pddl(user: str) -> str:
             f"{' '.join(blocks)})")
 
 
-def _candidates(system: str, key: str) -> List[str]:
-    match = re.search(rf"^{key} candidates: (.*)$", system, re.MULTILINE)
+def _candidates(user: str, key: str) -> List[str]:
+    match = re.search(rf"^Actions that may {key} it: (.*)$", user,
+                      re.MULTILINE)
     if match is None or match.group(1).strip() == "(none)":
         return []
     return [name.strip() for name in match.group(1).split(",")]
 
 
-def _propose_effects(system: str, user: str) -> str:
-    adds = _candidates(system, "ADD")
-    dels = _candidates(system, "DEL")
+def _propose_effects(user: str) -> str:
+    adds = _candidates(user, "ADD")
+    dels = _candidates(user, "DEL")
     patterns = [([a], []) for a in adds] + [([], [d]) for d in dels] + [
         ([a], [d]) for a in adds for d in dels if a != d
     ]

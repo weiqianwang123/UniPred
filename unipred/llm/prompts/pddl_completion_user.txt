@@ -1,12 +1,14 @@
-Domain description: $description
+# Task and domain
+$description
 
-Incomplete domain:
+Incomplete PDDL domain (the types, the robot's actions with their
+parameters, and the known predicates):
 $domain
 
-Allowed argument types of new predicates:
-$signatures
-
-Demonstrations:
+# Demonstrations
 $demos
 
-Complete the domain.
+# Requested output
+New predicates may only take these argument types, in this order:
+$signatures
+Reply with the complete PDDL domain.

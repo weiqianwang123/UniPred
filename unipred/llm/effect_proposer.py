@@ -2,8 +2,10 @@
 
 An EffectProposer proposes effect vectors for one predicate type: first the
 seeds from PDDL completion, then (if the LLM loop is on) new proposals from
-the LLM, which sees every earlier proposal with a score derived from the
-validation loss of the classifier trained on it.
+the LLM. The LLM sees the domain, the demonstrations and every earlier
+proposal with the feedback from the classifier trained on it: a score in
+[0, 100] derived from the validation loss, or, without loss feedback,
+only whether the proposal was accepted.
 
 It implements the searcher interface that
 BilevelLearningApproach.gen_sat_vec() expects (propose() and
@@ -22,7 +24,8 @@ import numpy as np
 from predicators.structs import ParameterizedOption, Predicate
 from unipred.llm.client import LLMClient
 from unipred.llm.names import NameMap
-from unipred.llm.pddl import ADD, DELETE, NO_EFFECT, load_prompt
+from unipred.llm.pddl import ADD, DELETE, NO_EFFECT, PromptContext, \
+    load_prompt
 
 Codes = Tuple[int, ...]
 
@@ -67,16 +70,17 @@ class EffectProposer:
     """Proposes effect vectors of one predicate type (see module doc)."""
 
     def __init__(self, client: Optional[LLMClient], target: Predicate,
-                 rows: Sequence[ParameterizedOption],
-                 known_predicates: Sequence[Predicate], names: NameMap,
-                 allowed: Sequence[Set[int]], seeds: Sequence[np.ndarray],
-                 use_llm: bool, loss_feedback: bool, description: str,
-                 accept_loss: float, zero_loss: float) -> None:
+                 rows: Sequence[ParameterizedOption], names: NameMap,
+                 context: PromptContext, allowed: Sequence[Set[int]],
+                 seeds: Sequence[np.ndarray], use_llm: bool,
+                 loss_feedback: bool, accept_loss: float,
+                 zero_loss: float) -> None:
         assert client is not None or not use_llm
         self._client = client
         self._target = target
         self._rows = list(rows)
         self._names = names
+        self._context = context
         self._allowed = [set(a) for a in allowed]
         self._seeds = [tuple(int(c) for c in s) for s in seeds]
         self._use_llm = use_llm
@@ -87,7 +91,6 @@ class EffectProposer:
         # is trained, inf if it violates the constraints).
         self._history: Dict[Codes, Optional[float]] = {}
         self._num_requests = 0
-        self._system = self._system_prompt(known_predicates, description)
 
     @property
     def history(self) -> Dict[Codes, Optional[float]]:
@@ -105,10 +108,10 @@ class EffectProposer:
         if not self._use_llm:
             return None
         assert self._client is not None
+        system = load_prompt("effect_proposal_system.txt").substitute()
         notes: List[str] = []
         for attempt in range(self._client.retry_attempts):
-            reply = self._client.complete(self._system,
-                                          self._user_prompt(notes),
+            reply = self._client.complete(system, self._user_prompt(notes),
                                           "effect_proposal",
                                           self._num_requests * 100 + attempt)
             codes, problem = self._parse(reply)
@@ -139,22 +142,17 @@ class EffectProposer:
             self._history[tuple(int(c) for c in vector)] = float(loss)
 
     def _describe(self, codes: Codes) -> str:
-        adds = [self._names.option(o) for o, c in zip(self._rows, codes)
-                if c == ADD]
-        dels = [self._names.option(o) for o, c in zip(self._rows, codes)
-                if c == DELETE]
+        adds = [
+            self._names.option(o) for o, c in zip(self._rows, codes)
+            if c == ADD
+        ]
+        dels = [
+            self._names.option(o) for o, c in zip(self._rows, codes)
+            if c == DELETE
+        ]
         return f"ADD: {', '.join(adds)} | DEL: {', '.join(dels)}"
 
-    def _system_prompt(self, known_predicates: Sequence[Predicate],
-                       description: str) -> str:
-        predicates = [
-            f"  {self._names.predicate(p)}({', '.join(t.name for t in p.types)})"
-            for p in sorted(known_predicates, key=self._names.predicate)
-        ]
-        actions = [
-            f"  {self._names.option(o)}({', '.join(t.name for t in o.types)})"
-            for o in self._rows
-        ]
+    def _user_prompt(self, notes: Sequence[str]) -> str:
         add_candidates = [
             self._names.option(o) for o, a in zip(self._rows, self._allowed)
             if ADD in a
@@ -163,47 +161,40 @@ class EffectProposer:
             self._names.option(o) for o, a in zip(self._rows, self._allowed)
             if DELETE in a
         ]
-        return load_prompt("effect_proposal_system.txt").substitute(
-            description=description or "(none)",
+        history = [
+            f"- {self._describe(codes)} -> {self._feedback(loss)}"
+            for codes, loss in self._history.items()
+        ] or ["(none)"]
+        history += [f"Your previous reply was invalid: {n}" for n in notes]
+        if self._loss_feedback:
+            feedback = ("A score from 0 to 100 says how well a classifier "
+                        "with the effect pattern fits the robot's data; 100 "
+                        "means it fits well enough to be kept.")
+        else:
+            feedback = ("'accepted' means a classifier with the effect "
+                        "pattern fits the robot's data well enough to be "
+                        "kept.")
+        return load_prompt("effect_proposal_user.txt").substitute(
+            description=self._context.description or "(none)",
+            domain=self._context.domain,
+            demos=self._context.demos or "(none)",
             target=self._target.name,
             target_types=", ".join(t.name for t in self._target.types),
-            predicates="\n".join(predicates) or "  (none)",
-            actions="\n".join(actions),
             add_candidates=", ".join(add_candidates) or "(none)",
             del_candidates=", ".join(del_candidates) or "(none)",
-            feedback=("Each tried effect pattern has a score from 0 to 100 "
-                      "that says how well a classifier with these effects "
-                      "fits the robot's data; 100 means it fits well enough "
-                      "to be kept." if self._loss_feedback else
-                      "You see the effect patterns tried so far."))
+            history="\n".join(history),
+            feedback=feedback)
 
-    def _user_prompt(self, notes: Sequence[str]) -> str:
-        if not self._history:
-            lines = ["No effect patterns have been tried yet."]
-        else:
-            lines = ["Effect patterns tried so far:"]
-            entries = list(self._history.items())
-            if self._loss_feedback:
-                entries.sort(key=lambda e: -self._score(e[1]))
-            for codes, loss in entries:
-                line = f"- {self._describe(codes)}"
-                if self._loss_feedback:
-                    if loss is None:
-                        line += " -> not scored yet"
-                    elif math.isinf(loss):
-                        line += " -> impossible for these actions"
-                    else:
-                        line += f" -> score {self._score(loss)}"
-                lines.append(line)
-        for note in notes:
-            lines.append(f"Your previous reply was invalid: {note}")
-        lines.append("Propose a new effect pattern that is not in the list.")
-        return "\n".join(lines)
-
-    def _score(self, loss: Optional[float]) -> int:
+    def _feedback(self, loss: Optional[float]) -> str:
+        """What the LLM learns about a proposal."""
         if loss is None:
-            return -1
-        return loss_to_score(loss, self._accept_loss, self._zero_loss)
+            return "not trained yet"
+        if math.isinf(loss):
+            return "impossible for these actions"
+        if self._loss_feedback:
+            return "score " + str(
+                loss_to_score(loss, self._accept_loss, self._zero_loss))
+        return "accepted" if loss <= self._accept_loss else "rejected"
 
     def _parse(self, reply: str) -> Tuple[Optional[Codes], str]:
         fields: Dict[str, str] = {}
@@ -229,7 +220,7 @@ class EffectProposer:
                     return None, f"{name} is listed twice."
                 if code not in self._allowed[row]:
                     kind = "ADD" if code == ADD else "DEL"
-                    return None, f"{name} is not an {kind} candidate."
+                    return None, f"{name} cannot {kind} this predicate."
                 codes[row] = code
         # Rows whose effect the data determines are filled in.
         for row, allowed in enumerate(self._allowed):

@@ -336,8 +336,18 @@ def extract_proposals(domain: ParsedDomain,
     return proposals
 
 
-def complete_domain(client: LLMClient, partial_domain: str, demos: str,
-                    description: str, signatures: Collection[Tuple[str, ...]],
+@dataclass(frozen=True)
+class PromptContext:
+    """The first two parts of every prompt (paper Section V-A): the task
+    and domain (a description and the partial PDDL domain, whose actions
+    are the option signatures) and the demonstrations."""
+    description: str
+    domain: str
+    demos: str
+
+
+def complete_domain(client: LLMClient, context: PromptContext,
+                    signatures: Collection[Tuple[str, ...]],
                     rows: Sequence[ParameterizedOption],
                     names: NameMap) -> List[ProposedPredicate]:
     """Ask the LLM to complete the domain and return the new predicates whose
@@ -346,10 +356,10 @@ def complete_domain(client: LLMClient, partial_domain: str, demos: str,
     signature_lines = "\n".join(f"- ({', '.join(s)})"
                                 for s in sorted(signatures))
     user = load_prompt("pddl_completion_user.txt").substitute(
-        description=description or "(none)",
-        domain=partial_domain,
+        description=context.description or "(none)",
+        domain=context.domain,
         signatures=signature_lines,
-        demos=demos or "(none)")
+        demos=context.demos or "(none)")
     for attempt in range(client.retry_attempts):
         reply = client.complete(system, user, "pddl_completion", attempt)
         domain = parse_domain(reply)

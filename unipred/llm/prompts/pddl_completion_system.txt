@@ -1,6 +1,6 @@
 You are an expert in PDDL and robot task planning. You will be given an
 incomplete PDDL domain of a robot. Its actions are the robot's skills, and
-it already contains some known predicates.
+it already contains the known predicates and what is known about them.
 
 Complete the domain: invent the predicates that are missing to describe
 the preconditions and effects of the actions, declare them under

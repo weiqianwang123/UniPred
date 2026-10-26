@@ -1,0 +1,9 @@
+# IVNTR on Satellites: the predicate types of predicates.yaml with IVNTR's
+# search budget (its tree search proposes many more effect vectors than
+# the LLM does).
+include: predicates.yaml
+defaults: {matrix_vec_try: 100}
+predicate_types:
+  - {name: neural_u_p1, batch_vect_num: 12}
+  - {name: neural_u_p2, batch_vect_num: 12}
+  - {name: neural_b_p3, num_iter: 70}

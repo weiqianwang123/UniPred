@@ -24,7 +24,6 @@ defaults:
   loss_thresh: 0.005
   matrix_vec_try: 20
 
-# Types with llm_proposals: false train only their PDDL-completion seeds.
 predicate_types:
   - name: neural_u_p1
     types: [robot]
@@ -41,7 +40,6 @@ predicate_types:
     epochs: 100
     num_iter: 5
     batch_vect_num: 6
-    llm_proposals: false
   - name: neural_u_p3
     types: [block]
     ent_idx: [1]
@@ -49,7 +47,6 @@ predicate_types:
     epochs: 100
     num_iter: 5
     batch_vect_num: 6
-    llm_proposals: false
   - name: neural_b_p4
     types: [block, block]
     ent_idx: [0, 1]
@@ -66,7 +63,6 @@ predicate_types:
     epochs: 200
     num_iter: 10
     batch_vect_num: 4
-    llm_proposals: false
   - name: neural_b_p6
     types: [robot, block]
     ent_idx: [0, 0]
@@ -82,4 +78,3 @@ predicate_types:
     epochs: 200
     num_iter: 10
     batch_vect_num: 4
-    llm_proposals: false

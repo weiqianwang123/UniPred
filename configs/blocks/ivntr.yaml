@@ -1,3 +1,3 @@
 include: base.yaml
 approach: ivntr
-neupi_pred_config: third_party/IVNTR/predicators/config/blocks_onclear/pred.yaml
+neupi_pred_config: configs/blocks/ivntr_predicates.yaml

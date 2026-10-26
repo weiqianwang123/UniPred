@@ -9,7 +9,7 @@ from unipred.llm.client import LLMClient
 from unipred.llm.effect_proposer import EffectProposer, allowed_codes, \
     loss_to_score
 from unipred.llm.names import NameMap
-from unipred.llm.pddl import ADD, DELETE, NO_EFFECT
+from unipred.llm.pddl import ADD, DELETE, NO_EFFECT, PromptContext
 
 _ROBOT = Type("robot", [])
 _TOY = Type("toy", [])
@@ -40,13 +40,15 @@ class _Scripted(LLMClient):
 
 def _proposer(client, seeds=(), use_llm=True, feedback=True, semantic=True,
               allowed=None):
+    names = NameMap(_ROWS, [_HAND_EMPTY], semantic)
+    context = PromptContext(names.text("Toys on a table. Pick needs "
+                                       "HandEmpty."), "(define (domain d))",
+                            "Demonstration 1: ...")
     return EffectProposer(
-        client=client, target=_HOLDING, rows=_ROWS,
-        known_predicates=[_HAND_EMPTY],
-        names=NameMap(_ROWS, [_HAND_EMPTY], semantic),
-        allowed=allowed or [{0, 1, 2}] * 3, seeds=seeds, use_llm=use_llm,
-        loss_feedback=feedback, description="Toys on a table.",
-        accept_loss=0.005, zero_loss=1.0)
+        client=client, target=_HOLDING, rows=_ROWS, names=names,
+        context=context, allowed=allowed or [{0, 1, 2}] * 3, seeds=seeds,
+        use_llm=use_llm, loss_feedback=feedback, accept_loss=0.005,
+        zero_loss=1.0)
 
 
 def test_loss_to_score():
@@ -69,8 +71,9 @@ def test_allowed_codes():
 
 
 def test_seeds_then_llm_with_feedback():
-    """Seeds come first; the LLM then sees earlier proposals with scores,
-    invalid replies are retried with a note, and None ends the search."""
+    """Seeds come first; the LLM then sees the domain, the demonstrations and
+    earlier proposals with scores, invalid replies are retried with a note,
+    and None ends the search."""
     client = _Scripted([
         "ADD: Pick\nDEL: Place\nWHY: seed again",  # already tried
         "ADD: Wipe, Unknown\nDEL:\nWHY: bad name",
@@ -81,10 +84,12 @@ def test_seeds_then_llm_with_feedback():
     assert list(proposer.propose()) == [ADD, DELETE, NO_EFFECT]
     proposer.record_losses([np.array([ADD, DELETE, 0])], [0.002])
     assert list(proposer.propose()) == [NO_EFFECT, NO_EFFECT, DELETE]
-    system, user = client.prompts[-1]
-    assert "neural_b_robot_toy(robot, toy)" in system
-    assert "Toys on a table." in system
-    assert "ADD: pick | DEL: place -> score 100" in user
+    _, user = client.prompts[-1]
+    for part in ("# Task and domain", "Toys on a table.",
+                 "(define (domain d))", "# Demonstrations",
+                 "Demonstration 1", "neural_b_robot_toy(robot, toy)",
+                 "ADD: pick | DEL: place -> score 100", "# Requested output"):
+        assert part in user
     assert "was already tried" in user and "Unknown is not an action" in user
     proposer.update_value(np.array([0, 0, DELETE]), np.array([np.inf]))
     assert proposer.propose() is None
@@ -93,19 +98,24 @@ def test_seeds_then_llm_with_feedback():
 
 
 def test_without_feedback_or_semantics():
-    """Without loss feedback there are no scores; without semantic names the
-    options and known predicates get neutral ids."""
-    client = _Scripted(["ADD: action0\nDEL:\nWHY: x"])
+    """Without loss feedback, proposals are only accepted or rejected;
+    without semantic names, the options and known predicates get neutral
+    ids, also in the description, and nothing else changes."""
+    client = _Scripted(
+        ["ADD: action0\nDEL:\nWHY: x", "ADD:\nDEL: action2\nWHY: y"])
     proposer = _proposer(client, seeds=[np.array([0, ADD, 0])],
                          feedback=False, semantic=False)
     proposer.propose()
     proposer.record_losses([np.array([0, ADD, 0])], [0.3])
     assert list(proposer.propose()) == [ADD, NO_EFFECT, NO_EFFECT]
-    system, user = client.prompts[-1]
+    proposer.record_losses([np.array([ADD, 0, 0])], [0.001])
+    proposer.propose()
+    _, user = client.prompts[-1]
     assert "score" not in user
-    assert "Pick" not in system and "pick" not in system
-    assert "HandEmpty" not in system and "pred0(robot)" in system
-    assert "Toys on a table." in system
+    assert "-> rejected" in user and "-> accepted" in user
+    assert "Pick" not in user and "pick" not in user
+    assert "HandEmpty" not in user
+    assert "Toys on a table. action0 needs pred0." in user
 
 
 def test_seeds_only_and_forced_rows():
