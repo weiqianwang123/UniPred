@@ -9,6 +9,7 @@ import glob
 import time
 import yaml
 import itertools
+import queue as queue_lib
 import json
 import logging
 from z3 import Bool, Not, Or, Solver, is_true, sat
@@ -22,10 +23,10 @@ import dill as pkl
 import torch
 import torch.nn
 import torch.optim
-from torch.multiprocessing import Process, Queue
+from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
 
-from predicators import utils
+from predicators import hooks, utils
 from predicators.approaches.nsrt_learning_approach import NSRTLearningApproach
 from predicators.gnn.neupi import setup_neupi_mlp_net, setup_neupi_optimizer, HierachicalMCTSearcher
 from predicators.gnn.neupi_utils import train_predicate_model, get_single_neupi_prediction, \
@@ -65,84 +66,31 @@ def _load_tensor(path: str) -> Any:
 #                          Programmatic classifiers                            #
 ################################################################################
 
-def train_val_model_in_parallel(curr_pred, ent_idx, pred_save_path, ae_vector, iteration, pred_config, queue, \
-                                ae_row_name_dict, node_feature_to_index, edge_feature_to_index, \
-                                train_dataset, val_dataset, n, wandb_run_name=''):
-    # Initialize W&B run with a unique name for this process
-    logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
-    if wandb_run_name:
-        logging.info("Starting W&B run. This makes training slower due to logging.")
-        utils.init_wandb_run(
-            f"{wandb_run_name}_pred_{pred_config['name']}_init_{n}",
-            utils.get_important_cfg(CFG, pred_config))
+def _train_val_model_process(settings: Dict[str, Any], queue: Queue,
+                             args: Tuple) -> None:
+    """Entry point of a training process for parallel invention.
 
-    train_dataloader = DataLoader(train_dataset,
-                                    batch_size=pred_config['batch_size'],
-                                    shuffle=True,
-                                    num_workers=0,
-                                    pin_memory=False,
-                                    collate_fn=action_graph_batch_collate)
-    val_dataloader = DataLoader(val_dataset,
-                                batch_size=pred_config['batch_size'],
-                                shuffle=False,
-                                num_workers=0,
-                                pin_memory=False,
-                                collate_fn=action_graph_batch_collate)
-    model = setup_neupi_mlp_net(train_dataset,
-                                curr_pred.arity,
-                                pred_config['architecture'],
-                                node_feat2inx=node_feature_to_index,
-                                edge_feat2inx=edge_feature_to_index)
-    optimizer, scheduler = setup_neupi_optimizer(model, \
-                                                 pred_config['optimizer'], \
-                                                 pred_config['lr_scheduler'])
-    # # Train the model
-    if "quick_skip" not in pred_config:
-        pred_config["quick_skip"] = None
-    best_model_dict, best_val_loss = train_predicate_model(
-        iteration,  # replace with your iteration management
-        model,
-        train_dataloader,
-        val_dataloader,
-        optimizer=optimizer,
-        super_label=CFG.neupi_super_label,
-        num_epochs=pred_config["epochs"],
-        gumbel_temperature=pred_config["gumbel_temp"],
-        val_freq=pred_config['val_freq'],
-        device=CFG.device,
-        scheduler=scheduler,
-        quick_skip=pred_config["quick_skip"]
-    )
-    logging.info("Model {} Trained".format(n))
-    logging.info("Corresponding AE Vector: {}".format(ae_vector[:, 0]))
-    if ae_vector.shape[-1] == 2:
-        logging.info("Corresponding AE Vector (Del): {}".format(ae_vector[:, 1]))
-    model.load_state_dict(best_model_dict)
-    learned_ae_vector = distill_learned_ae_vector(val_dataloader, \
-            pred_config['gumbel_temp'], 0.5, model, curr_pred, ent_idx, \
-            ae_row_name_dict, node_feature_to_index, CFG.device)
-    learned_guidance = compute_guidance_vector(
-                                        learned_ae_vector,
-                                        ae_vector,
-                                        min_prob=CFG.neupi_entropy_entry_min,
-                                        max_prob=CFG.neupi_entropy_entry_max,
-                                        entropy_w=CFG.neupi_entropy_w,
-                                        loss_w=CFG.neupi_loss_w)
-    logging.info("Model {}".format(n))
-    logging.info("Learned AE Guidance (Lower better): {}".format(learned_guidance))
-    save_path_model = os.path.join(pred_save_path, f"iter_{iteration}_{n}_model.pth")
-    torch.save(best_model_dict, save_path_model)
-    save_path_guidance = os.path.join(pred_save_path, f"iter_{iteration}_{n}_guidance.pth")
-    torch.save(learned_guidance, save_path_guidance)
-    save_path_ae_vector = os.path.join(pred_save_path, f"iter_{iteration}_{n}_ae_vector.pth")
-    torch.save(ae_vector, save_path_ae_vector)
-    # Put result in the queue
-    # val loss is also used to determine the consistency of this predicate
-    queue.put((save_path_model, best_val_loss))
+    The processes are started with the "spawn" method, because CUDA
+    cannot be used in a forked process once the parent has used it. A
+    spawned process starts from scratch, so the global settings and the
+    logging are restored first. Each process trains one model with
+    train_val_model_single() and puts its (model path, val loss) on the
+    queue.
+    """
+    CFG.__dict__.update(settings)
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    if CFG.log_file:
+        handlers.append(logging.FileHandler(CFG.log_file, mode="a"))
+    logging.basicConfig(level=CFG.loglevel,
+                        format="%(message)s",
+                        handlers=handlers,
+                        force=True)
+    queue.put(train_val_model_single(*args, num_workers=0))
+
 
 def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iteration, pred_config, \
                                 ae_row_name_dict, node_feature_to_index, edge_feature_to_index, \
-                                train_dataset, val_dataset, n, wandb_run_name=''):
+                                train_dataset, val_dataset, n, wandb_run_name='', num_workers=4):
     # Initialize W&B run with a unique name for this process
     # assert n == 0, "Single Process"
     logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
@@ -155,16 +103,16 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
     train_dataloader = DataLoader(train_dataset,
                                     batch_size=pred_config['batch_size'],
                                     shuffle=True,
-                                    num_workers=4,
-                                    pin_memory=True,
-                                    persistent_workers=True,
+                                    num_workers=num_workers,
+                                    pin_memory=num_workers > 0,
+                                    persistent_workers=num_workers > 0,
                                     collate_fn=action_graph_batch_collate)
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=pred_config['batch_size'],
                                 shuffle=False,
-                                num_workers=4,
-                                pin_memory=True,
-                                persistent_workers=True,
+                                num_workers=num_workers,
+                                pin_memory=num_workers > 0,
+                                persistent_workers=num_workers > 0,
                                 collate_fn=action_graph_batch_collate)
     model = setup_neupi_mlp_net(train_dataset,
                                 curr_pred.arity,
@@ -755,30 +703,44 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         self._model_artifact_path(model_path, "guidance")))
         else:
             if CFG.neupi_parallel_invention:
+                context = torch.multiprocessing.get_context("spawn")
+                queue = context.Queue()
+                settings = {
+                    name: value
+                    for name, value in vars(CFG).items()
+                    if not isinstance(value, (classmethod, staticmethod))
+                }
                 processes = []
-                queue = Queue()
                 for i in range(len(sat_vectors)):
-                    p = Process(target=train_val_model_in_parallel, args=(
-                        curr_pred,
-                        ent_idx,
-                        pred_save_path,
-                        sat_vectors[i],
-                        iteration,
-                        pred_config,
-                        queue,
-                        self.ae_row_names_dict,
-                        self._node_feature_to_index,
-                        self._edge_feature_to_index,
-                        train_datasets[i],
-                        val_datasets[i],
-                        i,
-                        CFG.wandb_run_name))
+                    args = (curr_pred, ent_idx, pred_save_path,
+                            sat_vectors[i], iteration, pred_config,
+                            self.ae_row_names_dict,
+                            self._node_feature_to_index,
+                            self._edge_feature_to_index, train_datasets[i],
+                            val_datasets[i], i, CFG.wandb_run_name)
+                    p = context.Process(target=_train_val_model_process,
+                                        args=(settings, queue, args))
                     p.start()
                     processes.append(p)
+                # Results are small, so read them before joining; a failed
+                # process puts nothing, so check the exit codes.
+                model_paths_loss = []
+                while len(model_paths_loss) < len(processes):
+                    try:
+                        model_paths_loss.append(queue.get(timeout=10))
+                    except queue_lib.Empty:
+                        failed = [p.pid for p in processes
+                                  if p.exitcode not in (None, 0)]
+                        if failed:
+                            raise RuntimeError(
+                                f"Training processes {failed} failed; see "
+                                "the log above.")
                 for p in processes:
                     p.join()
                     logging.info(f"Process {p.pid} finished")
-                model_paths_loss = [queue.get() for _ in range(len(sat_vectors))]
+                # Keep the order of the vectors (n is in the file name).
+                model_paths_loss.sort(
+                    key=lambda r: int(os.path.basename(r[0]).split("_")[2]))
                 for i in range(len(sat_vectors)):
                     model_weight_paths.append(model_paths_loss[i][0])
                     val_losses.append(model_paths_loss[i][1])
