@@ -1,8 +1,8 @@
-"""Tests for the operator belief score function helpers."""
+"""Tests for segment helpers used by the operator belief score function."""
 
 import numpy as np
 
-from predicators.predicate_search_score_functions import _without_effects_on
+from predicators.nsrt_learning.segmentation import without_effects_on
 from predicators.structs import Action, GroundAtom, LowLevelTrajectory, \
     Predicate, Segment, State, Type
 
@@ -24,7 +24,7 @@ def test_without_effects_on():
     segment = Segment(traj, init_atoms, final_atoms)
     goal = {GroundAtom(_ON, [block])}
     segment.set_goal(goal)
-    frozen = _without_effects_on(segment, {_DERIVED})
+    frozen = without_effects_on(segment, {_DERIVED})
     assert frozen.add_effects == {GroundAtom(_ON, [block])}
     assert frozen.delete_effects == {GroundAtom(_OFF, [block])}
     assert frozen.init_atoms == init_atoms

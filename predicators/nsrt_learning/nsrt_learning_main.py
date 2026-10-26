@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Collection, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from gym.spaces import Box
@@ -11,7 +11,8 @@ from gym.spaces import Box
 from predicators.nsrt_learning.option_learning import \
     KnownOptionsOptionLearner, _OptionLearnerBase, create_option_learner
 from predicators.nsrt_learning.sampler_learning import learn_samplers
-from predicators.nsrt_learning.segmentation import segment_trajectory
+from predicators.nsrt_learning.segmentation import segment_trajectory, \
+    without_effects_on
 from predicators.nsrt_learning.strips_learning import learn_strips_operators
 from predicators.settings import CFG
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
@@ -24,10 +25,15 @@ def learn_nsrts_from_data(
     action_space: Box,
     ground_atom_dataset: Optional[List[GroundAtomTrajectory]],
     sampler_learner: str, annotations: Optional[List[Any]],
-    operator_belief: Dict = {}
+    operator_belief: Dict = {},
+    derived_predicates: Collection[Predicate] = frozenset()
 ) -> Tuple[Set[NSRT], List[List[Segment]], Dict[Segment, NSRT]]:
     """Learn NSRTs from the given dataset of low-level transitions, using the
     given set of predicates.
+
+    Derived predicates (see predicators/hooks.py) can appear in
+    preconditions but never in effects: their atoms keep their initial
+    values within each segment.
 
     There are three return values: (1) The final set of NSRTs. (2) The
     segmented trajectories. These are returned because any options that
@@ -70,6 +76,11 @@ def learn_nsrts_from_data(
                 segment_trajectory(traj, predicates, atom_seq=atom_seq)
                 for traj, atom_seq in ground_atom_dataset
             ]
+        if derived_predicates:
+            segmented_trajs = [[
+                without_effects_on(segment, derived_predicates)
+                for segment in segment_traj
+            ] for segment_traj in segmented_trajs]
         # If performing goal-conditioned sampler learning, we need to attach the
         # goals to the segments.
         if CFG.sampler_learning_use_goals:

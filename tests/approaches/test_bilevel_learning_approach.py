@@ -25,19 +25,30 @@ class _FakeScoreFunction:
         self._scores = scores
         self.calls = []
 
-    def evaluate(self, matrix, predicates, ent_idx, strips_learner,
-                 operator_predicates=None):
+    def evaluate(self,
+                 matrix,
+                 predicates,
+                 ent_idx,
+                 strips_learner,
+                 operator_predicates=None,
+                 atoms_closure=None):
         """Look up the score of the effect predicates."""
         del strips_learner  # unused
         assert matrix.shape[1] == len(ent_idx)
         effects = frozenset(p.name for p in predicates[:len(ent_idx)])
-        self.calls.append((effects, operator_predicates))
+        self.calls.append((effects, operator_predicates, atoms_closure))
         return self._scores.get(effects, 1e9)
 
 
+def _closure_for_c(atoms, objects):
+    """A stand-in closure; selection only passes it on."""
+    del objects  # unused
+    return atoms
+
+
 class _ExpandingApproach(BilevelLearningApproach):
-    """Adds C to the pool once A is selected and learns operators from P0
-    and A only."""
+    """Adds C to the pool once A is selected, learns operators from P0 and A
+    only and treats C as derived."""
 
     def _expand_candidate_pool(self, selected, pool):
         if selected[-1] == _PREDS["A"]:
@@ -45,6 +56,11 @@ class _ExpandingApproach(BilevelLearningApproach):
 
     def _operator_predicates(self, predicates):
         return [p for p in predicates if p.name in ("P0", "A")]
+
+    def _atoms_closure(self, predicates):
+        if _PREDS["C"] in predicates:
+            return _closure_for_c
+        return None
 
 
 def _candidate(name):
@@ -85,7 +101,7 @@ def _select(approach, candidate_names, scores):
 
 def test_selection_expands_candidate_pool(tmp_path):
     """Candidates added by _expand_candidate_pool are tried next, and
-    _operator_predicates reaches the score function."""
+    _operator_predicates and _atoms_closure reach the score function."""
     approach = _make_approach(tmp_path, _ExpandingApproach)
     selected, calls = _select(
         approach, ["A", "B"], {
@@ -95,9 +111,11 @@ def test_selection_expands_candidate_pool(tmp_path):
             frozenset({"P0", "A", "C"}): 5,
         })
     assert selected == ["P0", "A", "C"]
-    last_effects, operator_predicates = calls[-1]
+    last_effects, operator_predicates, closure = calls[-1]
     assert last_effects == {"P0", "A", "C"}
     assert {p.name for p in operator_predicates} == {"P0", "A"}
+    assert closure is _closure_for_c
+    assert all(call[2] is None for call in calls if "C" not in call[0])
 
 
 def test_selection_stops_when_nothing_is_left_to_imagine(tmp_path):

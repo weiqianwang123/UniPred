@@ -62,7 +62,10 @@ Upstream base: centaur-ai/IVNTR at commit f12b1ae.
 - **Other fixes.** The operator scoring in predicate selection skips a
   demonstration (counting it as unsolved) when no heuristic can be built for
   it; learned samplers load with torch >= 2.6; `main.py` runs outside a git
-  checkout.
+  checkout. Parallel classifier training (`--neupi_parallel_invention`)
+  starts its processes with the "spawn" method, because forked processes
+  cannot use CUDA once the parent has, and a failed training process raises
+  an error instead of leaving the parent waiting forever.
 - **Execution monitoring.** `--execution_monitor expected_atoms` now also works
   for plans found with simulation: the atoms expected after each option are
   checked when the option terminates, and the agent replans if they do not
@@ -183,12 +186,21 @@ and then call `predicators.main.main()`. They can use the following hooks.
   operators.
 - `BilevelLearningApproach` methods that subclasses can override:
   `gen_ae_vectors4pred` and `gen_sat_vec` (proposal and training of effect
-  vectors), `_expand_candidate_pool(selected, pool)` (called after each
-  predicate that hill-climbing adds; it can append `PredicateCandidate`s),
+  vectors; the `symbolic_model` passed to `gen_sat_vec` can be any object with
+  `propose()` and `update_value(vector, guidance)`),
+  `_expand_candidate_pool(selected, pool)` (called after each predicate that
+  hill-climbing adds; it can append `PredicateCandidate`s),
   `_operator_predicates(predicates)` (the effect predicates allowed in operator
-  effects during scoring; all by default) and
-  `_model_artifact_path(model_path, artifact)` (paths of the files saved next
-  to a predicate model).
+  effects, while scoring and when learning the final NSRTs; all by default),
+  `_atoms_closure(predicates)` (the closure installed while scoring a
+  predicate set and while planning with the learned predicates; none by
+  default) and `_model_artifact_path(model_path, artifact)` (paths of the
+  files saved next to a predicate model).
+- `learn_nsrts_from_data(..., derived_predicates=...)` keeps the given
+  predicates out of operator effects (they can still be preconditions).
+- A predicate config entry can set `generate_derived: False` to skip the
+  negated and quantified variants of that predicate type, and
+  `max_num_vectors` to cap the number of effect vectors kept.
 
 **Execution monitoring.** `BilevelPlanningApproach.get_execution_monitoring_info()`
 returns the expected atoms of the current plan, for plans found with or without

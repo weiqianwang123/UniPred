@@ -1,6 +1,7 @@
 """Methods for segmenting low-level trajectories into segments."""
 
-from typing import Callable, List, Optional, Set
+import dataclasses
+from typing import Callable, Collection, List, Optional, Set
 
 from predicators import utils
 from predicators.envs import get_or_create_env
@@ -8,6 +9,24 @@ from predicators.ground_truth_models import get_gt_nsrts, get_gt_options
 from predicators.settings import CFG
 from predicators.structs import Action, GroundAtom, LowLevelTrajectory, \
     Predicate, Segment, State
+
+
+def without_effects_on(segment: Segment,
+                       predicates: Collection[Predicate]) -> Segment:
+    """Return a copy of the segment in which the atoms of the given
+    predicates keep their initial values, so they are not effects.
+
+    This is used for derived predicates, which may change during a
+    segment but are never operator effects.
+    """
+    final_atoms = {
+        atom
+        for atom in segment.final_atoms if atom.predicate not in predicates
+    } | {
+        atom
+        for atom in segment.init_atoms if atom.predicate in predicates
+    }
+    return dataclasses.replace(segment, final_atoms=final_atoms)
 
 
 def segment_trajectory(

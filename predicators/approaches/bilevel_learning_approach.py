@@ -356,10 +356,24 @@ class BilevelLearningApproach(NSRTLearningApproach):
         """Return the effect predicates that may appear in operator effects
         when scoring a predicate set during selection.
 
-        The others can still appear in preconditions. By default, all
-        effect predicates are used.
+        The others can still appear in preconditions. The same split is
+        used when learning the final NSRTs. By default, all effect
+        predicates are used.
         """
         return predicates
+
+    def _atoms_closure(
+            self,
+            predicates: Sequence[Predicate]) -> Optional[hooks.AtomsClosure]:
+        """Return the atoms closure (see predicators/hooks.py) that
+        recomputes the derived predicates among the given ones, or None.
+
+        It is installed while scoring a predicate set during selection
+        and while planning with the learned predicates. By default, there
+        are no derived predicates.
+        """
+        del predicates  # unused
+        return None
 
     def add_general_matrix_constraints(self, solver: Solver, local_entities: List, \
                                 width: int, height: int, channels: int, col_ent: List[List[int]]) -> Solver:
@@ -1675,8 +1689,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     self.learned_ae_pred_info[curr_pred]['model_weights'][i] = \
                         self._model_artifact_path(saved_model_path,
                                                   "model_good")
-                # 4.3 Check the Negated / Quantified version
-                if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
+                # 4.3 Check the Negated / Quantified version (a predicate
+                # config can turn this off with generate_derived: False)
+                if (CFG.neupi_w_negation or CFG.neupi_w_quantifiers) and \
+                        pred_config.get("generate_derived", True):
                     if curr_pred.arity == 1:
                         logging.info("Skipping Negated / Quantified version for unary predicate...")
                         # only support binary + quantifier now
@@ -2163,7 +2179,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     try_ent_idx,
                     CFG.strips_learner,
                     operator_predicates=self._operator_predicates(
-                        try_effect_predicates))
+                        try_effect_predicates),
+                    atoms_closure=self._atoms_closure(try_effect_predicates))
                 logging.info(f"Predicate set {try_effect_predicates} has "
                              f"score {score} in {time.time()-start_time} "
                              "seconds.")
@@ -2453,11 +2470,20 @@ class BilevelLearningApproach(NSRTLearningApproach):
         # Learn NSRTs from the ground atom dataset, with belief assumptions.
         # check if every option is appeared
 
+        # Only the operator predicates become effects; the other selected
+        # effect predicates (e.g., derived ones) stay available as
+        # preconditions.
+        operator_predicates = self._operator_predicates(
+            self.ae_col_names_all)
+        keep = [
+            i for i, pred in enumerate(self.ae_col_names_all)
+            if pred in operator_predicates
+        ]
         operator_belief = {
             'row_names': self.ae_row_names,
-            'col_names': self.ae_col_names_all,
-            'ae_matrix': self.ae_matrix_tgt.cpu().numpy(),
-            'col_ent_idx': self.ae_col_ent_idx
+            'col_names': [self.ae_col_names_all[i] for i in keep],
+            'ae_matrix': self.ae_matrix_tgt[:, keep].cpu().numpy(),
+            'col_ent_idx': [self.ae_col_ent_idx[i] for i in keep]
         }
 
         self._nsrts, self._segmented_trajs, self._seg_to_nsrt = \
@@ -2469,7 +2495,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                   ground_atom_dataset,
                                   sampler_learner=CFG.sampler_learner,
                                   annotations=annotations,
-                                  operator_belief=operator_belief)
+                                  operator_belief=operator_belief,
+                                  derived_predicates=set(
+                                      self.ae_col_names_all) -
+                                  set(operator_predicates))
 
     def _solve(self, task: Task, timeout: int) -> Callable[[State], Action]:
         # Unless the learned samplers are used, plan with the ground-truth
@@ -2493,4 +2522,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     new_nsrts.append(new_nsrt)
                     break
         self._nsrts = set(new_nsrts)
-        return super()._solve(task, timeout)
+        closure = self._atoms_closure(sorted(self._learned_predicates))
+        if closure is None:
+            return super()._solve(task, timeout)
+        with hooks.temporary_atoms_closure(closure):
+            return super()._solve(task, timeout)

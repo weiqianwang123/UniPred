@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import abc
 import contextlib
-import dataclasses
 import logging
 import re
 import time
@@ -16,7 +15,8 @@ import numpy as np
 import torch
 
 from predicators import hooks, utils
-from predicators.nsrt_learning.segmentation import segment_trajectory
+from predicators.nsrt_learning.segmentation import segment_trajectory, \
+    without_effects_on
 from predicators.nsrt_learning.strips_learning import learn_strips_operators
 from predicators.planning import PlanningFailure, PlanningTimeout, task_plan, \
     task_plan_grounding
@@ -178,7 +178,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             learning_ae_matrix = candidate_ae_matrix[:, keep]
             frozen = set(effect_predicates) - set(learning_predicates)
             learning_trajs = [[
-                _without_effects_on(segment, frozen) for segment in segments
+                without_effects_on(segment, frozen) for segment in segments
             ] for segments in segmented_trajs]
         operator_belief = {
             'row_names': self._row_names,
@@ -340,20 +340,6 @@ class _OperatorBeliefScoreFunction(abc.ABC):
         exponent = abs(demo_len - plan_len)
         p = CFG.grammar_search_expected_nodes_optimal_demo_prob
         return p * (1 - p)**exponent
-
-
-def _without_effects_on(segment: Segment,
-                        predicates: Set[Predicate]) -> Segment:
-    """Return a copy of the segment in which the atoms of the given
-    predicates keep their initial values, so they are not effects."""
-    final_atoms = {
-        atom
-        for atom in segment.final_atoms if atom.predicate not in predicates
-    } | {
-        atom
-        for atom in segment.init_atoms if atom.predicate in predicates
-    }
-    return dataclasses.replace(segment, final_atoms=final_atoms)
 
 
 @dataclass(frozen=True, eq=False, repr=False)
