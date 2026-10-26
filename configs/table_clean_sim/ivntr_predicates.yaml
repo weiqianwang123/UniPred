@@ -1,0 +1,5 @@
+# IVNTR's tree search proposes many more effect vectors than the LLM, so it
+# gets IVNTR's usual search budget.
+include: predicates.yaml
+defaults: {num_iter: 70, batch_vect_num: 4, matrix_vec_try: 100,
+           search_tree_max_level: 3}

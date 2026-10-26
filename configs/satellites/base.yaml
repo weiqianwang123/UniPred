@@ -1,0 +1,13 @@
+# Satellites (IVNTR domain): train with 2 satellites and 2 objects, test
+# with 3 and 3. The excluded predicates are hidden and must be invented.
+env: satellites
+excluded_predicates: ViewClear,IsCalibrated,HasChemX,HasChemY,Sees
+num_train_tasks: 500
+num_test_tasks: 50
+timeout: 5
+# Fast Downward (FD_EXEC_PATH must point at a build); A* is much slower here.
+sesame_task_planner: fdsat
+sesame_max_samples_per_step: 30
+neupi_do_normalization: false
+neupi_equ_dataset: 1.0
+neupi_selection_thresh: 300000

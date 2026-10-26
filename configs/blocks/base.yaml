@@ -1,0 +1,12 @@
+# Blocks (blocks_onclear): build two-level towers; train with 4-5 blocks,
+# test with 6-7. The excluded predicates are hidden and must be invented.
+env: blocks_onclear
+excluded_predicates: On,OnTable,GripperOpen,Holding,Clear
+num_train_tasks: 500
+num_test_tasks: 50
+timeout: 5
+sesame_task_planner: astar
+execution_monitor: expected_atoms
+neupi_entropy_w: 0.0
+neupi_loss_w: 1.0
+neupi_selection_thresh: 6000000

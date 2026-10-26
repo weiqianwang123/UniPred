@@ -1,0 +1,4 @@
+# The paper's default LLM: GPT-4o through the OpenAI API (OPENAI_API_KEY).
+llm_provider: openai
+llm_model: gpt-4o
+llm_temperature: 0.2

@@ -1,45 +1,36 @@
-__pycache__
-*.pyc
-.DS_Store
-.vscode
-*.egg-info
-*.pkl
-*~
-*.python-version
-*.csv
-*.zip
-*.so
-*.pth
-build
-dist
-pylint_recursive.py
-.coverage
-results
-eval_trajectories
-videos
-saved_approaches
-saved_datasets
-scripts/results
-pretrained_model_cache
-tests/datasets/mock_vlm_datasets/cache/
-machines.txt
-*_vision_data
-tests/_fake_trajs
-tests/_fake_results
-sas_plan
-.env.local
-Real-World-Data/
-scripts/weights/
-table_empty_transformer.pth
-table_empty_transformer.pth
-logs
-ext
-# Jetbrains IDEs
-.idea/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# Experiment outputs
+outputs/
+logs/
+results/
+saved_approaches/
+saved_datasets/
+eval_trajectories/
+videos/
+images/
 wandb/
+
+# Secrets (see .env.example)
+.env
+.env.local
+
+# Model weights
+*.pth
 *.pt
-*.log
-*.npy
-*.txt
-*.png
-*.ply
+*.ckpt
+
+# Prebuilt Fast Downward (use third_party/IVNTR/ext/downward instead)
+/ext/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

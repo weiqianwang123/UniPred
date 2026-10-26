@@ -1,0 +1,25 @@
+You help a robot learn a symbolic model of its skills. The predicate
+$target($target_types) is learned as a neural classifier from the robot's
+data. For it, propose an effect pattern: which actions make it true (ADD)
+and which actions make it false (DEL). All other actions leave it
+unchanged.
+
+Domain description: $description
+
+Known predicates:
+$predicates
+
+Actions:
+$actions
+
+ADD candidates: $add_candidates
+DEL candidates: $del_candidates
+
+Every proposed pattern is used to train a classifier. $feedback
+Use what was tried so far to propose a new, different pattern that is
+likely to fit the data.
+
+Reply with exactly three lines:
+ADD: comma-separated action names, or nothing
+DEL: comma-separated action names, or nothing
+WHY: one short sentence

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unipred"
+version = "0.1.0"
+description = "UniPred: unifying deep predicate invention with pre-trained foundation models."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    # The IVNTR fork in third_party/IVNTR (pip install -e third_party/IVNTR).
+    "predicators",
+    "openai>=1.0",
+    "google-generativeai>=0.8",
+    "python-dotenv>=1.0",
+    "pyyaml",
+    "numpy>=1.24,<2",
+    "torch>=2.1",
+]
+
+[project.optional-dependencies]
+# Perception for the real-robot domain (see examples/real_robot).
+real = ["opencv-python", "pillow", "transformers", "timm", "supervision"]
+dev = ["pytest", "pylint", "mypy", "yapf", "isort"]
+
+[tool.setuptools.packages.find]
+include = ["unipred", "unipred.*"]
+
+[tool.setuptools.package-data]
+"unipred.llm" = ["prompts/*.txt"]

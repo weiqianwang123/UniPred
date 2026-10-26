@@ -1,0 +1,4 @@
+# IVNTR with derived-aware selection (Table VIII).
+include: base.yaml
+approach: ivntr_derived
+neupi_pred_config: configs/table_clean_sim/ivntr_predicates.yaml

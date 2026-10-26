@@ -1,0 +1,3 @@
+# Table V "UniPred w/o unified bilevel learning" (also Table VI "LLM
+# complete PDDL"): only the PDDL-completion seeds are trained.
+unipred_llm_loop: false

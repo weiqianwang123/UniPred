@@ -1,0 +1,2 @@
+# Table V "UniPred w/o PDDL completion": the LLM loop starts without seeds.
+unipred_pddl_completion: false

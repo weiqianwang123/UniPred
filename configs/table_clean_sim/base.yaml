@@ -1,0 +1,13 @@
+# Table Clean Sim: put every toy into the box and wipe the table. Train with
+# two toys from a standard start, test with three toys and unseen starts.
+# The excluded predicates are hidden and must be invented; NoToyOnTable is
+# derived (ForAll ?toy. Not ToyOnTable(?toy, ?table)).
+env: table_clean_sim
+excluded_predicates: HoldingToy,ToyOnTable,WiperOnTable,WiperInBox,BoxNear,BoxFar,NoToyOnTable
+num_train_tasks: 50
+num_test_tasks: 50
+timeout: 10
+# Derived predicates need A* and a heuristic that sees derived atoms.
+sesame_task_planner: astar
+sesame_task_planning_heuristic: goal_count
+execution_monitor: expected_atoms

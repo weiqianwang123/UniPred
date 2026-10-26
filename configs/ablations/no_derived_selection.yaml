@@ -1,0 +1,3 @@
+# Table VIII "UniPred w/o derived select": derived forms are ordinary
+# candidates that must be operator effects.
+unipred_derived_selection: false

@@ -1,0 +1,2 @@
+# Offline runs and tests: rule-based answers, no API calls.
+llm_provider: mock

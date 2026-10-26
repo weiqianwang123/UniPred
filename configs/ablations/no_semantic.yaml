@@ -1,0 +1,3 @@
+# Table VII "UniPred w/o Semantic": operators and known predicates get
+# neutral names; types and loss feedback stay.
+unipred_semantic_names: false

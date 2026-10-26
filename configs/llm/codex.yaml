@@ -1,0 +1,6 @@
+# Use the local Codex CLI (codex exec, with its own login) as the LLM, with
+# an older, lighter model and low reasoning effort. Codex has no
+# temperature setting.
+llm_provider: codex
+llm_model: gpt-5.6-luna
+llm_reasoning_effort: low

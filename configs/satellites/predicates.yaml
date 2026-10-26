@@ -1,0 +1,76 @@
+# What UniPred knows and learns about Satellites (passed as
+# --neupi_pred_config). The IVNTR fork reads final_options,
+# static_predicates, defaults and predicate_types (see load_predicate_config
+# in third_party/IVNTR/predicators/approaches/bilevel_learning_approach.py);
+# UniPred also reads description and known_predicates.
+
+description: >-
+  2D satellites carry instruments (camera, infrared sensor, Geiger counter)
+  and may shoot Chemical X or Y. A satellite sees what is in its viewing
+  cone and not occluded. The goal is for specific satellites to take
+  readings of specific objects with calibrated instruments. A camera reading
+  needs the object to be shot with Chemical X first, an infrared reading
+  needs Chemical Y.
+
+# The given predicates that the partial PDDL domain shows, with what is
+# known about them: the options that make them true or false (effects) and
+# the options that require them (precondition_of).
+known_predicates:
+  - {name: CameraReadingTaken, effects: {UseCamera: add}}
+  - {name: InfraredReadingTaken, effects: {UseInfraRed: add}}
+  - {name: GeigerReadingTaken, effects: {UseGeiger: add}}
+  - {name: CalibrationTarget, precondition_of: [Calibrate]}
+  - {name: ShootsChemX, precondition_of: [ShootChemX]}
+  - {name: ShootsChemY, precondition_of: [ShootChemY]}
+  - {name: HasCamera, precondition_of: [UseCamera]}
+  - {name: HasInfrared, precondition_of: [UseInfraRed]}
+  - {name: HasGeiger, precondition_of: [UseGeiger]}
+
+# Options that only achieve goals, and given predicates that never change.
+final_options: [UseCamera, UseGeiger, UseInfraRed]
+static_predicates: [CalibrationTarget, HasCamera, HasInfrared, HasGeiger,
+                    ShootsChemX, ShootsChemY]
+
+# Training of each proposed effect vector, and the search budget per type:
+# up to num_iter iterations of batch_vect_num proposals, stopping once
+# max_num_vectors proposals pass guidance_thresh (learned effect
+# distribution), loss_thresh (validation loss) and the precondition check.
+defaults:
+  optimizer: {type: AdamW, kwargs: {lr: 0.001}}
+  lr_scheduler: {type: StepLR, kwargs: {step_size: 70, gamma: 0.1}}
+  batch_size: 512
+  gumbel_temp: 0.66
+  val_freq: 10
+  loss_thresh: 0.005
+  matrix_vec_try: 20
+
+# The neural predicate types to invent; ent_idx says which option argument
+# of each type the predicate is about.
+predicate_types:
+  - name: neural_u_p1
+    types: [satellite]
+    ent_idx: [0]
+    architecture: {type: MLP, layer_size: 32, initializer: xavier}
+    epochs: 100
+    guidance_thresh: 0.05
+    num_iter: 5
+    batch_vect_num: 6
+    max_num_vectors: 2
+  - name: neural_u_p2
+    types: [object]
+    ent_idx: [0]
+    architecture: {type: MLP, layer_size: 32, initializer: xavier}
+    epochs: 100
+    guidance_thresh: 0.05
+    num_iter: 5
+    batch_vect_num: 6
+    max_num_vectors: 2
+  - name: neural_b_p3
+    types: [satellite, object]
+    ent_idx: [0, 0]
+    architecture: {type: MLP, layer_size: 128, initializer: xavier}
+    epochs: 200
+    guidance_thresh: 0.1
+    num_iter: 10
+    batch_vect_num: 4
+    max_num_vectors: 1

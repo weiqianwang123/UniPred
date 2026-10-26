@@ -1,0 +1,3 @@
+# Table II "UniPred-Qwen".
+llm_provider: qwen
+llm_model: qwen-plus

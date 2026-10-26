@@ -1,0 +1,3 @@
+include: base.yaml
+approach: unipred
+neupi_pred_config: configs/satellites/predicates.yaml

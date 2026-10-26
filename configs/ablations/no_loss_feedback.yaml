@@ -1,0 +1,3 @@
+# Table V "UniPred w/o loss feedback": the LLM sees earlier proposals
+# without their scores.
+unipred_loss_feedback: false

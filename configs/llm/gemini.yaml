@@ -1,0 +1,3 @@
+# Table II "UniPred-Gemini".
+llm_provider: gemini
+llm_model: gemini-2.5-flash-lite

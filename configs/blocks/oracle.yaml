@@ -1,0 +1,4 @@
+# Ground-truth operators, which need all predicates.
+include: base.yaml
+approach: oracle
+excluded_predicates: ""

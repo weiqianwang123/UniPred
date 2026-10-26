@@ -1,0 +1,85 @@
+# What UniPred knows and learns about Blocks (passed as
+# --neupi_pred_config; see configs/satellites/predicates.yaml for the
+# format).
+
+description: >-
+  A robot arm moves blocks: it picks a block from the table, unstacks a
+  block from another block, stacks the held block on another block, or puts
+  it on the table. The goal is a set of two-level towers, each a given block
+  on top of another given block. AchieveGoal confirms a finished tower; it
+  needs the top block on the bottom block and nothing on the top block.
+
+known_predicates:
+  - {name: GoalAchieved, effects: {AchieveGoal: add}}
+
+final_options: [AchieveGoal]
+
+defaults:
+  optimizer: {type: AdamW, kwargs: {lr: 0.001}}
+  lr_scheduler: {type: StepLR, kwargs: {step_size: 70, gamma: 0.1}}
+  batch_size: 512
+  gumbel_temp: 0.66
+  val_freq: 10
+  guidance_thresh: 0.01
+  loss_thresh: 0.005
+  matrix_vec_try: 20
+
+# Types with llm_proposals: false train only their PDDL-completion seeds.
+predicate_types:
+  - name: neural_u_p1
+    types: [robot]
+    ent_idx: [0]
+    architecture: {type: MLP, layer_size: 32, initializer: xavier}
+    epochs: 100
+    num_iter: 5
+    batch_vect_num: 6
+    max_num_vectors: 2
+  - name: neural_u_p2
+    types: [block]
+    ent_idx: [0]
+    architecture: {type: MLP, layer_size: 32, initializer: xavier}
+    epochs: 100
+    num_iter: 5
+    batch_vect_num: 6
+    llm_proposals: false
+  - name: neural_u_p3
+    types: [block]
+    ent_idx: [1]
+    architecture: {type: MLP, layer_size: 32, initializer: xavier}
+    epochs: 100
+    num_iter: 5
+    batch_vect_num: 6
+    llm_proposals: false
+  - name: neural_b_p4
+    types: [block, block]
+    ent_idx: [0, 1]
+    architecture: {type: MLP, layer_size: 128, initializer: xavier}
+    epochs: 200
+    num_iter: 10
+    batch_vect_num: 4
+    max_num_vectors: 1
+    loss_thresh: 0.05
+  - name: neural_b_p5
+    types: [block, block]
+    ent_idx: [1, 0]
+    architecture: {type: MLP, layer_size: 128, initializer: xavier}
+    epochs: 200
+    num_iter: 10
+    batch_vect_num: 4
+    llm_proposals: false
+  - name: neural_b_p6
+    types: [robot, block]
+    ent_idx: [0, 0]
+    architecture: {type: MLP, layer_size: 128, initializer: xavier}
+    epochs: 200
+    num_iter: 10
+    batch_vect_num: 4
+    max_num_vectors: 1
+  - name: neural_b_p7
+    types: [robot, block]
+    ent_idx: [0, 1]
+    architecture: {type: MLP, layer_size: 128, initializer: xavier}
+    epochs: 200
+    num_iter: 10
+    batch_vect_num: 4
+    llm_proposals: false
