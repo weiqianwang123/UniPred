@@ -60,14 +60,15 @@ All with `scripts/run.sh` unless noted.
     12593 s, 51 LLM calls; the learned operators match the ground-truth
     ones; failures are refinement timeouts (5 s) and FD skeletons not
     refinable with the learned samplers.
-  - satellites ivntr (500 demos): in-domain test still running; OOD about
-    a third solved so far (random_options: 0/50).
+  - satellites ivntr (500 demos): OOD 20/50, in-domain 48/50, learning
+    13374 s (random_options: 0/50).
   Reruns from the final code (snapshot run3) are running one after the
   other; their numbers replace these.
 - Fork README commands: oracle satellites 5/5, blocks_onclear 5/5; GNN on
   satellites with 50 demos 0/50 OOD.
 
-Tests: root `pytest tests` and fork `pytest tests` (40) pass.
+Tests: root `pytest tests` (141) and fork `pytest tests` (40) pass,
+also in a fresh clone installed by scripts/install.sh (311 s).
 
 ## Bugs fixed
 
@@ -93,9 +94,17 @@ Tests: root `pytest tests` and fork `pytest tests` (40) pass.
 - Numbers of the final runs (above) and of the README commands that train
   (quickstart, the ablation example, the real-robot template with full
   budgets).
-- Satellites OOD success is far below the paper's (13-17/50 vs 95%) while
-  in-domain success is 49/50; to investigate (sampler generalisation to
-  three satellites, the 5 s budget).
+- Satellites OOD success is far below the paper's (UniPred 13/50, IVNTR
+  20/50 vs ~95%) while in-domain success is 48-49/50. Diagnosis on the
+  saved UniPred model: the learned operators match the ground truth; the
+  plans fail at MoveTo, where the learned sampler (a Gaussian fitted to
+  the demonstrations' ring of positions around the object) puts the
+  satellite where even the ground-truth Sees does not hold (0/30 samples
+  at the failing steps of 6 tasks), so refinement backtracks until the
+  timeout; a 20 s budget gives the same 5/20 as 5 s. The environment, the
+  ground-truth sampler, sampler learning and low-level search are the
+  same as upstream IVNTR's. Open: why upstream's samplers generalise to
+  three satellites and ours do not.
 - Perception with real weights is untested: GroundingDINO tiny, SAM2.1
   tiny and the gated DINOv3 ViT-S/16 need a download (scripts/install.sh
   --weights).
