@@ -1,22 +1,23 @@
+"""Neural predicate (NeuPI) utilities of IVNTR: effect vector encodings,
+the effect-supervised training loss, and the extraction of learned effect
+and precondition vectors from a trained classifier."""
+
 from __future__ import division
 
-import re
 import copy
-import collections
-import logging
-import time
 import itertools
-from itertools import combinations
-from typing import Any, Callable, Dict, List, Optional, OrderedDict, Tuple, Set
+import logging
+import re
+import time
+from typing import Any, Dict, List, Optional, OrderedDict, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .gnn_utils import discrete_graph, _create_super_graph
-from predicators.structs import MDPDataset, Type, DummyPredicate, LowLevelTrajectory, \
-    State, GroundAtom, _Option, Predicate, Dataset
-from predicators.utils import wandb_log
+from predicators.gnn.gnn_utils import _create_super_graph, discrete_graph
+from predicators.structs import DummyPredicate, Type
+
 
 def two2one(two: torch.Tensor) -> torch.Tensor:
     """Convert a 2(1)D ae vector to a 1D tensor."""
@@ -51,7 +52,7 @@ def gen_pretty_pred_name(basic_pred_name: str,
                          w_negation: bool) -> str:
     # Create variable placeholders for type_comb, e.g., ?sat, ?obj
     quantified_placeholders = []
-    for i, t in enumerate(type_comb):
+    for t in type_comb:
         # Create variable placeholder starting with '?'
         quantified_placeholders.append(f"?{t[:3].lower()}")  # Use the first 3 letters of the type name in lowercase
 
@@ -104,30 +105,6 @@ def parse_basic_pred_name(basic_pred_name: str, \
     
     return empty_positions, number_list
 
-def mdp2positive(mdpdataset: MDPDataset) -> Dataset:
-    """Convert an MDPDataset to a Dataset by removing the negative examples and reward."""
-    trajs = []
-    for mdp_traj in mdpdataset.trajectories:
-        if mdp_traj.is_pos:
-            states = mdp_traj.states
-            actions = mdp_traj.actions
-            is_demo = mdp_traj.is_demo
-            train_task_id = mdp_traj.train_task_idx
-            traj = LowLevelTrajectory(states, actions, is_demo, train_task_id)
-            trajs.append(traj)
-    dataset = Dataset(trajs)
-    return dataset
-
-# Function to generate all possible combinations of k columns and return the selected matrix with indices
-def select_columns(matrix, provided_matrix, k):
-    n_cols = matrix.shape[1]
-    # Generate all combinations of selecting k columns
-    col_indices_combinations = combinations(range(n_cols), k)
-    
-    for combo in col_indices_combinations:
-        # Yield the matrix formed by selecting k columns and the column indices
-        combined_matrix = torch.cat([provided_matrix, matrix[:, combo]], dim=1)
-        yield combined_matrix, combo
 
 def get_single_neupi_prediction(model: Any,
                                 single_input: Dict,
@@ -429,6 +406,28 @@ def neupi_supervise_criterion(
 
         return edge_loss_non_change, edge_loss_change
         
+def _on_device(graph: Dict, device: Optional[torch.device]) -> Dict:
+    """A copy of a batched graph with its tensors on the device."""
+    return {
+        key: val.to(device) if val is not None else val
+        for key, val in graph.items()
+    }
+
+
+def _effect_losses(model: Any, data: Dict, super_label: Dict,
+                   device: Optional[torch.device]
+                   ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """The non-change (JS) and change (BCE) losses of a batch of
+    transitions (see neupi_supervise_criterion)."""
+    logits = model(_on_device(data['input'], device))[-1]
+    logits_ = model(_on_device(data['input_'], device))[-1]
+    targets = (_on_device(data['target'], device),
+               _on_device(data['target_'], device))
+    return neupi_supervise_criterion((logits, logits_), targets,
+                                     data['action_info'], super_label,
+                                     device=device)
+
+
 def train_predicate_model(
     iteration: int,
     model: Any,
@@ -437,419 +436,52 @@ def train_predicate_model(
     optimizer: torch.optim.Optimizer,
     super_label: Dict,
     num_epochs: int,
-    gumbel_temperature: float,
     val_freq: int = 1,
     device: Optional[torch.device] = None,
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
-    quick_skip: Optional[Dict] = None,
-) -> OrderedDict[str, torch.Tensor]:
-    """Optimize the model and save checkpoints."""
+) -> Tuple[OrderedDict[str, torch.Tensor], float]:
+    """Train a predicate classifier with the effect loss.
+
+    The validation loss is computed every val_freq epochs and after the
+    last one. Returns a copy of the weights with the lowest validation
+    loss, and that loss (inf if the validation set is empty).
+    """
     since = time.perf_counter()
-
-    # Note: best_seen_model_weights is measured on validation (not train) loss.
-    best_seen_model_weights: OrderedDict[str, torch.Tensor] = collections.OrderedDict({})
-    # # debug, no actual training
-    # return model.state_dict()
-    best_seen_model_train_loss = np.inf
-    best_seen_running_validation_loss = np.inf
-
+    best_weights: Optional[OrderedDict[str, torch.Tensor]] = None
+    best_val_loss = np.inf
+    model.to(device)
     for epoch in range(num_epochs):
-        if epoch % 10 == 0:
-            logging.info(f'Iteration {iteration} Epoch {epoch}/{num_epochs - 1}')
-            logging.info('-' * 10)
-
-        running_loss = {
-            'non_change_train': [],
-            'change_train': [],
-            'non_change_val': [],
-            'change_val': [],
-            'train_loss': [],
-            'val_loss': [],
-        }
         model.train(True)
-        model.to(device)
-        total_data_time = 0.0
-        total_model_time = 0.0
-
-        # Iterate over data.
-        for idx, data in enumerate(train_dataloader):
-            # this is a big graph built from all the batches
-            # transition pair1
-            input = data['input']
-            input_ = data['input_']
-            target = data['target']
-            target_ = data['target_']
-            action_info = data['action_info']
-
-            # End data loading time
-            if idx > 0:
-                data_time = time.time() - start_data_time
-                total_data_time += data_time
-
-            # zero the parameter gradients
+        train_losses = []
+        for data in train_dataloader:
             optimizer.zero_grad()
-
-            # put input dict on device and start measuring model processing time
-            start_model_time = time.time()
-            
-            if device is not None:
-                for key, val in input.items():
-                    input[key] = val.to(device) if val is not None else val
-                for key, val in input_.items():
-                    input_[key] = val.to(device) if val is not None else val
-                for key, val in target.items():
-                    target[key] = val.to(device) if val is not None else val
-                for key, val in target_.items():
-                    target_[key] = val.to(device) if val is not None else val
-            
-            # the model partition the continous input graph into discrete graphs (groundings of predicates)
-            logits_output = model(input.copy())[-1]
-            logits_output_ = model(input_.copy())[-1]
-            outputs_logits = (logits_output, logits_output_)
-            targets = (target, target_)
-
-            loss = torch.tensor(0.0).to(device)
-            if device is not None:
-                loss = loss.to(device)
-
-            # loss is not averaged over the batch (single sample scale)
-            # aet loss accepts gumbel-sigmoid output
-            non_change_loss, change_loss = neupi_supervise_criterion(
-                outputs_logits, targets, action_info, super_label, device=device)
-            running_loss['non_change_train'].append(non_change_loss.item()) # aet_loss is already normalized
-            loss += non_change_loss
-            running_loss['change_train'].append(change_loss.item())
-            loss += change_loss
-
-            # backward + optimize
+            non_change_loss, change_loss = _effect_losses(
+                model, data, super_label, device)
+            loss = non_change_loss + change_loss
             loss.backward()
             optimizer.step()
-            # End model processing time
-            model_time = time.time() - start_model_time
-            total_model_time += model_time
-            # statistics
-            running_loss['train_loss'].append(loss.item())
-
-            # Log per-sample times
-            # if idx > 0:
-            #     logging.info(f"Epoch {epoch}, Sample {idx}, data loading time: {data_time:.4f} seconds")
-            #     logging.info(f"Epoch {epoch}, Sample {idx}, model processing time: {model_time:.4f} seconds")
-            # logging.info(f"Epoch {epoch}, Sample {idx}, non_change_loss: {non_change_loss.item()}, change_loss: {change_loss.item()}")
-            wandb_log({"non_change_loss_single": non_change_loss.item(),
-                       "change_loss_single": change_loss.item(),
-                       "train_loss_single": loss.item()})
-
-            start_data_time = time.time()
-
-        # step the scheduler
+            train_losses.append(loss.item())
         if scheduler is not None:
             scheduler.step()
-        logging.info(f"Epoch {epoch}, model processing time: {total_model_time:.4f} seconds")
-        logging.info(f"Epoch {epoch}, data loading time: {total_data_time:.4f} seconds")
-        logging.info(f"Epoch {epoch}, average training loss (change): {np.mean(running_loss['change_train'])}")
-        logging.info(f"Epoch {epoch}, average training loss (non-change): {np.mean(running_loss['non_change_train'])}")
-        # Calculate average data and model processing times per sample
-        if (epoch + 1) % val_freq == 0:
-            model.train(False)
-            model.to(device)
-            for idx, data in enumerate(val_dataloader):
-                # this is a big graph built from all the batches
-                # transition pair1
-                input = data['input']
-                input_ = data['input_']
-                target = data['target']
-                target_ = data['target_']
-                action_info = data['action_info']
+        if (epoch + 1) % val_freq and epoch < num_epochs - 1:
+            continue
+        model.train(False)
+        with torch.no_grad():
+            val_losses = [
+                sum(_effect_losses(model, data, super_label, device)).item()
+                for data in val_dataloader
+            ]
+        val_loss = float(np.mean(val_losses)) if val_losses else np.inf
+        logging.info(f"Iteration {iteration} epoch {epoch}: train loss "
+                     f"{np.mean(train_losses):.5f}, val loss {val_loss:.5f}")
+        if best_weights is None or val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_weights = copy.deepcopy(model.state_dict())
+    assert best_weights is not None, "num_epochs must be positive"
+    logging.info(f"Training complete in {time.perf_counter() - since:.0f} s "
+                 f"with validation loss {best_val_loss:.5f}")
+    return best_weights, best_val_loss
 
-                # End data loading time
-                # if idx > 0:
-                #     data_time = time.time() - start_data_time
-                #     total_data_time += data_time
-
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
-                # put input dict on device and start measuring model processing time
-                start_model_time = time.time()
-                
-                if device is not None:
-                    for key, val in input.items():
-                        input[key] = val.to(device) if val is not None else val
-                    for key, val in input_.items():
-                        input_[key] = val.to(device) if val is not None else val
-                    for key, val in target.items():
-                        target[key] = val.to(device) if val is not None else val
-                    for key, val in target_.items():
-                        target_[key] = val.to(device) if val is not None else val
-                
-                # the model partition the continous input graph into discrete graphs (groundings of predicates)
-                logits_output = model(input.copy())[-1]
-                logits_output_ = model(input_.copy())[-1]
-                outputs_logits = (logits_output, logits_output_)
-                targets = (target, target_)
-
-                loss = torch.tensor(0.0).to(device)
-                if device is not None:
-                    loss = loss.to(device)
-
-                # loss is not averaged over the batch (single sample scale)
-                # aet loss accepts gumbel-sigmoid output
-                non_change_loss, change_loss = neupi_supervise_criterion(
-                    outputs_logits, targets, action_info, super_label, device=device)
-                running_loss['non_change_val'].append(non_change_loss.item())
-                loss += non_change_loss
-                running_loss['change_val'].append(change_loss.item())
-                loss += change_loss
-
-                # statistics
-                running_loss['val_loss'].append(loss.item())                
-
-        avg_data_time = total_data_time / (idx+1)
-        avg_model_time = total_model_time / (idx+1)
-        running_loss = {k: np.mean(v) if len(v) > 0 else 100.0 for k, v in running_loss.items()}
-        wandb_log({"non_change_train": running_loss['non_change_train'],
-                   "change_train": running_loss['change_train'],
-                   "train_loss_avg": running_loss['train_loss'],
-                   "non_change_val": running_loss['non_change_val'],
-                   "change_val": running_loss['change_val'],
-                   "val_loss_avg": running_loss['val_loss']})
-
-        total_loss_val = running_loss['val_loss']
-        total_loss_train = running_loss['train_loss']
-        # logging.info(f"Epoch {epoch}, train loss: {total_loss_train}")
-        if total_loss_val < best_seen_running_validation_loss:
-            best_seen_running_validation_loss = total_loss_val
-            best_seen_model_weights = model.state_dict()
-            logging.info(
-                f"Found new best model with val loss {best_seen_running_validation_loss}"
-                f"at epoch {epoch}")
-        if (quick_skip is not None) and ((epoch + 1) in quick_skip):
-            desired_loss = quick_skip[(epoch + 1)]
-            if best_seen_running_validation_loss > desired_loss:
-                logging.info(f"Skip the rest of the training at epoch {epoch}")
-                break
-        total_loss_train = running_loss['train_loss']
-        if total_loss_train < best_seen_model_train_loss:
-            best_seen_model_train_loss = total_loss_train
-
-    time_elapsed = time.perf_counter() - since
-    num_min = time_elapsed // 60
-    num_sec = time_elapsed % 60
-
-    # if not do_validation:
-    #     train_loss = running_loss['train']
-    #     logging.info(f"Training complete in {num_min:.0f}m {num_sec:.0f}s "
-    #                  f"with train loss {train_loss}")
-    #     return model.state_dict()
-    logging.info(
-        f"Training complete in {num_min:.0f}m {num_sec:.0f}s "
-        f"with train loss {best_seen_model_train_loss:.5f} and validation "
-        f"loss {best_seen_running_validation_loss:.5f}")
-
-    assert best_seen_model_weights
-    return best_seen_model_weights, best_seen_running_validation_loss
-
-def train_init_dummy_model(
-    model: Any,
-    train_dataloader: torch.utils.data.DataLoader,
-    val_dataloader: torch.utils.data.DataLoader,
-    optimizer: torch.optim.Optimizer,
-    criterion: Callable[[Tuple[Dict], Tuple[Dict], Tuple[Dict]], torch.Tensor],
-    num_epochs: int,
-    gumbel_temperature: float,
-    val_freq: int = 1,
-    device: Optional[torch.device] = None,
-) -> OrderedDict[str, torch.Tensor]:
-    """Optimize the model and save checkpoints."""
-    since = time.perf_counter()
-
-    # Note: best_seen_model_weights is measured on validation (not train) loss.
-    best_seen_model_weights: OrderedDict[str, torch.Tensor] = collections.OrderedDict({})
-    best_seen_model_train_loss = np.inf
-    best_seen_running_validation_loss = np.inf
-
-    for epoch in range(num_epochs):
-        if epoch % 2 == 0:
-            logging.info(f'Epoch {epoch}/{num_epochs - 1}')
-            logging.info('-' * 10)
-
-        running_loss = {
-            'non_change_train': [],
-            'change_train': [],
-            'non_change_val': [],
-            'change_val': [],
-            'train_loss': [],
-            'val_loss': [],
-        }
-        model.train(True)
-        model.to(device)
-        total_data_time = 0.0
-        total_model_time = 0.0
-
-        # Iterate over data.
-        for idx, data in enumerate(train_dataloader):
-            # this is a big graph built from all the batches
-            # transition pair1
-            input = data['input']
-            input_ = data['input_']
-            target = data['target']
-            target_ = data['target_']
-            action_info = data['action_info']
-
-            # End data loading time
-            # if idx > 0:
-            #     data_time = time.time() - start_data_time
-            #     total_data_time += data_time
-
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # put input dict on device and start measuring model processing time
-            start_model_time = time.time()
-            
-            if device is not None:
-                for key, val in input.items():
-                    input[key] = val.to(device) if val is not None else val
-                for key, val in input_.items():
-                    input_[key] = val.to(device) if val is not None else val
-                for key, val in target.items():
-                    target[key] = val.to(device) if val is not None else val
-                for key, val in target_.items():
-                    target_[key] = val.to(device) if val is not None else val
-            
-            # the model partition the continous input graph into discrete graphs (groundings of predicates)
-            logits_output = model(input.copy())
-            logits_output_ = model(input_.copy())
-            # discretize the output graphs
-            # binary_output = logits_output
-            # binary_output_ = logits_output_
-            
-            # outputs_binary = (binary_output, binary_output_)
-            outputs_logits = (logits_output, logits_output_)
-            targets = (target, target_)
-
-            loss = torch.tensor(0.0).to(device)
-            if device is not None:
-                loss = loss.to(device)
-
-            # loss is not averaged over the batch (single sample scale)
-            # aet loss accepts gumbel-sigmoid output
-            non_change_loss, change_loss = criterion(outputs_logits, targets, action_info)
-            running_loss['non_change_train'].append(non_change_loss.item()) # aet_loss is already normalized
-            loss += non_change_loss
-            running_loss['change_train'].append(change_loss.item())
-            loss += change_loss
-
-            # backward + optimize
-            loss.backward()
-            optimizer.step()
-
-            # End model processing time
-            model_time = time.time() - start_model_time
-            total_model_time += model_time
-            # statistics
-            running_loss['train_loss'].append(loss.item())
-
-            # Log per-sample times
-            # if idx > 0:
-            #     logging.info(f"Epoch {epoch}, Sample {idx}, data loading time: {data_time:.4f} seconds")
-            #     logging.info(f"Epoch {epoch}, Sample {idx}, model processing time: {model_time:.4f} seconds")
-            logging.info(f"Epoch {epoch}, Sample {idx}, non_change_loss: {non_change_loss.item()}, change_loss: {change_loss.item()}")
-
-            start_data_time = time.time()
-
-        # Calculate average data and model processing times per sample
-        if epoch % val_freq == 0:
-            model.train(False)
-            model.to(device)
-            for idx, data in enumerate(val_dataloader):
-                # this is a big graph built from all the batches
-                # transition pair1
-                input = data['input']
-                input_ = data['input_']
-                target = data['target']
-                target_ = data['target_']
-                action_info = data['action_info']
-
-                # End data loading time
-                if idx > 0:
-                    data_time = time.time() - start_data_time
-                    total_data_time += data_time
-
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
-                # put input dict on device and start measuring model processing time
-                start_model_time = time.time()
-                
-                if device is not None:
-                    for key, val in input.items():
-                        input[key] = val.to(device) if val is not None else val
-                    for key, val in input_.items():
-                        input_[key] = val.to(device) if val is not None else val
-                    for key, val in target.items():
-                        target[key] = val.to(device) if val is not None else val
-                    for key, val in target_.items():
-                        target_[key] = val.to(device) if val is not None else val
-                
-                # the model partition the continous input graph into discrete graphs (groundings of predicates)
-                logits_output = model(input.copy())
-                logits_output_ = model(input_.copy())
-                # discretize the output graphs
-                # binary_output = logits_output
-                # binary_output_ = logits_output_
-                
-                # outputs_binary = (binary_output, binary_output_)
-                outputs_logits = (logits_output, logits_output_)
-                targets = (target, target_)
-
-                loss = torch.tensor(0.0).to(device)
-                if device is not None:
-                    loss = loss.to(device)
-
-                # loss is not averaged over the batch (single sample scale)
-                # aet loss accepts gumbel-sigmoid output
-                non_change_loss, change_loss = criterion(outputs_logits, targets, action_info)
-                running_loss['non_change_val'].append(non_change_loss.item())
-                loss += non_change_loss
-                running_loss['change_val'].append(change_loss.item())
-                loss += change_loss
-
-                # statistics
-                running_loss['val_loss'].append(loss.item())                
-
-        avg_data_time = total_data_time / (idx+1)
-        avg_model_time = total_model_time / (idx+1)
-        running_loss = {k: np.mean(v) for k, v in running_loss.items()}
-
-        total_loss_val = running_loss['val_loss']
-        if total_loss_val < best_seen_running_validation_loss:
-            best_seen_running_validation_loss = total_loss_val
-            best_seen_model_weights = model.state_dict()
-            logging.info(
-                f"Found new best model with val loss "
-                f"{best_seen_model_weights} at epoch {epoch}")
-            
-        total_loss_train = running_loss['train_loss']
-        if total_loss_train < best_seen_model_train_loss:
-            best_seen_model_train_loss = total_loss_train
-
-    time_elapsed = time.perf_counter() - since
-    num_min = time_elapsed // 60
-    num_sec = time_elapsed % 60
-
-    # if not do_validation:
-    #     train_loss = running_loss['train']
-    #     logging.info(f"Training complete in {num_min:.0f}m {num_sec:.0f}s "
-    #                  f"with train loss {train_loss}")
-    #     return model.state_dict()
-    logging.info(
-        f"Training complete in {num_min:.0f}m {num_sec:.0f}s "
-        f"with train loss {best_seen_model_train_loss:.5f} and validation "
-        f"loss {best_seen_running_validation_loss:.5f}")
-
-    assert best_seen_model_weights
-    return best_seen_model_weights
 
 def calculate_entropy(prob_vector):
     # Ensure the probabilities are in the correct range
@@ -867,83 +499,6 @@ def convert_tgt_vector(tgt_vector):
         assert tgt_vector_new.max() <= 2, "tgt_matrix_new should have max value 2, \
             got \n (Add) {} \n (Del) {}".format(tgt_vector[:,0], tgt_vector[:,1])
         return tgt_vector_new.unsqueeze(-1)
-
-def compute_guidance_matrix(prob_matrix, tgt_matrix, entropy_w=0.5, loss_w=0.5, \
-                            min_prob=0.0, max_prob=1.0):
-    # Replace NaNs with zeros
-    nan_mask = torch.isnan(prob_matrix)
-    prob_matrix = torch.where(nan_mask, torch.tensor(0.0), prob_matrix)
-    
-    # Calculate entropy for each WxH position
-    entropy_matrix = calculate_entropy(prob_matrix)
-    
-    # Set entropy to zero for positions where the original values were NaN
-    nan_mask = torch.any(nan_mask, dim=-1)
-    entropy_matrix = torch.where(nan_mask, torch.tensor(0.0), entropy_matrix)
-
-    # Set other places (>0.0) to between neupi_entropy_entry_min and neupi_entropy_entry_max
-    entropy_matrix[~nan_mask] = torch.clamp(entropy_matrix[~nan_mask], min=min_prob, max=max_prob)
-
-    # Convert probability matrix to logits
-    logits_matrix = torch.log(prob_matrix + 1e-10)
-    
-    # Flatten the matrices for loss computation
-    tgt_matrix = convert_tgt_vector(tgt_matrix)
-    logits_matrix_flat = logits_matrix.view(-1, logits_matrix.shape[-1])
-    tgt_matrix_flat = tgt_matrix.view(-1)
-
-    # Calculate cross-entropy loss for each entry
-    loss_matrix = F.cross_entropy(logits_matrix_flat, tgt_matrix_flat, reduction='none')
-
-    # Reshape the loss matrix back to WxH
-    loss_matrix = loss_matrix.view(prob_matrix.shape[0], prob_matrix.shape[1])
-    
-    # Set loss to zero for positions where the original values were NaN
-    loss_matrix = torch.where(nan_mask, torch.tensor(0.0, dtype=loss_matrix.dtype), loss_matrix)
-    loss_matrix[~nan_mask] = torch.clamp(loss_matrix[~nan_mask], min=min_prob, max=max_prob)
-
-    guidance_matrix = entropy_w*entropy_matrix + loss_w*loss_matrix
-    
-    return guidance_matrix
-
-def extract_ae_vector(data: List[Tuple[State, Set[GroundAtom], State, Set[GroundAtom], _Option, str]], \
-                      curr_candidate: Predicate,
-                      ae_row_name_dict: Dict) -> torch.Tensor:
-    ae_vector_dict = {}
-    for k, v in ae_row_name_dict.items():
-        ae_vector_dict[k] = [0, 0, 0] # [no_change, delete, add]
-
-    for s, _, s_, _, opt, opt_info in data:
-        action_id = opt_info.split('_')[0]
-        action_id = int(action_id)
-        act_objs = opt.objects
-        pred_types = curr_candidate.types
-        ground_objs = [None] * len(pred_types)
-        for obj in act_objs:
-            if obj.type in pred_types:
-                pred_param_idx = pred_types.index(obj.type)
-                ground_objs[pred_param_idx] = obj
-        t_value = int(curr_candidate.holds(s, ground_objs))
-        t_value_ = int(curr_candidate.holds(s_, ground_objs))
-        # effect
-        # no change
-        if t_value == t_value_:
-            ae_vector_dict[action_id][0] += 1
-        # add
-        elif t_value == 0 and t_value_ == 1:
-            ae_vector_dict[action_id][1] += 1
-        # delete
-        elif t_value == 1 and t_value_ == 0:
-            ae_vector_dict[action_id][2] += 1
-        else:
-            raise ValueError("Should be one of the three cases")
-                
-    ae_vector = torch.zeros([len(list(ae_row_name_dict.keys())), 3])
-    for i in list(ae_row_name_dict.keys()):
-        ae_vector[i, :] = torch.tensor(ae_vector_dict[i]) / \
-            torch.tensor(ae_vector_dict[i]).sum()
-
-    return ae_vector
 
 def batched_node2types_gpt(nodes: torch.Tensor, node_feat_dict: Dict) -> List[str]:
     # Create a mapping from feature index to type
@@ -1142,9 +697,9 @@ def distill_learned_ae_vector(val_dataloader: torch.utils.data.DataLoader,
                               w_negation: Optional[bool] = False,
                               quantifier: Optional[str] = '',
                               quantified_type_idx: Optional[List] = []) -> torch.Tensor:
-    ae_vector_dict = {}
-    for k, v in ae_row_name_dict.items():
-        ae_vector_dict[k] = [0, 0, 0] # [no_change, delete, add]
+    # Per option: how often the predicate did not change, was added and
+    # was deleted.
+    ae_vector_dict = {k: [0, 0, 0] for k in ae_row_name_dict}
 
     pred_model.train(False)
     pred_model.to(device)
@@ -1412,7 +967,7 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
 def equiv_effect(sample, sample_, ae_vec) -> bool:
     if torch.equal(sample, sample_):
         # no change
-        return ae_vec.all() == 0
+        return bool((ae_vec == 0).all())
     elif torch.equal(sample, sample_ - 1):
         # add effect
         return ae_vec[0] > 0.9

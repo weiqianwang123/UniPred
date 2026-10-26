@@ -33,7 +33,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-wandb = ["wandb"]
 develop = ["pytest", "pylint", "mypy", "types-PyYAML", "yapf", "isort"]
 
 [tool.setuptools.packages.find]

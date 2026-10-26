@@ -49,7 +49,7 @@ Upstream base: centaur-ai/IVNTR at commit f12b1ae.
 - **Strict registries.** A missing dependency in a submodule raises instead of
   silently removing an env or approach, and ground-truth options and NSRTs are
   looked up through each factory's `get_env_names()`.
-- **wandb is optional.** It is only imported when `--wandb_run_name` is set;
+- **No wandb.** The Weights & Biases logging of predicate training and its
   hard-coded API keys are removed.
 - **Fixes in the IVNTR approach.** Saved model artifacts (guidance and effect
   vectors) are found by file name only, so directory names that contain

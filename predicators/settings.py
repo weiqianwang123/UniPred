@@ -283,7 +283,6 @@ class GlobalSettings:
 
     # neural predicate classifier parameters
     # assume we know the number and types of predicates
-    wandb_run_name = ""
     neupi_load_pretrained = ''
     load_neupi_from_json = False
     neupi_pred_config = 'predicators/config/satellites/pred.yaml'

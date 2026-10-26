@@ -12,6 +12,7 @@ import itertools
 import queue as queue_lib
 import json
 import logging
+import zlib
 from z3 import Bool, Not, Or, Solver, is_true, sat
 from tqdm import tqdm
 from gymnasium.spaces import Box
@@ -164,16 +165,17 @@ def _train_val_model_process(settings: Dict[str, Any], queue: Queue,
 
 def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iteration, pred_config, \
                                 ae_row_name_dict, node_feature_to_index, edge_feature_to_index, \
-                                train_dataset, val_dataset, n, wandb_run_name='', num_workers=4):
-    # Initialize W&B run with a unique name for this process
-    # assert n == 0, "Single Process"
-    logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
-    if wandb_run_name:
-        logging.info("Starting W&B run. This makes training slower due to logging.")
-        utils.init_wandb_run(
-            f"{wandb_run_name}_pred_{pred_config['name']}_init_{n}",
-            utils.get_important_cfg(CFG, pred_config))
+                                train_dataset, val_dataset, n, num_workers=4):
+    """Train the n-th classifier of an iteration for one effect vector.
 
+    The torch seed depends only on the run's seed, the predicate type, the
+    iteration and n, so a classifier is the same whether it is trained in
+    this process or in a spawned one.
+    """
+    logging.info(f"Predicate {curr_pred.name} iteration {iteration}: "
+                 f"training classifier {n}")
+    torch.manual_seed(
+        zlib.crc32(f"{CFG.seed}/{curr_pred.name}/{iteration}/{n}".encode()))
     train_dataloader = DataLoader(train_dataset,
                                     batch_size=pred_config['batch_size'],
                                     shuffle=True,
@@ -197,23 +199,17 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
     optimizer, scheduler = setup_neupi_optimizer(model, \
                                                  pred_config['optimizer'], \
                                                  pred_config['lr_scheduler'])
-    # # Train the model
-    if "quick_skip" not in pred_config:
-        pred_config["quick_skip"] = None
     best_model_dict, best_val_loss = train_predicate_model(
-        iteration,  # replace with your iteration management
+        iteration,
         model,
         train_dataloader,
         val_dataloader,
         optimizer=optimizer,
         super_label=CFG.neupi_super_label,
         num_epochs=pred_config["epochs"],
-        gumbel_temperature=pred_config["gumbel_temp"],
         val_freq=pred_config['val_freq'],
         device=CFG.device,
-        scheduler=scheduler,
-        quick_skip=pred_config["quick_skip"]
-    )
+        scheduler=scheduler)
     logging.info("Model {} Trained".format(n))
     logging.info("Corresponding AE Vector: {}".format(ae_vector[:, 0]))
     if ae_vector.shape[-1] == 2:
@@ -771,7 +767,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 model_path, val_loss = train_val_model_single(curr_pred, ent_idx, pred_save_path, \
                                     sat_vectors[i], iteration, pred_config, self.ae_row_names_dict, \
                                     self._node_feature_to_index, self._edge_feature_to_index, \
-                                    train_datasets[i], val_datasets[i], i, CFG.wandb_run_name)
+                                    train_datasets[i], val_datasets[i], i)
                 model_weight_paths.append(model_path)
                 val_losses.append(val_loss)
                 ae_vecs.append(sat_vectors[i])
@@ -794,7 +790,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                             self.ae_row_names_dict,
                             self._node_feature_to_index,
                             self._edge_feature_to_index, train_datasets[i],
-                            val_datasets[i], i, CFG.wandb_run_name)
+                            val_datasets[i], i)
                     p = context.Process(target=_train_val_model_process,
                                         args=(settings, queue, args))
                     p.start()
