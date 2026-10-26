@@ -967,8 +967,8 @@ def task_plan_with_option_plan_constraint(
 
 def generate_sas_file_for_fd(
         task: Task, nsrts: Set[NSRT], predicates: Set[Predicate],
-        types: Set[Type], timeout: float, timeout_cmd: str, alias_flag: str,
-        exec_str: str, objects: List[Object],
+        types: Set[Type], timeout: float, timeout_cmd: str, exec_str: str,
+        objects: List[Object],
         init_atoms: Set[GroundAtom]) -> str:  # pragma: no cover
     """Generates a SAS file for a particular PDDL planning problem so that FD
     can be used for search."""
@@ -991,10 +991,13 @@ def generate_sas_file_for_fd(
     # default name, which will cause issues if you run multiple
     # processes simultaneously.
     sas_file = tempfile.NamedTemporaryFile(delete=False).name
-    # Run to generate sas
-    cmd_str = (f"{timeout_cmd} {timeout} {exec_str} {alias_flag} "
+    # Translate only: given PDDL files, Fast Downward would also search,
+    # and write a plan to the working directory.
+    cmd_str = (f"{timeout_cmd} {timeout} {exec_str} --translate "
                f"--sas-file {sas_file} {dom_file} {prob_file}")
     subprocess.getoutput(cmd_str)
+    os.remove(dom_file)
+    os.remove(prob_file)
     return sas_file
 
 
@@ -1059,10 +1062,15 @@ def fd_plan_from_sas_file(
 ) -> Tuple[List[_GroundNSRT], List[Set[GroundAtom]],
            Metrics]:  # pragma: no cover
     """Given a SAS file, runs search on it to generate a plan."""
-    cmd_str = (f"{timeout_cmd} {timeout} {exec_str} {alias_flag} {sas_file}")
-    output = subprocess.getoutput(cmd_str)
-    cleanup_cmd_str = f"{exec_str} --cleanup"
-    subprocess.getoutput(cleanup_cmd_str)
+    # The plan is read from the output. Fast Downward also writes it to a
+    # file, by default sas_plan in the working directory, which processes
+    # planning in the same directory would overwrite and delete; it gets a
+    # directory of its own.
+    with tempfile.TemporaryDirectory() as plan_dir:
+        plan_file = os.path.join(plan_dir, "sas_plan")
+        cmd_str = (f"{timeout_cmd} {timeout} {exec_str} {alias_flag} "
+                   f"--plan-file {plan_file} {sas_file}")
+        output = subprocess.getoutput(cmd_str)
     if time.perf_counter() - start_time > timeout:
         raise PlanningTimeout("Planning timed out in call to FD!")
     # Parse and log metrics.
@@ -1141,9 +1149,25 @@ def _sesame_plan_with_fast_downward(
     exec_str = os.path.join(fd_exec_path, "fast-downward.py")
     start_time = time.perf_counter()
     sas_file = generate_sas_file_for_fd(task, nsrts, predicates, types,
-                                        timeout, timeout_cmd, alias_flag,
-                                        exec_str, objects, init_atoms)
+                                        timeout, timeout_cmd, exec_str,
+                                        objects, init_atoms)
+    try:
+        return _refine_fd_skeletons(task, option_model, nsrts, objects,
+                                    init_atoms, sas_file, timeout_cmd,
+                                    timeout, exec_str, alias_flag,
+                                    start_time, seed, max_horizon)
+    finally:
+        os.remove(sas_file)
 
+
+def _refine_fd_skeletons(
+    task: Task, option_model: _OptionModelBase, nsrts: Set[NSRT],
+    objects: List[Object], init_atoms: Set[GroundAtom], sas_file: str,
+    timeout_cmd: str, timeout: float, exec_str: str, alias_flag: str,
+    start_time: float, seed: int, max_horizon: int
+) -> Tuple[List[_Option], List[_GroundNSRT], Metrics]:  # pragma: no cover
+    """Refine the skeletons that Fast Downward finds in the SAS file, adding
+    the discovered failures to it, until one is refined."""
     while True:
         skeleton, atoms_sequence, metrics = fd_plan_from_sas_file(
             sas_file, timeout_cmd, timeout, exec_str, alias_flag, start_time,
@@ -1248,7 +1272,7 @@ def run_task_plan_once(
                              f"{CFG.sesame_task_planner}")
 
         sas_file = generate_sas_file_for_fd(task, nsrts, preds, types, timeout,
-                                            timeout_cmd, alias_flag, exec_str,
+                                            timeout_cmd, exec_str,
                                             list(objects), init_atoms)
 
         if use_costs:
@@ -1259,9 +1283,13 @@ def run_task_plan_once(
                                         default_ground_op_cost=default_cost,
                                         cost_precision=cost_precision)
 
-        plan, atoms_seq, metrics = fd_plan_from_sas_file(
-            sas_file, timeout_cmd, timeout, exec_str, alias_flag, start_time,
-            list(objects), init_atoms, nsrts, float(max_horizon))
+        try:
+            plan, atoms_seq, metrics = fd_plan_from_sas_file(
+                sas_file, timeout_cmd, timeout, exec_str, alias_flag,
+                start_time, list(objects), init_atoms, nsrts,
+                float(max_horizon))
+        finally:
+            os.remove(sas_file)
     else:
         raise ValueError("Unrecognized sesame_task_planner: "
                          f"{CFG.sesame_task_planner}")
