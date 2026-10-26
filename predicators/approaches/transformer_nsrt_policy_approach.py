@@ -1,5 +1,5 @@
 """An approach that trains a Transformer mapping states, atoms, and goals to
-dummy NSRTs, with GT sampler."""
+options and their objects; otherwise like GNNNSRTPolicyApproach."""
 
 import logging
 from typing import Optional, List, Set

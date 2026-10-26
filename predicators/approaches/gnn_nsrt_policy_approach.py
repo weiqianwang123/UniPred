@@ -1,5 +1,6 @@
-"""An approach that trains a GNN mapping states, atoms, and goals to
-dummy NSRTs, with GT sampler."""
+"""An approach that trains a GNN mapping states, atoms, and goals to options
+and their objects (behavior cloning); the ground-truth samplers give the
+continuous parameters, and plans are found by shooting."""
 
 import os
 import time
@@ -20,7 +21,7 @@ from predicators.approaches import ApproachFailure, ApproachTimeout
 from predicators.approaches.gnn_approach import GNNApproach
 from predicators.nsrt_learning.segmentation import segment_trajectory
 from predicators.option_model import create_option_model
-from predicators.ground_truth_models import get_dummy_nsrts
+from predicators.ground_truth_models import get_gt_nsrts
 from predicators.settings import CFG
 from predicators.gnn.gnn_utils import get_single_model_prediction, normalize_graph
 from predicators.structs import Action, Dataset, DummyOption, \
@@ -45,67 +46,17 @@ class GNNNSRTPolicyApproach(GNNApproach):
         self._max_option_objects = 0
         self._bce_loss = torch.nn.BCEWithLogitsLoss()
         self._crossent_loss = torch.nn.CrossEntropyLoss()
-        # dummy nsrt helps us:
-        # 1. Define the necessary preconditions
-        # 2. Define the GT sampler
-        env_dummy_nsrts = get_dummy_nsrts(CFG.env, self._initial_predicates,
-                                    self._initial_options)
-        self._dummy_nsrts = set()
-        for env_nsrt in env_dummy_nsrts:
-            if CFG.ivntr_nsrt_path != '':
-                if ".neupi_info" in CFG.ivntr_nsrt_path:
-                    logging.info(f"Loading learned NSRT samplers from {CFG.ivntr_nsrt_path}")
-                    with open(CFG.ivntr_nsrt_path, "rb") as f:
-                        content_info = pkl.load(f)
-                    ivntr_dummy_nsrts = content_info["dummy_nsrts"]
-                    for ivntr_nsrt in ivntr_dummy_nsrts:
-                        if ivntr_nsrt.option == env_nsrt.option:
-                            new_nsrt = NSRT(name=env_nsrt.name, parameters=env_nsrt.parameters, preconditions=env_nsrt.preconditions,
-                                add_effects=env_nsrt.add_effects, delete_effects=env_nsrt.delete_effects,
-                                ignore_effects=env_nsrt.ignore_effects, option=env_nsrt.option,
-                                option_vars=env_nsrt.option_vars, _sampler=ivntr_nsrt.sampler)
-                            self._dummy_nsrts.add(new_nsrt)
-                else:
-                    assert ".saved" in CFG.ivntr_nsrt_path
-                    logging.info(f"Loading learned NSRT samplers from {CFG.ivntr_nsrt_path} (pts)")
-                    parameters = env_nsrt.parameters
-                    option = env_nsrt.option
-                    name = self._sorted_options.index(option)
-                    cls_weight_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_cls_weight.pt"
-                    cls_info_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_cls_info.pt"
-                    reg_weight_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_reg_weight.pt"
-                    reg_info_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_reg_info.pt"
-                    if os.path.exists(cls_weight_path):
-                        sampler = _create_neural_sampler(parameters, option,
-                                                cls_weight_path, 
-                                                cls_info_path,
-                                                reg_weight_path, reg_info_path)
-                    else:
-                        logging.info(f"Using GT sampler (Null) for NSRT {env_nsrt.name}")
-                        sampler = env_nsrt.sampler
-                    new_nsrt = NSRT(name=env_nsrt.name, parameters=env_nsrt.parameters, preconditions=env_nsrt.preconditions,
-                                add_effects=env_nsrt.add_effects, delete_effects=env_nsrt.delete_effects,
-                                ignore_effects=env_nsrt.ignore_effects, option=env_nsrt.option,
-                                option_vars=env_nsrt.option_vars, _sampler=sampler)
-                    self._dummy_nsrts.add(new_nsrt)
-            else:
-                logging.info(f"Using GT sampler for NSRT {env_nsrt.name}")
-                self._dummy_nsrts.add(env_nsrt)
-        # check the options and nsrts are one-one mapping
-        # assert len(self._sorted_options) == len(self._dummy_nsrts)
-        self._option2nsrt = {}
-        for nsrt in self._dummy_nsrts:
-            nsrt_option = nsrt.option
-            assert nsrt_option in self._sorted_options
-            self._option2nsrt[nsrt_option] = nsrt
-        for option in self._sorted_options:
-            if option not in self._option2nsrt:
-                logging.warning(f"Option {option} has no dummy NSRT, adding GT for it")
-                for env_nsrt in env_dummy_nsrts:
-                    if env_nsrt.option == option:
-                        self._option2nsrt[option] = env_nsrt
-                        self._dummy_nsrts.add(env_nsrt)
-                        break
+        # The policy chooses an option and its objects. The ground-truth NSRT
+        # of the option (on the known predicates only) gives the option's
+        # continuous parameters (its sampler) and rules out options whose
+        # known preconditions do not hold.
+        self._option2nsrt = {
+            nsrt.option: nsrt
+            for nsrt in get_gt_nsrts(CFG.env, self._initial_predicates,
+                                     self._initial_options)
+        }
+        assert set(self._option2nsrt) == set(self._sorted_options), \
+            "Every option needs exactly one ground-truth NSRT."
 
     def _generate_data_from_dataset(
         self, dataset: Dataset

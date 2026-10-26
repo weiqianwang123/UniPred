@@ -82,7 +82,6 @@ class GlobalSettings:
 
     # parameters for abstract GNN approach
     # keep fair with neupi, nn size, bs, epochs
-    ivntr_nsrt_path = ''
     gnn_num_message_passing = 3
     gnn_num_layers = 2 # after the first linear, how many gnn_layer_size layers
     gnn_layer_size = 512
@@ -259,8 +258,6 @@ class GlobalSettings:
 
     # neural predicate classifier parameters
     # assume we know the number and types of predicates
-    neupi_load_pretrained = ''
-    load_neupi_from_json = False
     neupi_pred_config = 'predicators/config/satellites/pred.yaml'
     neupi_ae_matrix_channel = 2 # 2 is full [non, add, del], 00: non, 01: add, 10: del (no 11). # 1 is add/non
     neupi_super_label = {
@@ -296,7 +293,6 @@ class GlobalSettings:
     neupi_max_neural_nets = 50
     neupi_parallel_invention = True
     neupi_save_init_atom_dataset = True
-    neupi_gt_sampler = False
     neupi_cache_input_graph = False
     precond_thresh = 0.999
     max_normalizer_data = -1

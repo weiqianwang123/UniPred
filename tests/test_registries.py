@@ -9,8 +9,7 @@ import pytest
 from predicators import utils
 from predicators.approaches import BaseApproach
 from predicators.envs import BaseEnv, get_or_create_env
-from predicators.ground_truth_models import get_dummy_nsrts, get_gt_nsrts, \
-    get_gt_options
+from predicators.ground_truth_models import get_gt_nsrts, get_gt_options
 
 _ENV_NAMES = ["satellites", "blocks", "blocks_onclear"]
 
@@ -28,7 +27,7 @@ def test_registered_names():
     assert _registered_names(BaseEnv) == set(_ENV_NAMES)
     assert _registered_names(BaseApproach) == {
         "gnn_nsrt_policy", "grammar_search_invention", "ivntr",
-        "nsrt_learning", "oracle", "random_nsrt", "random_options",
+        "nsrt_learning", "oracle", "random_options",
         "transformer_nsrt_policy"
     }
 
@@ -55,15 +54,6 @@ def test_options_survive_pickling():
         loaded = dill.loads(dill.dumps(option))
         assert loaded.name == option.name
         assert loaded.params_space.contains(option.params_space.sample())
-
-
-@pytest.mark.parametrize("env_name", ["satellites", "blocks_onclear"])
-def test_dummy_nsrts(env_name):
-    """Dummy NSRTs are registered for the IVNTR domains."""
-    utils.reset_config({"env": env_name})
-    options = get_gt_options(env_name)
-    predicates = get_or_create_env(env_name).predicates
-    assert get_dummy_nsrts(env_name, predicates, options)
 
 
 def test_unknown_env_raises():

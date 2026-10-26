@@ -61,24 +61,6 @@ class GroundTruthNSRTFactory(abc.ABC):
         return None
 
 
-class DummyNSRTFactory(abc.ABC):
-    """Parent class for dummy (sampler-free) NSRT definitions."""
-
-    @classmethod
-    @abc.abstractmethod
-    def get_env_names(cls) -> Set[str]:
-        """Get the env names that this factory builds NSRTs for."""
-        raise NotImplementedError("Override me!")
-
-    @classmethod
-    @abc.abstractmethod
-    def get_nsrts(cls, env_name: str, types: Dict[str, Type],
-                  predicates: Dict[str, Predicate],
-                  options: Dict[str, ParameterizedOption]) -> Set[NSRT]:
-        """Create NSRTs for the given env name."""
-        raise NotImplementedError("Override me!")
-
-
 _FactoryT = TypeVar("_FactoryT")
 
 
@@ -113,18 +95,15 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
     return options
 
 
-def _get_filtered_nsrts(
-        base_cls: Union[TypingType[GroundTruthNSRTFactory],
-                        TypingType[DummyNSRTFactory]], env_name: str,
-        predicates_to_keep: Set[Predicate],
-        options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
-    """Create NSRTs from the registered factory of the given kind, keeping only
-    the given predicates and the NSRTs whose options are kept."""
+def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
+                 options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
+    """Create ground truth NSRTs for an env, keeping only the given
+    predicates and the NSRTs whose options are kept."""
     env = get_or_create_env(env_name)
     env_options = get_gt_options(env_name)
     assert predicates_to_keep.issubset(env.predicates)
     assert options_to_keep.issubset(env_options)
-    factory = _get_factory(base_cls, env_name)
+    factory = _get_factory(GroundTruthNSRTFactory, env_name)
     # Give all predicates and options, then filter based on kept ones at the
     # end of this function. This is easier than filtering within the factory.
     types = {t.name: t for t in env.types}
@@ -140,13 +119,6 @@ def _get_filtered_nsrts(
     return final_nsrts
 
 
-def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
-                 options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
-    """Create ground truth NSRTs for an env."""
-    return _get_filtered_nsrts(GroundTruthNSRTFactory, env_name,
-                               predicates_to_keep, options_to_keep)
-
-
 def get_gt_atoms_closure(
         env_name: str,
         predicates_to_keep: Set[Predicate]) -> Optional[AtomsClosure]:
@@ -155,13 +127,6 @@ def get_gt_atoms_closure(
     return factory.get_atoms_closure(env_name,
                                      {p.name: p
                                       for p in predicates_to_keep})
-
-
-def get_dummy_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
-                    options_to_keep: Set[ParameterizedOption]) -> Set[NSRT]:
-    """Create dummy (sampler-free) NSRTs for an env."""
-    return _get_filtered_nsrts(DummyNSRTFactory, env_name, predicates_to_keep,
-                               options_to_keep)
 
 
 def parse_config_included_options(env: BaseEnv) -> Set[ParameterizedOption]:
