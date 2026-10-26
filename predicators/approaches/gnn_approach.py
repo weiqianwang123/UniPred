@@ -265,21 +265,26 @@ class GNNApproach(BaseApproach, Generic[_Output]):
         binary_predicates_set = set()
         obj_attrs_set = set()
 
-        # Go through the data, identifying the types/predicates/attributes.
+        # The known predicates and types, and those in the data: a test task
+        # may have atoms or types that no demonstration has.
+        predicates = set(self._initial_predicates)
+        types = set(self._types)
         for state, atoms, goal, _ in data:
-            for atom in atoms | goal:
-                arity = atom.predicate.arity
-                assert arity <= 2, "Predicates with arity > 2 are not supported"
-                if arity == 0:
-                    nullary_predicates_set.add(atom.predicate)
-                elif arity == 1:
-                    unary_predicates_set.add(atom.predicate)
-                elif arity == 2:
-                    binary_predicates_set.add(atom.predicate)
-            for obj in state:
-                obj_types_set.add(f"type_{obj.type.name}")
-                for feat in obj.type.feature_names:
-                    obj_attrs_set.add(f"feat_{feat}")
+            predicates |= {atom.predicate for atom in atoms | goal}
+            types |= {obj.type for obj in state}
+        for predicate in predicates:
+            arity = predicate.arity
+            assert arity <= 2, "Predicates with arity > 2 are not supported"
+            if arity == 0:
+                nullary_predicates_set.add(predicate)
+            elif arity == 1:
+                unary_predicates_set.add(predicate)
+            elif arity == 2:
+                binary_predicates_set.add(predicate)
+        for obj_type in types:
+            obj_types_set.add(f"type_{obj_type.name}")
+            for feat in obj_type.feature_names:
+                obj_attrs_set.add(f"feat_{feat}")
         self._nullary_predicates = sorted(nullary_predicates_set)
         self._setup_output_specific_fields(data)
 

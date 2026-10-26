@@ -623,8 +623,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
         for col in range(width):
             pred_name = columns[col]
             if all_ae_matrix_dummy[:, col].sum() == 0:
-                # this effect never appears
-                raise ValueError("This effect predicate never appears in data, bug!")
+                raise ValueError(
+                    f"The given predicate {pred_name.name} never changes in "
+                    "the demonstrations, so its effects cannot be read from "
+                    "them; use more demonstrations.")
             for row in range(height):
                 if all_ae_matrix_dummy[row, col, :].sum() == 0:
                     # this action never appears
