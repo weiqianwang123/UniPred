@@ -94,8 +94,15 @@ design. Each entry says what was chosen and why.
   acceptance threshold 0.005 is calibrated to it.
 - **IVNTR configs** share the predicate types of the UniPred configs
   (configs/<domain>/ivntr_predicates.yaml includes predicates.yaml), so
-  the two methods search the same predicate space and differ only in how
-  candidates are proposed.
+  the two methods search the same predicate space. They differ in how
+  candidates are proposed and in when the search of a type stops: IVNTR,
+  as upstream, runs its whole budget and keeps every vector that passes,
+  for selection to choose from; UniPred's LLM loop stops once
+  `max_num_vectors` vectors pass (the paper's LLM proposals are few and
+  semantically targeted). When more vectors pass than may be kept, the
+  ones with the lowest validation loss are kept. With a cap of one, IVNTR
+  had kept "Calibrate adds Sees" over "MoveTo adds Sees" in one run and
+  solved no Satellites task.
 
 ## Baselines
 

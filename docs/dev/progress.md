@@ -88,6 +88,13 @@ also in a fresh clone installed by scripts/install.sh (311 s).
   needed a belief-free operator learner (cluster_and_intersect).
 - Packing test tasks timed out: closure groundings cached, lmcut with the
   optimistic relaxation, visited-state set.
+- IVNTR configs capped the effect vectors kept per type (inherited from
+  the UniPred configs), so IVNTR kept the first vector that passed; a
+  final-code Satellites run kept a useless one and solved 0/50. IVNTR now
+  keeps every passing vector, as upstream; capped types keep the best
+  (fork 6dbccae, b5d863d).
+- A 2 x 1 pixel sliver detected as an object gave NaN crop features and
+  diverged UniPred's training on a 20-session fixture (7204a1d).
 
 ## Remaining
 
