@@ -26,6 +26,22 @@ the vendored translator is used to ground PDDL tasks.
 ResNet-18 ImageNet weights are downloaded by torchvision (BSD-3-Clause)
 when Packing runs without DINOv3.
 
+## Downloaded by `scripts/install.sh --sim`
+
+Fetched by `python -m unipred.robot_sim.assets` into `sim_assets/` (not
+committed), at pinned commits:
+
+| Asset | Source | License |
+|---|---|---|
+| Franka Research 3 (`franka_fr3`) | google-deepmind/mujoco_menagerie | Apache-2.0 |
+| Robotiq 2F-85 (`robotiq_2f85`) | google-deepmind/mujoco_menagerie | BSD-2-Clause (ROS-Industrial) |
+| Google Scanned Objects (eight toys, a wooden tray, a sponge) as MuJoCo models | kevinzakka/mujoco_scanned_objects, from Downs et al., "Google Scanned Objects", ICRA 2022 | CC-BY-4.0 (the scans); MIT (the conversion) |
+
+The gripper's mount on the arm follows R2S2R's `fr3_robotiq` (MIT). The
+simulator can take its grasps from GraspGenX (NVIDIA), served over HTTP by
+a separate server (CDG's perception servers); nothing of GraspGenX is
+included or downloaded here.
+
 ## Python dependencies
 
 Installed from PyPI by `pip install -e`, under their own licenses; among

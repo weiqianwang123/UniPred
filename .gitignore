@@ -24,6 +24,10 @@ wandb/
 
 # Model weights (scripts/install.sh --weights)
 /weights/
+
+# Simulator assets (python -m unipred.robot_sim.assets)
+/sim_assets/
+MUJOCO_LOG.TXT
 *.pth
 *.pt
 *.ckpt

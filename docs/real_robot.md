@@ -83,4 +83,44 @@ planning for picks and places, learned policies for pushing, ...), and
 `capture` reads the first camera in `cameras` of the robot config.
 
 Table IV of the paper (execution on the real robot) is not reproduced: it
-needs the hardware.
+needs the hardware. The simulated robot below stands in for it.
+
+## Simulated robot
+
+`unipred/robot_sim/table_clean_mujoco.py` is Table Clean Real in MuJoCo, to
+record demonstrations, train and run the closed loop without hardware:
+
+- **Scene.** A Franka Research 3 with a Robotiq 2F-85 (mujoco_menagerie;
+  the gripper on the flange as on DROID, as CDG's and R2S2R's `fr3_robotiq`)
+  at the edge of a table, with two or three toys, a wooden tray (the box)
+  on the robot's right, near or far, a sponge (the wiper) and dirt. The
+  toys, the tray and the sponge are Google Scanned Objects; each scene
+  draws its toys from eight by its seed. A camera across the table renders
+  640x480 images.
+- **Skills.** The seven skills of Table Clean are scripted motions: straight
+  lines of the gripper, followed through inverse kinematics by the arm's
+  position actuators while MuJoCo simulates. A pick takes its grasps from
+  GraspGenX (`unipred/robot_sim/graspgenx.py`: CDG's perception server on
+  `localhost:8116`, or `$UNIPRED_GRASPGENX_URL`), given the object's
+  surface points and the rest of the scene as two depth cameras see it; it
+  tries the reachable grasps from above, best first, until both pads close
+  on the object (up to 3 plans of 6), and a weld then holds it. Pushing and
+  pulling the tray press on its near wall and drag it; wiping moves the
+  sponge over the dirt, which goes. `grasps="top_down"` grasps straight
+  down across the object's narrow side, without GraspGenX.
+- **Ground truth.** The scene keeps the places of the objects and the
+  rules of Table Clean Sim (a skill whose conditions do not hold does
+  nothing); `atoms()` are the true atoms, and `problems()` lists where the
+  simulated objects disagree with them.
+
+`examples/real_robot/collect_sim_demos.py` records sessions in the raw
+format: train sessions are Table Clean Sim's oracle demonstrations executed
+skill by skill, test scenes the initial scenes of its out-of-distribution
+tasks; each keyframe also gets its true atoms and the objects' image boxes
+(`gt_boxes.json`, to score detection). A session whose skill fails, or whose
+objects end up where the atoms do not say, is simulated again with another
+seed. Its `session.json` describes the scene, so that
+`closed_loop_example.py --robot sim` starts the loop from it: the skills of
+the plan run on the simulated Franka, and the end says whether the goal
+holds in the simulator. `configs/sim_robot.yaml` has the detector prompts
+for the simulator's objects.

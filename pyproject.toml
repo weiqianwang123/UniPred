@@ -30,6 +30,9 @@ dependencies = [
 [project.optional-dependencies]
 # GroundingDINO, SAM2 and DINOv3 (unipred/perception; scripts/install.sh).
 perception = ["transformers>=4.56"]
+# The MuJoCo stand-in of the real robot (unipred/robot_sim;
+# scripts/install.sh --sim).
+sim = ["mujoco>=3.3"]
 dev = ["pytest", "pylint", "mypy", "yapf", "isort"]
 
 [tool.setuptools.packages.find]

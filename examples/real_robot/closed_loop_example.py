@@ -8,9 +8,15 @@ It ends when the goal holds, no plan is found or the step budget is spent.
 
 A robot implements RobotInterface: capture() returns an RGB image of the
 scene, execute(option_name, objects) runs a skill (e.g. a motion-planned
-pick or a learned policy) on the named objects. FakeRobotInterface replays a
-recorded session: capture() returns the current keyframe and execute()
-moves on to the next one (whatever the skill), so the example runs offline.
+pick or a learned policy) on the named objects. Two come with the example:
+
+- replay (FakeRobotInterface) replays a recorded session: capture() returns
+  the current keyframe and execute() moves on to the next one (whatever the
+  skill), so the example runs offline;
+- sim (unipred/robot_sim, MujocoRobot) runs the skills on the simulated
+  Franka, from the scene a session of collect_sim_demos.py was recorded
+  in; the loop's camera images go to --frames_dir, and the end tells
+  whether the goal holds in the simulator.
 
     python examples/real_robot/closed_loop_example.py \\
         --session examples/real_robot/fixture/raw/train_00 \\
@@ -20,7 +26,6 @@ moves on to the next one (whatever the skill), so the example runs offline.
         --table_clean_real_data_dir outputs/table_clean_real/processed
 """
 
-import abc
 import argparse
 import json
 import logging
@@ -31,20 +36,7 @@ import numpy as np
 
 from predicators.approaches import ApproachFailure, ApproachTimeout
 from predicators.structs import State, _GroundNSRT
-from unipred.deploy import Deployment, load_image
-
-
-class RobotInterface(abc.ABC):
-    """What a robot provides to the closed loop."""
-
-    @abc.abstractmethod
-    def capture(self) -> np.ndarray:
-        """An RGB image (H x W x 3, uint8) of the scene from the robot's
-        first camera (see cameras in configs/real_robot.yaml)."""
-
-    @abc.abstractmethod
-    def execute(self, option_name: str, objects: Sequence[str]) -> None:
-        """Run a skill on the named objects until it finishes."""
+from unipred.deploy import Deployment, RobotInterface, load_image
 
 
 class FakeRobotInterface(RobotInterface):
@@ -116,6 +108,9 @@ def main() -> None:
     parser.add_argument("--session",
                         required=True,
                         help="a recorded session folder (raw format)")
+    parser.add_argument("--robot", choices=["replay", "sim"], default="replay")
+    parser.add_argument("--frames_dir",
+                        help="with --robot sim: where the camera images go")
     parser.add_argument("--max_steps", type=int, default=20)
     parser.add_argument("--robot_config", default="configs/real_robot.yaml")
     parser.add_argument("--detector", help="override the config's detector")
@@ -127,8 +122,32 @@ def main() -> None:
         session = json.load(f)
     deployment = Deployment(training_flags, args.robot_config, args.detector,
                             args.encoder)
-    run_closed_loop(deployment, FakeRobotInterface(args.session),
-                    session["objects"], session["goal"], args.max_steps)
+    if args.robot == "replay":
+        run_closed_loop(deployment, FakeRobotInterface(args.session),
+                        session["objects"], session["goal"], args.max_steps)
+        return
+    # pylint: disable=import-outside-toplevel
+    from PIL import Image
+
+    from unipred.robot_sim.table_clean_mujoco import MujocoRobot, \
+        TableCleanMujoco
+    if "sim" not in session:
+        raise ValueError(f"{args.session} was not recorded in the simulator "
+                         "(its session.json has no \"sim\").")
+    sim = TableCleanMujoco.from_description(session["sim"])
+    robot = MujocoRobot(sim)
+    run_closed_loop(deployment, robot, session["objects"], session["goal"],
+                    args.max_steps)
+    goal = {(name, tuple(args_)) for name, args_ in session["goal"]}
+    reached = goal <= set(sim.atoms())
+    logging.info("In the simulator, the goal "
+                 f"{'holds' if reached else 'does not hold'}.")
+    if args.frames_dir:
+        os.makedirs(args.frames_dir, exist_ok=True)
+        for k, frame in enumerate(robot.frames):
+            Image.fromarray(frame).save(
+                os.path.join(args.frames_dir, f"{k}.png"))
+    sim.close()
 
 
 if __name__ == "__main__":

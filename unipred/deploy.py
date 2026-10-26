@@ -14,6 +14,7 @@ closed_loop_example.py use it.
 
 from __future__ import annotations
 
+import abc
 import sys
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -33,6 +34,20 @@ from unipred.config import expand_config_args
 from unipred.envs.offline_real import OfflineRealEnv
 from unipred.perception.detector import Box
 from unipred.perception.scene import SceneObservation, ScenePerceiver
+
+
+class RobotInterface(abc.ABC):
+    """What a robot provides to the closed loop
+    (examples/real_robot/closed_loop_example.py)."""
+
+    @abc.abstractmethod
+    def capture(self) -> np.ndarray:
+        """An RGB image (H x W x 3, uint8) of the scene from the robot's
+        first camera (see cameras in configs/real_robot.yaml)."""
+
+    @abc.abstractmethod
+    def execute(self, option_name: str, objects: Sequence[str]) -> None:
+        """Run a skill on the named objects until it finishes."""
 
 
 class Deployment:
