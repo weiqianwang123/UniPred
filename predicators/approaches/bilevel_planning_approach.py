@@ -5,7 +5,6 @@ then Execution.
 """
 import abc
 import logging
-import matplotlib.pyplot as plt
 from typing import Any, Callable, List, Optional, Set, Tuple
 
 from gym.spaces import Box
@@ -13,7 +12,6 @@ from gym.spaces import Box
 from predicators import utils
 from predicators.approaches import ApproachFailure, ApproachTimeout, \
     BaseApproach
-from predicators.envs.view_plan import ViewPlanHardEnv 
 from predicators.option_model import _OptionModelBase, create_option_model
 from predicators.planning import PlanningFailure, PlanningTimeout, \
     run_task_plan_once, sesame_plan
@@ -76,11 +74,6 @@ class BilevelPlanningApproach(BaseApproach):
 
         # Run full bilevel planning.
         else:
-            # # for debug visualize initial state
-            # env = ViewPlanHardEnv()
-            # init_state = task.init
-            # env.render_state_plt(init_state, task, save_path="init_state.png")
-
             option_plan, nsrt_plan, metrics = self._run_sesame_plan(
                 task, nsrts, preds, timeout, seed)
             self._last_plan = option_plan

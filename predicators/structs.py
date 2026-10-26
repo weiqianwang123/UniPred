@@ -14,7 +14,6 @@ from typing import Any, Callable, Collection, DefaultDict, Dict, Iterator, \
 
 import numpy as np
 import PIL.Image
-from torch import nn
 from gym.spaces import Box
 from numpy.typing import NDArray
 from tabulate import tabulate
@@ -401,18 +400,6 @@ class NeuralPredicate(Predicate):
             return False
 
 
-@dataclass(frozen=True, order=False, repr=False, eq=False)
-class VLMPredicate(Predicate):
-    """Struct defining a predicate that calls a VLM as part of returning its
-    truth value.
-
-    NOTE: when instantiating a VLMPredicate, we typically pass in a 'Dummy'
-    classifier (i.e., one that returns simply raises some kind of error instead
-    of actually outputting a value of any kind).
-    """
-    get_vlm_query_str: Callable[[Sequence[Object]], str]
-
-
 @dataclass(frozen=True, repr=False, eq=False)
 class _Atom:
     """Struct defining an atom (a predicate applied to either variables or
@@ -518,12 +505,6 @@ class GroundAtom(_Atom):
     def holds(self, state: State) -> bool:
         """Check whether this ground atom holds in the given state."""
         return self.predicate.holds(state, self.objects)
-
-    def get_vlm_query_str(self) -> str:
-        """If this GroundAtom is associated with a VLMPredicate, then get the
-        string that will be used to query the VLM."""
-        assert isinstance(self.predicate, VLMPredicate)
-        return self.predicate.get_vlm_query_str(self.objects)  # pylint:disable=no-member
 
 
 @dataclass(frozen=True, eq=False)
@@ -1321,14 +1302,6 @@ class Action:
         self._option = DummyOption
         assert not self.has_option()
 
-class SpotAction(Action):
-    """Subclassed to avoid issues with pickling bosdyn functions."""
-
-    def __getnewargs__(self) -> Tuple:  # pragma: no cover
-        return (self._arr, self._option)
-
-    def __getstate__(self) -> Dict:  # pragma: no cover
-        return {"_arr": self._arr, "_option": self._option}
 
 @dataclass(frozen=True, repr=False, eq=False)
 class LowLevelTrajectory:

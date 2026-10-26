@@ -1,10 +1,6 @@
-"""Ground-truth models for blocks environment and variants."""
+"""Ground-truth models for blocks environment."""
 
 from .nsrts import BlocksGroundTruthNSRTFactory
-from .options import BlocksGroundTruthOptionFactory, \
-    PyBulletBlocksGroundTruthOptionFactory, BlocksImgGroundTruthOptionFactory
+from .options import BlocksGroundTruthOptionFactory
 
-__all__ = [
-    "BlocksGroundTruthNSRTFactory", "BlocksGroundTruthOptionFactory",
-    "PyBulletBlocksGroundTruthOptionFactory", "BlocksImgGroundTruthOptionFactory"
-]
+__all__ = ["BlocksGroundTruthNSRTFactory", "BlocksGroundTruthOptionFactory"]

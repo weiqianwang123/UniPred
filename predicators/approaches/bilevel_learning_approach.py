@@ -253,10 +253,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
         self.gt_ae_matrix: bool = CFG.neupi_gt_ae_matrix
         self.learned_ae_pred_info: Dict = {}
 
-        if ('pcd' not in CFG.env) and ('img' not in CFG.env):
-            assert CFG.exclude_domain_feat == None, \
-                "Domain Features are not excluded in this env"
-
         # load pred settings
         assert os.path.exists(CFG.neupi_pred_config), "Pred Settings Not Found"
         config_dict = yaml.safe_load(open(CFG.neupi_pred_config, 'r'))
@@ -873,20 +869,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
             self._node_is_rot.append(False)
             index += 1
         for obj_attr in obj_attrs:
-            if 'pcd' in obj_attr:
-                # pcd features will hugely expand the feature space
-                for i in range(CFG.blocks_engrave_num_points * 3):
-                    self._node_feature_to_index[f"{obj_attr}_{i}"] = index
-                    self._node_is_rot.append(False)
-                    index += 1
-                continue
-            if 'norm' in obj_attr:
-                # norm features will hugely expand the feature space
-                for i in range(CFG.blocks_engrave_num_points * 3):
-                    self._node_feature_to_index[f"{obj_attr}_{i}"] = index
-                    self._node_is_rot.append(True)
-                    index += 1
-                continue
             self._node_feature_to_index[obj_attr] = index
             if "_q" in obj_attr:
                 self._node_is_rot.append(True)
@@ -1023,21 +1005,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     if obj_type in CFG.exclude_domain_feat.keys():
                         if feat in CFG.exclude_domain_feat[obj_type]:
                             continue
-                if 'pcd' in feat:
-                    # pcd features
-                    pcd = state[obj][obj.type.feature_names.index(feat)]
-                    pcd = np.reshape(pcd, (-1, ))
-                    for i, p in enumerate(pcd):
-                        node_features[obj_index, self._node_feature_to_index[f"feat_{feat}_{i}"]] = p
-                elif 'norm' in feat:
-                    # pcd features
-                    norm = state[obj][obj.type.feature_names.index(feat)]
-                    norm = np.reshape(norm, (-1, ))
-                    for i, n in enumerate(norm):
-                        node_features[obj_index, self._node_feature_to_index[f"feat_{feat}_{i}"]] = n
-                else:
-                    feat_index = self._node_feature_to_index[f"feat_{feat}"]
-                    node_features[obj_index, feat_index] = state[obj][obj.type.feature_names.index(feat)]
+                feat_index = self._node_feature_to_index[f"feat_{feat}"]
+                node_features[obj_index, feat_index] = state[obj][obj.type.feature_names.index(feat)]
 
         graph["nodes"] = node_features
 

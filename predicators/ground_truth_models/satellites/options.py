@@ -16,7 +16,7 @@ class SatellitesGroundTruthOptionFactory(GroundTruthOptionFactory):
 
     @classmethod
     def get_env_names(cls) -> Set[str]:
-        return {"satellites", "satellites_simple", "satellites_medium", "satellites_hard"}
+        return {"satellites"}
 
     @classmethod
     def get_options(cls, env_name: str, types: Dict[str, Type],

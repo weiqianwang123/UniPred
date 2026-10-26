@@ -37,29 +37,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import pathos.multiprocessing as mp
-import PIL.Image
 from gym.spaces import Box
 from matplotlib import patches
 from numpy.typing import NDArray
 from PIL import ImageDraw, ImageFont
-from bosdyn.client import math_helpers
 from pyperplan.heuristics.heuristic_base import \
     Heuristic as _PyperplanBaseHeuristic
 from pyperplan.planner import HEURISTICS as _PYPERPLAN_HEURISTICS
 from scipy.stats import beta as BetaRV
 
 from predicators.args import create_arg_parser
-from predicators.pretrained_model_interface import GoogleGeminiVLM, \
-    OpenAIVLM, VisionLanguageModel
-from predicators.pybullet_helpers.joint import JointPositions
 from predicators.settings import CFG, GlobalSettings
 from predicators.structs import NSRT, Action, Array, DummyOption, \
     EntToEntSub, GroundAtom, GroundAtomTrajectory, \
     GroundNSRTOrSTRIPSOperator, Image, LDLRule, LiftedAtom, \
     LiftedDecisionList, LiftedOrGroundAtom, LowLevelTrajectory, Metrics, \
     NSRTOrSTRIPSOperator, Object, ObjectOrVariable, Observation, OptionSpec, \
-    ParameterizedOption, Predicate, Segment, SpotAction, State, STRIPSOperator, Task, \
-    Type, Variable, VarToObjSub, Video, VLMPredicate, _GroundLDLRule, \
+    ParameterizedOption, Predicate, Segment, State, STRIPSOperator, Task, \
+    Type, Variable, VarToObjSub, Video, _GroundLDLRule, \
     _GroundNSRT, _GroundSTRIPSOperator, _Option, _TypedEntity, EnvironmentTask, \
     DummyPredicate
 from predicators.third_party.fast_downward_translator.translate import \
@@ -274,72 +269,6 @@ def create_json_dict_from_task(task: Task) -> Dict[str, Any]:
     }
     goal_dict = create_json_dict_from_ground_atoms(task.goal)
     return {"objects": object_dict, "init": init_dict, "goal": goal_dict}
-
-
-def construct_active_sampler_input(state: State, objects: Sequence[Object],
-                                   params: Array,
-                                   param_option: ParameterizedOption) -> Array:
-    """Helper function for active sampler learning and explorer."""
-
-    assert not CFG.sampler_learning_use_goals
-    sampler_input_lst = [1.0]  # start with bias term
-    if CFG.active_sampler_learning_feature_selection == "all":
-        for obj in objects:
-            sampler_input_lst.extend(state[obj])
-        sampler_input_lst.extend(params)
-
-    else:
-        assert CFG.active_sampler_learning_feature_selection == "oracle"
-        if CFG.env == "bumpy_cover":
-            if param_option.name == "Pick":
-                # In this case, the x-data should be
-                # [block_bumpy, relative_pick_loc]
-                assert len(objects) == 1
-                block = objects[0]
-                block_pos = state[block][3]
-                block_bumpy = state[block][5]
-                sampler_input_lst.append(block_bumpy)
-                assert len(params) == 1
-                sampler_input_lst.append(params[0] - block_pos)
-            else:
-                assert param_option.name == "Place"
-                assert len(objects) == 2
-                block, target = objects
-                target_pos = state[target][3]
-                grasp = state[block][4]
-                target_width = state[target][2]
-                sampler_input_lst.extend([grasp, target_width])
-                assert len(params) == 1
-                sampler_input_lst.append(params[0] - target_pos)
-        elif CFG.env == "ball_and_cup_sticky_table":
-            if "PlaceCup" in param_option.name and "Table" in param_option.name:
-                _, _, _, table = objects
-                table_y = state.get(table, "y")
-                table_x = state.get(table, "x")
-                sticky = state.get(table, "sticky")
-                sticky_region_x = state.get(table, "sticky_region_x_offset")
-                sticky_region_y = state.get(table, "sticky_region_y_offset")
-                sticky_region_radius = state.get(table, "sticky_region_radius")
-                table_radius = state.get(table, "radius")
-                _, _, _, param_x, param_y = params
-                sampler_input_lst.append(table_radius)
-                sampler_input_lst.append(sticky)
-                sampler_input_lst.append(sticky_region_x)
-                sampler_input_lst.append(sticky_region_y)
-                sampler_input_lst.append(sticky_region_radius)
-                sampler_input_lst.append(table_x)
-                sampler_input_lst.append(table_y)
-                sampler_input_lst.append(param_x)
-                sampler_input_lst.append(param_y)
-            else:  # Use all features.
-                for obj in objects:
-                    sampler_input_lst.extend(state[obj])
-                sampler_input_lst.extend(params)
-        else:
-            raise NotImplementedError("Oracle feature selection not "
-                                      f"implemented for {CFG.env}")
-
-    return np.array(sampler_input_lst)
 
 
 class _Geom2D(abc.ABC):
@@ -1032,25 +961,6 @@ class SingletonParameterizedOption(ParameterizedOption):
                          policy=policy,
                          initiable=_initiable,
                          terminal=_terminal)
-
-
-class PyBulletState(State):
-    """A PyBullet state that stores the robot joint positions in addition to
-    the features that are exposed in the object-centric state."""
-
-    @property
-    def joint_positions(self) -> JointPositions:
-        """Expose the current joints state in the simulator_state."""
-        return cast(JointPositions, self.simulator_state)
-
-    def allclose(self, other: State) -> bool:
-        # Ignores the simulator state.
-        return State(self.data).allclose(State(other.data))
-
-    def copy(self) -> State:
-        state_dict_copy = super().copy().data
-        simulator_state_copy = list(self.joint_positions)
-        return PyBulletState(state_dict_copy, simulator_state_copy)
 
 
 class StateWithCache(State):
@@ -2253,103 +2163,17 @@ def strip_task(task: Task, included_predicates: Set[Predicate]) -> Task:
     return Task(task.init, stripped_goal, alt_goal=task.alt_goal)
 
 
-def create_vlm_predicate(
-        name: str, types: Sequence[Type],
-        get_vlm_query_str: Callable[[Sequence[Object]], str]) -> VLMPredicate:
-    """Simple function that creates VLMPredicates with dummy classifiers, which
-    is the most-common way these need to be created."""
-
-    def _stripped_classifier(
-            state: State,
-            objects: Sequence[Object]) -> bool:  # pragma: no cover.
-        raise Exception("VLM predicate classifier should never be called!")
-
-    return VLMPredicate(name, types, _stripped_classifier, get_vlm_query_str)
-
-
-def create_vlm_by_name(
-        model_name: str) -> VisionLanguageModel:  # pragma: no cover
-    """Create particular vlm using a provided name."""
-    if "gemini" in model_name:
-        return GoogleGeminiVLM(model_name)
-    return OpenAIVLM(model_name)
-
-
-def query_vlm_for_atom_vals(
-        vlm_atoms: Collection[GroundAtom],
-        state: State,
-        vlm: Optional[VisionLanguageModel] = None) -> Set[GroundAtom]:
-    """Given a set of ground atoms, queries a VLM and gets the subset of these
-    atoms that are true."""
-    true_atoms: Set[GroundAtom] = set()
-    # This only works if state.simulator_state is some list of images that the
-    # vlm can be called on.
-    assert state.simulator_state is not None
-    assert isinstance(state.simulator_state["images"], List)
-    imgs = state.simulator_state["images"]
-    vlm_atoms = sorted(vlm_atoms)
-    atom_queries_str = "\n* "
-    atom_queries_str += "\n* ".join(atom.get_vlm_query_str()
-                                    for atom in vlm_atoms)
-    filepath_to_vlm_prompt = get_path_to_predicators_root() + \
-        "/predicators/datasets/vlm_input_data_prompts/atom_labelling/" + \
-        "per_scene_naive.txt"
-    with open(filepath_to_vlm_prompt, "r", encoding="utf-8") as f:
-        vlm_query_str = f.read()
-    vlm_query_str += atom_queries_str
-    if vlm is None:
-        vlm = create_vlm_by_name(CFG.vlm_model_name)  # pragma: no cover.
-    vlm_input_imgs = \
-        [PIL.Image.fromarray(img_arr) for img_arr in imgs] # type: ignore
-    vlm_output = vlm.sample_completions(vlm_query_str,
-                                        vlm_input_imgs,
-                                        0.0,
-                                        seed=CFG.seed,
-                                        num_completions=1)
-    assert len(vlm_output) == 1
-    vlm_output_str = vlm_output[0]
-    all_atom_queries = atom_queries_str.strip().split("\n")
-    all_vlm_responses = vlm_output_str.strip().split("\n")
-
-    # NOTE: this assumption is likely too brittle; if this is breaking, feel
-    # free to remove/adjust this and change the below parsing loop accordingly!
-    assert len(all_atom_queries) == len(all_vlm_responses)
-    for i, (atom_query, curr_vlm_output_line) in enumerate(
-            zip(all_atom_queries, all_vlm_responses)):
-        assert atom_query + ":" in curr_vlm_output_line
-        assert "." in curr_vlm_output_line
-        period_idx = curr_vlm_output_line.find(".")
-        if curr_vlm_output_line[len(atom_query +
-                                    ":"):period_idx].lower().strip() == "true":
-            true_atoms.add(vlm_atoms[i])
-    return true_atoms
-
-
-def abstract(state: State,
-             preds: Collection[Predicate],
-             vlm: Optional[VisionLanguageModel] = None) -> Set[GroundAtom]:
+def abstract(state: State, preds: Collection[Predicate]) -> Set[GroundAtom]:
     """Get the atomic representation of the given state (i.e., a set of ground
     atoms), using the given set of predicates.
 
     Duplicate arguments in predicates are allowed.
     """
-    # Start by pulling out all VLM predicates.
-    vlm_preds = set(pred for pred in preds if isinstance(pred, VLMPredicate))
-    # Next, classify all non-VLM predicates.
     atoms = set()
     for pred in preds:
-        if pred not in vlm_preds:
-            for choice in get_object_combinations(list(state), pred.types):
-                if pred.holds(state, choice):
-                    atoms.add(GroundAtom(pred, choice))
-    if len(vlm_preds) > 0:
-        # Now, aggregate all the VLM predicates and make a single call to a
-        # VLM to get their values.
-        vlm_atoms = set()
-        for pred in vlm_preds:
-            for choice in get_object_combinations(list(state), pred.types):
-                vlm_atoms.add(GroundAtom(pred, choice))
-        atoms |= query_vlm_for_atom_vals(vlm_atoms, state, vlm)
+        for choice in get_object_combinations(list(state), pred.types):
+            if pred.holds(state, choice):
+                atoms.add(GroundAtom(pred, choice))
     return atoms
 
 
@@ -2846,24 +2670,6 @@ def save_ground_atom_dataset(ground_atom_dataset: List[GroundAtomTrajectory],
         ground_atom_dataset_to_pkl.append(trajectory)
     with open(dataset_fname, "wb") as f:
         pkl.dump(ground_atom_dataset_to_pkl, f)
-
-
-def merge_ground_atom_datasets(
-        gad1: List[GroundAtomTrajectory],
-        gad2: List[GroundAtomTrajectory]) -> List[GroundAtomTrajectory]:
-    """Merges two ground atom datasets sharing the same underlying low-level
-    trajectory via the union of ground atoms at each state."""
-    assert len(gad1) == len(
-        gad2), "Ground atom datasets must be of the same length to merge them."
-    merged_ground_atom_dataset = []
-    for ground_atom_traj1, ground_atom_traj2 in zip(gad1, gad2):
-        ll_traj1, ga_list1 = ground_atom_traj1
-        ll_traj2, ga_list2 = ground_atom_traj2
-        assert ll_traj1 == ll_traj2, "Ground atom trajectories must share " \
-            "the same low-level trajectory to be able to merge them."
-        merged_ga_list = [ga1 | ga2 for ga1, ga2 in zip(ga_list1, ga_list2)]
-        merged_ground_atom_dataset.append((ll_traj1, merged_ga_list))
-    return merged_ground_atom_dataset
 
 
 def extract_preds_and_types(
@@ -4015,33 +3821,6 @@ def rotate_point_in_image(r: float, c: float, rot_degrees: float, height: int,
     rotated_pt = rotated_pt_centered + center
     return rotated_pt[0], rotated_pt[1]
 
-def get_se3_pose_from_state(
-        state: State, obj: Object) -> math_helpers.SE3Pose:  # pragma: no cover
-    """Helper for spot environments."""
-    return math_helpers.SE3Pose(
-        state.get(obj, "x"), state.get(obj, "y"), state.get(obj, "z"),
-        math_helpers.Quat(state.get(obj, "qw"), state.get(obj, "qx"),
-                          state.get(obj, "qy"), state.get(obj, "qz")))
-
-def get_se3_hand_pose_from_state(
-        state: State, obj: Object) -> math_helpers.SE3Pose:  # pragma: no cover
-    """Helper for spot environments."""
-    return math_helpers.SE3Pose(
-        state.get(obj, "ee_x"), state.get(obj, "ee_y"), state.get(obj, "ee_z"),
-        math_helpers.Quat(state.get(obj, "ee_qw"), state.get(obj, "ee_qx"),
-                          state.get(obj, "ee_qy"), state.get(obj, "ee_qz")))
-
-def create_spot_env_action(
-    action_name: str,
-    operator_objects: Sequence[Object] = tuple(),
-    fn: Optional[Callable] = None,
-    fn_args: Sequence = tuple()
-) -> Action:  # pragma: no cover
-    """Helper for spot environments."""
-    return SpotAction(np.array([], dtype=np.float32),
-                      extra_info=(action_name, tuple(operator_objects), fn,
-                                  tuple(fn_args)))
-
 def _obs_to_state_pass_through(obs: Observation) -> State:
     """Helper for run_ground_nsrt_with_assertions."""
     assert isinstance(obs, State)
@@ -4252,7 +4031,7 @@ def parse_json_ivntr_info(json_dict: Dict,
 def parse_str2nsrt(dummy_nsrt_dict: Dict,
                    dummy2real_pred: Dict[Predicate, Predicate],
                    init_predicates: set[Predicate],
-                   init_options: set[Option],
+                   init_options: set[ParameterizedOption],
                    domain_types: Dict[str, Type],
                    create_sampler: bool = False):
     all_predicate_str2pred = {}
@@ -4330,9 +4109,6 @@ def parse_str2nsrt(dummy_nsrt_dict: Dict,
         if create_sampler:
             assert CFG.sampler_learner == "neural"
             approach_save_path = get_approach_load_path_str()
-            if 'spot_wrapper' in approach_save_path:
-                approach_save_path = approach_save_path.replace('spot_wrapper[ivntr]', 'ivntr')
-                approach_save_path = approach_save_path.replace('spot_', '')
             cls_weight_path = f"{approach_save_path}_sampler_op_{name}_cls_weight.pt"
             cls_info_path = f"{approach_save_path}_sampler_op_{name}_cls_info.pt"
             reg_weight_path = f"{approach_save_path}_sampler_op_{name}_reg_weight.pt"

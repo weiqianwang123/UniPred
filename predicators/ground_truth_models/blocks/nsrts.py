@@ -15,7 +15,7 @@ class BlocksGroundTruthNSRTFactory(GroundTruthNSRTFactory):
 
     @classmethod
     def get_env_names(cls) -> Set[str]:
-        return {"blocks", "pybullet_blocks", "blocks_clear", "blocks_simple"}
+        return {"blocks"}
 
     @staticmethod
     def get_nsrts(env_name: str, types: Dict[str, Type],

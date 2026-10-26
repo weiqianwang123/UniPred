@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 from predicators import utils
 from predicators.approaches import BaseApproach
-from predicators.gnn.gnn import EncodeProcessDecode, setup_graph_net, setup_pointnet_graph_net
+from predicators.gnn.gnn import EncodeProcessDecode, setup_graph_net
 from predicators.gnn.gnn_utils import GraphDictDataset, compute_normalizers, \
     get_single_model_prediction, graph_batch_collate, normalize_graph, \
     train_model
@@ -49,9 +49,6 @@ class GNNApproach(BaseApproach, Generic[_Output]):
         self._target_normalizers: Dict = {}
         self._data_exemplar: Tuple[Dict, Dict] = ({}, {})
         # Seed torch.
-        if 'pcd' not in CFG.env:
-            assert CFG.exclude_domain_feat == None, \
-                "Domain Features are not excluded in this env"
         torch.manual_seed(self._seed)
 
     @abc.abstractmethod
@@ -133,18 +130,10 @@ class GNNApproach(BaseApproach, Generic[_Output]):
                                                       example_object_to_node)
         self._data_exemplar = (example_input, example_target)
         example_dataset = GraphDictDataset([example_input], [example_target])
-        if CFG.gnn_use_pointnet:
-            self._gnn = setup_pointnet_graph_net(example_dataset,
-                                        num_steps=CFG.gnn_num_message_passing,
-                                        pointnet_feat_lst=CFG.gnn_pointnet_feat_lst,
-                                        node_feature_to_index=self._node_feature_to_index.copy(),
-                                        layer_size=CFG.gnn_layer_size,
-                                        num_layers=CFG.gnn_num_layers)
-        else:
-            self._gnn = setup_graph_net(example_dataset,
-                                        num_steps=CFG.gnn_num_message_passing,
-                                        layer_size=CFG.gnn_layer_size,
-                                        num_layers=CFG.gnn_num_layers)
+        self._gnn = setup_graph_net(example_dataset,
+                                    num_steps=CFG.gnn_num_message_passing,
+                                    layer_size=CFG.gnn_layer_size,
+                                    num_layers=CFG.gnn_num_layers)
         # Set up all the graphs, now using *all* the data.
         inputs = [(d[0], d[1], d[2]) for d in data]
         targets = [d[3] for d in data]
@@ -252,18 +241,10 @@ class GNNApproach(BaseApproach, Generic[_Output]):
         self._edge_feature_to_index = info["edge_feature_to_index"]
         self._input_normalizers = info["input_normalizers"]
         self._target_normalizers = info["target_normalizers"]
-        if CFG.gnn_use_pointnet:
-            self._gnn = setup_pointnet_graph_net(dataset,
-                                        num_steps=CFG.gnn_num_message_passing,
-                                        pointnet_feat_lst=CFG.gnn_pointnet_feat_lst,
-                                        node_feature_to_index=self._node_feature_to_index.copy(),
-                                        layer_size=CFG.gnn_layer_size,
-                                        num_layers=CFG.gnn_num_layers)
-        else:
-            self._gnn = setup_graph_net(dataset,
-                                        num_steps=CFG.gnn_num_message_passing,
-                                        layer_size=CFG.gnn_layer_size,
-                                        num_layers=CFG.gnn_num_layers)
+        self._gnn = setup_graph_net(dataset,
+                                    num_steps=CFG.gnn_num_message_passing,
+                                    layer_size=CFG.gnn_layer_size,
+                                    num_layers=CFG.gnn_num_layers)
         self._gnn.load_state_dict(info["state_dict"])
         self._load_output_specific_fields_from_save_info(info)
 
@@ -335,20 +316,6 @@ class GNNApproach(BaseApproach, Generic[_Output]):
             self._node_is_rot.append(False)
             index += 1
         for obj_attr in obj_attrs:
-            if 'pcd' in obj_attr:
-                # pcd features will hugely expand the feature space
-                for i in range(CFG.blocks_engrave_num_points * 3):
-                    self._node_feature_to_index[f"{obj_attr}_{i}"] = index
-                    self._node_is_rot.append(False)
-                    index += 1
-                continue
-            if 'norm' in obj_attr:
-                # norm features will hugely expand the feature space
-                for i in range(CFG.blocks_engrave_num_points * 3):
-                    self._node_feature_to_index[f"{obj_attr}_{i}"] = index
-                    self._node_is_rot.append(True)
-                    index += 1
-                continue
             self._node_feature_to_index[obj_attr] = index
             if "_q" in obj_attr:
                 self._node_is_rot.append(True)
@@ -438,21 +405,8 @@ class GNNApproach(BaseApproach, Generic[_Output]):
                     if obj_type in CFG.exclude_domain_feat.keys():
                         if feat in CFG.exclude_domain_feat[obj_type]:
                             continue
-                if 'pcd' in feat:
-                    # pcd features
-                    pcd = state[obj][obj.type.feature_names.index(feat)]
-                    pcd = np.reshape(pcd, (-1, ))
-                    for i, p in enumerate(pcd):
-                        node_features[obj_index, self._node_feature_to_index[f"feat_{feat}_{i}"]] = p
-                elif 'norm' in feat:
-                    # pcd features
-                    norm = state[obj][obj.type.feature_names.index(feat)]
-                    norm = np.reshape(norm, (-1, ))
-                    for i, n in enumerate(norm):
-                        node_features[obj_index, self._node_feature_to_index[f"feat_{feat}_{i}"]] = n
-                else:
-                    feat_index = self._node_feature_to_index[f"feat_{feat}"]
-                    node_features[obj_index, feat_index] = val
+                feat_index = self._node_feature_to_index[f"feat_{feat}"]
+                node_features[obj_index, feat_index] = val
 
         graph["nodes"] = node_features
 

@@ -1,37 +1,35 @@
 """Main entry point for running approaches in environments.
 
-Example usage with learning NSRTs:
-    python predicators/main.py --env cover --approach nsrt_learning --seed 0
-
 Example usage with oracle NSRTs:
-    python predicators/main.py --env cover --approach oracle --seed 0
+    python predicators/main.py --env satellites --approach oracle --seed 0
 
 Example with verbose logging:
-    python predicators/main.py --env cover --approach oracle --seed 0 --debug
+    python predicators/main.py --env satellites --approach oracle --seed 0 \
+        --debug
+
+Example usage with IVNTR (bilevel learning of neural predicates):
+    python predicators/main.py --env satellites --approach ivntr --seed 0 \
+        --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
+        --neupi_pred_config predicators/config/satellites/pred.yaml
 
 To load a saved approach:
-    python predicators/main.py --env cover --approach nsrt_learning --seed 0 \
+    python predicators/main.py --env satellites --approach ivntr --seed 0 \
         --load_approach
 
 To load saved data:
-    python predicators/main.py --env cover --approach nsrt_learning --seed 0 \
+    python predicators/main.py --env satellites --approach ivntr --seed 0 \
         --load_data
 
 To make videos of test tasks:
-    python3 predicators/main.py --env view_plan --approach oracle --seed 0 \
+    python predicators/main.py --env satellites --approach oracle --seed 0 \
         --make_test_videos --num_test_tasks 10
 
-To run interactive learning approach:
-    python predicators/main.py --env cover --approach interactive_learning \
-         --seed 0
-
-To exclude predicates:
-    python predicators/main.py --env cover --approach oracle --seed 0 \
-         --excluded_predicates Holding
-
 To run grammar search predicate invention (example):
-    python predicators/main.py --env cover --approach grammar_search_invention \
-        --seed 0 --excluded_predicates all
+    python predicators/main.py --env blocks_onclear \
+        --approach grammar_search_invention --seed 0 --excluded_predicates all
+
+Fast Downward is used by the default task planner: set FD_EXEC_PATH to its
+directory (see planning.py). PYTHONHASHSEED must be 0.
 """
 
 import logging
@@ -57,19 +55,14 @@ from predicators.ground_truth_models import get_gt_options, \
 from predicators.perception import create_perceiver
 from predicators.settings import CFG, get_allowed_query_type_names
 from predicators.structs import Dataset, InteractionRequest, \
-    InteractionResult, Metrics, Response, Task, Video, \
-    LowLevelTask
+    InteractionResult, Metrics, Response, Task, Video
 from predicators.teacher import Teacher, TeacherInteractionMonitorWithVideo
-
-assert os.environ.get("PYTHONHASHSEED") == "0", \
-        "Please add `export PYTHONHASHSEED=0` to your bash profile!"
-
-assert os.environ.get("FD_EXEC_PATH") != "", \
-        "Please set the environment variable export FD_EXEC_PATH= to the path of the " \
 
 
 def main() -> None:
     """Main entry point for running approaches in environments."""
+    assert os.environ.get("PYTHONHASHSEED") == "0", \
+        "Please add `export PYTHONHASHSEED=0` to your bash profile!"
     script_start = time.perf_counter()
     # Parse & validate args
     args = utils.parse_args()
@@ -443,11 +436,7 @@ def _run_testing(env: BaseEnv, cogman: CogMan, train_tasks=None) -> Metrics:
             traj_file = f"{save_prefix}__task{test_task_idx+1}.traj"
             traj_file_path = Path(CFG.eval_trajectories_dir) / traj_file
             # Include the original task too so we know the goal.
-            traj_data = {
-                "task": env_task,
-                "trajectory": traj,
-                "pybullet_robot": CFG.pybullet_robot
-            }
+            traj_data = {"task": env_task, "trajectory": traj}
             with open(traj_file_path, "wb") as f:
                 pkl.dump(traj_data, f)
         except utils.EnvironmentFailure as e:

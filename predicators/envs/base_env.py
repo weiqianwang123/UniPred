@@ -6,7 +6,7 @@ import json
 from natsort import natsorted
 import dill as pkl
 from pathlib import Path
-from typing import Callable, Collection, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,10 +14,9 @@ import numpy as np
 from gym.spaces import Box
 
 from predicators import utils
-from predicators.pretrained_model_interface import OpenAILLM
 from predicators.settings import CFG
 from predicators.structs import Action, DefaultEnvironmentTask, \
-    EnvironmentTask, GroundAtom, Object, Observation, Predicate, State, Task, \
+    EnvironmentTask, GroundAtom, Object, Observation, Predicate, State, \
     Type, Video
 
 
@@ -246,8 +245,6 @@ class BaseEnv(abc.ABC):
             }
         }
 
-        Instead of "goal", "language_goal" can also be used.
-
         Environments can override this method to handle different formats.
         """
         with open(json_file, "r", encoding="utf-8") as f:
@@ -270,13 +267,8 @@ class BaseEnv(abc.ABC):
             init_dict[obj] = obj_dict.copy()
         init_state = utils.create_state_from_dict(init_dict)
         # Parse goal.
-        if "goal" in json_dict:
-            goal = self._parse_goal_from_json(json_dict["goal"],
-                                              object_name_to_object)
-        else:
-            assert "language_goal" in json_dict
-            goal = self._parse_language_goal_from_json(
-                json_dict["language_goal"], object_name_to_object)
+        goal = self._parse_goal_from_json(json_dict["goal"],
+                                          object_name_to_object)
         return EnvironmentTask(init_state, goal)
     
     def _load_task_from_pkl(self, pkl_file: Path) -> EnvironmentTask:
@@ -287,25 +279,6 @@ class BaseEnv(abc.ABC):
             test_tasks = pkl.load(f)
         self._test_tasks = test_tasks
         return self._test_tasks
-
-    def _get_language_goal_prompt_prefix(self,
-                                         object_names: Collection[str]) -> str:
-        """Create a prompt to prepend to a language model query for parsing
-        language-based goals into goal atoms.
-
-        Since the language model is queried with "#" as the stop token,
-        and since the goal atoms are processed with _parse_goal_from_json(),
-        the following format of hashtags and JSON dicts is necessary:
-
-        # Build a tower of block 1, block 2, and block 3, with block 1 on top
-        {"On": [["block1", "block2"], ["block2", "block3"]]}
-
-        # Put block 4 on block 3 and block 2 on block 1 and block 1 on table
-        {"On": [["block4", "block3"], ["block2", "block1"]],
-         "OnTable": [["block1"]]}
-        """
-        raise NotImplementedError("This environment did not implement an "
-                                  "interface for language-based goals!")
 
     def _parse_goal_from_json(self, spec: Dict[str, List[List[str]]],
                               id_to_obj: Dict[str, Object]) -> Set[GroundAtom]:
@@ -320,26 +293,6 @@ class BaseEnv(abc.ABC):
                 goal_atom = GroundAtom(pred, obj_args)
                 goal.add(goal_atom)
         return goal
-
-    def _parse_language_goal_from_json(
-            self, language_goal: str,
-            id_to_obj: Dict[str, Object]) -> Set[GroundAtom]:
-        """Helper for parsing language-based goals from JSON task specs."""
-        object_names = set(id_to_obj)
-        prompt_prefix = self._get_language_goal_prompt_prefix(object_names)
-        prompt = prompt_prefix + f"\n# {language_goal}"
-        llm = OpenAILLM(CFG.llm_model_name)
-        responses = llm.sample_completions(prompt,
-                                           None,
-                                           temperature=0.0,
-                                           seed=CFG.seed,
-                                           stop_token="#")
-        response = responses[0]
-        # Currently assumes that the LLM is perfect. In the future, will need
-        # to handle various errors and perhaps query the LLM for multiple
-        # responses until we find one that can be parsed.
-        goal_spec = json.loads(response)
-        return self._parse_goal_from_json(goal_spec, id_to_obj)
 
     def get_task(self, train_or_test: str, task_idx: int) -> EnvironmentTask:
         """Return the train or test task at the given index."""
@@ -403,25 +356,3 @@ class BaseEnv(abc.ABC):
         """Get the current observation of this environment."""
         assert isinstance(self._current_observation, State)
         return self._current_observation.copy()
-
-    def get_vlm_debug_atom_strs(self, train_tasks: List[Task]) -> Set[str]:
-        """A 'debug grammar' set of predicates that should be sufficient for
-        completing the task; useful for comparing different methods of VLM
-        truth-value labelling given the same set of atom proposals to label.
-
-        For the BaseEnv, this method simply takes the names of all
-        excluded predicates and uses these (i.e., forcing the VLM to
-        learn a classifier for these predicates). Subclasses can
-        override to handle more specific use cases.
-        """
-        _, excluded_preds = utils.parse_config_excluded_predicates(self)
-        all_ground_atoms_set: Set[GroundAtom] = set()
-        for tt in train_tasks:
-            all_ground_atoms_set |= set(
-                utils.all_possible_ground_atoms(tt.init, excluded_preds))
-        atom_strs = {
-            atom.predicate.name + "(" +
-            ", ".join([o.name for o in atom.objects]) + ")"
-            for atom in sorted(all_ground_atoms_set)
-        }
-        return atom_strs

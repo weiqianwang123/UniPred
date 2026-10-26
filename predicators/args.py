@@ -18,7 +18,6 @@ def create_arg_parser(env_required: bool = True,
     parser.add_argument("--included_options", default="", type=str)
     parser.add_argument("--seed", required=seed_required, type=int)
     parser.add_argument("--option_learner", type=str, default="no_learning")
-    parser.add_argument("--explorer", type=str, default="no_explore")
     parser.add_argument("--execution_monitor", type=str, default="trivial")
     # NOTE: this timeout affects both data generation and evaluation.
     # If you want to change only the data generation timeout,
@@ -38,7 +37,6 @@ def create_arg_parser(env_required: bool = True,
     # normally (without loading) from there.
     parser.add_argument("--restart_learning", action="store_true")
     parser.add_argument("--load_data", action="store_true")
-    parser.add_argument("--load_task", action="store_true")
     parser.add_argument("--neupi_bug", action="store_true")
     parser.add_argument("--load_atoms", action="store_true")
     parser.add_argument("--save_atoms", action="store_true")

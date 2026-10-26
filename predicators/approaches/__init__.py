@@ -9,10 +9,6 @@ from predicators import utils
 from predicators.approaches.base_approach import ApproachFailure, \
     ApproachTimeout, BaseApproach, BaseApproachWrapper
 from predicators.structs import ParameterizedOption, Predicate, Task, Type
-# very weird bug, has to import manually
-from predicators.approaches.grammar_search_condition_approach import GrammarSearchConditionApproach
-from predicators.approaches.bilevel_learning_approach import BilevelLearningApproach
-from predicators.approaches.mb_shooting_approach import MBShootingApproach
 
 __all__ = ["BaseApproach", "ApproachTimeout", "ApproachFailure"]
 

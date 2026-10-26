@@ -1,6 +1,6 @@
-"""Ground-truth options for the (non-pybullet) blocks environment."""
+"""Ground-truth options for the blocks_onclear environment."""
 
-from typing import Callable, ClassVar, Dict, List, Sequence, Set, Tuple
+from typing import Dict, Sequence, Set
 
 import numpy as np
 from gym.spaces import Box
@@ -14,7 +14,7 @@ from predicators.structs import Action, Array, Object, ParameterizedOption, \
 
 
 class BlocksOnClearGroundTruthOptionFactory(GroundTruthOptionFactory):
-    """Ground-truth options for the (non-pybullet) blocks environment."""
+    """Ground-truth options for the blocks_onclear environment."""
 
     @classmethod
     def get_env_names(cls) -> Set[str]:

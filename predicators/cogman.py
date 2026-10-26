@@ -8,8 +8,6 @@ whether to re-query the approach at each time step based on the states.
 
 The name "CogMan" is due to Leslie Kaelbling.
 """
-import cv2
-import os
 import logging
 import time
 from collections import defaultdict
@@ -224,9 +222,6 @@ def run_episode_and_get_observations(
         if monitor is not None:
             monitor.reset(train_or_test, task_idx)
     obs = env.get_observation()
-    # os.makedirs('videos/images_{}'.format(task_idx), exist_ok=True)
-    # init_img = env.render()
-    # cv2.imwrite('videos/images_{}/init.png'.format(task_idx), init_img[0])
     observations = [obs]
     actions: List[Action] = []
     curr_option: Optional[_Option] = None
@@ -235,10 +230,9 @@ def run_episode_and_get_observations(
     metrics["num_options_executed"] = 0.0
     exception_raised_in_step = False
     if not (terminate_on_goal_reached and env.goal_reached()):
-        for i in range(max_num_steps):
+        for _ in range(max_num_steps):
             monitor_observed = False
             exception_raised_in_step = False
-            # os.makedirs('images_{}/step_{}'.format(task_idx, i), exist_ok=True)
             try:
                 start_time = time.perf_counter()
                 act = cogman.step(obs)
@@ -258,11 +252,6 @@ def run_episode_and_get_observations(
                     monitor.observe(obs, act)
                     monitor_observed = True
                 obs = env.step(act)
-                # global_img = env.render()
-                # cv2.imwrite('images_{}/step_{}/global.png'.format(task_idx, i), global_img[0])
-                # for b in obs.get_objects(env._block_type):
-                #     img = obs.get(b, 'img')
-                #     cv2.imwrite('images_{}/step_{}/{}.png'.format(task_idx, i, b.name), img)
                 actions.append(act)
                 observations.append(obs)
             except Exception as e:

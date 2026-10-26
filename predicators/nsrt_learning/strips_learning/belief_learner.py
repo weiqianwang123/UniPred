@@ -1,13 +1,11 @@
 """Algorithms for STRIPS learning that rely on clustering to obtain effects."""
 
 import abc
-import functools
 import logging
 from collections import defaultdict
-from typing import Dict, FrozenSet, Iterator, List, Set, Tuple, cast
+from typing import Dict, List, Set, Tuple, cast
 
 from predicators import utils
-from predicators.gnn.neupi_utils import parse_basic_pred_name
 from predicators.nsrt_learning.strips_learning import BaseSTRIPSLearner
 from predicators.settings import CFG
 from predicators.structs import PNAD, Datastore, DummyOption, LiftedAtom, \

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import abc
-import copy
 import logging
-from typing import ClassVar, Dict, List, Sequence, Set, Tuple
+from typing import Dict, List, Sequence, Set, Tuple
 
 import numpy as np
 from gym.spaces import Box
@@ -33,13 +32,6 @@ def create_option_learner(action_space: Box) -> _OptionLearnerBase:
     if CFG.option_learner == "direct_bc_nonparameterized":
         return _DirectBehaviorCloningOptionLearner(action_space,
                                                    is_parameterized=False)
-    raise NotImplementedError(f"Unknown option_learner: {CFG.option_learner}")
-
-
-def create_rl_option_learner() -> _RLOptionLearnerBase:
-    """Create an RL option learner given its name."""
-    if CFG.nsrt_rl_option_learner == "dummy_rl":
-        return _DummyRLOptionLearner()
     raise NotImplementedError(f"Unknown option_learner: {CFG.option_learner}")
 
 
@@ -136,16 +128,7 @@ class _OracleOptionLearner(_OptionLearnerBase):
                            datastores: List[Datastore]) -> List[OptionSpec]:
         env_options = get_gt_options(CFG.env)
         option_specs: List[OptionSpec] = []
-        if CFG.env == "cover":
-            assert len(strips_ops) == 4
-            PickPlace = [
-                option for option in env_options if option.name == "PickPlace"
-            ][0]
-            # All strips operators use the same PickPlace option,
-            # which has no parameters.
-            for _ in strips_ops:
-                option_specs.append((PickPlace, []))
-        elif CFG.env == "blocks":
+        if CFG.env == "blocks":
             assert len(strips_ops) == 4
             Pick = [option for option in env_options
                     if option.name == "Pick"][0]
@@ -198,14 +181,6 @@ class _OracleOptionLearner(_OptionLearnerBase):
 
     def update_segment_from_option_spec(self, segment: Segment,
                                         option_spec: OptionSpec) -> None:
-        if CFG.env == "cover":
-            param_opt, opt_vars = option_spec
-            assert not opt_vars
-            assert len(segment.actions) == 1
-            # In the cover env, the action is itself the option parameter.
-            params = segment.actions[0].arr
-            option = param_opt.ground([], params)
-            segment.set_option(option)
         if CFG.env == "blocks":
             param_opt, opt_vars = option_spec
             assert len(segment.actions) == 1
@@ -273,80 +248,11 @@ class _IdentityActionConverter(_ActionConverter):
         return reduced_action_arr.copy()
 
 
-class _KinematicActionConverter(_ActionConverter):
-    """Uses CFG.pybullet_robot to convert the 9D action space into 4D.
-
-    Assumes that the gripper does not rotate.
-
-    Creates a new PyBullet connection for the robot.
-    """
-    _gripper_open: ClassVar[float] = 1.0
-    _gripper_closed: ClassVar[float] = 0.0
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._init()
-
-    def _init(self) -> None:
-        # Create a new PyBullet connection and robot.
-        self._physics_client_id = p.connect(p.DIRECT)
-        # Create the robot.
-        self._robot = create_single_arm_pybullet_robot(CFG.pybullet_robot,
-                                                       self._physics_client_id)
-        # The rotation is assumed to be fixed, so record it once.
-        qx, qy, qz, qw = self._robot.get_state()[3:7]
-        self._ee_orn = (qx, qy, qz, qw)
-
-    def __setstate__(self, state: Dict) -> None:
-        # Recreate the object to avoid issues with the PyBullet client.
-        del state  # unused
-        self._init()
-
-    def env_to_reduced(self, env_action_arr: Array) -> Array:
-        # Forward kinematics.
-        assert env_action_arr.shape == (9, )
-        pose = self._robot.forward_kinematics(env_action_arr.tolist())
-        x, y, z = pose.position
-        # Average the two fingers.
-        left_finger = env_action_arr[self._robot.left_finger_joint_idx]
-        right_finger = env_action_arr[self._robot.right_finger_joint_idx]
-        fingers = (left_finger + right_finger) / 2.
-        # Round the fingers.
-        dist_to_open = abs(fingers - self._robot.open_fingers)
-        dist_to_closed = abs(fingers - self._robot.closed_fingers)
-        if dist_to_closed < dist_to_open:
-            gripper = self._gripper_closed
-        else:
-            gripper = self._gripper_open
-        return np.array([x, y, z, gripper], dtype=np.float32)
-
-    def reduced_to_env(self, reduced_action_arr: Array) -> Array:
-        # Inverse kinematics.
-        x, y, z, gripper = reduced_action_arr
-        # Gripper to fingers.
-        dist_to_open = abs(gripper - self._gripper_open)
-        dist_to_closed = abs(gripper - self._gripper_closed)
-        if dist_to_closed < dist_to_open:
-            fingers = self._robot.closed_fingers
-        else:
-            fingers = self._robot.open_fingers
-        try:
-            pose = Pose((x, y, z), self._ee_orn)
-            joints = self._robot.inverse_kinematics(pose, validate=True)
-        except InverseKinematicsError:
-            raise OptionExecutionFailure("IK failure in action conversion.")
-        joints[self._robot.left_finger_joint_idx] = fingers
-        joints[self._robot.right_finger_joint_idx] = fingers
-        return np.array(joints, dtype=np.float32)
-
-
 def create_action_converter() -> _ActionConverter:
     """Create an action space converter based on CFG."""
     name = CFG.option_learning_action_converter
     if name == "identity":
         return _IdentityActionConverter()
-    if name == "kinematic":
-        return _KinematicActionConverter()
     raise NotImplementedError(f"Unknown action space converter: {name}")
 
 
@@ -725,41 +631,6 @@ class _ImplicitBehaviorCloningOptionLearner(_BehaviorCloningOptionLearner):
             derivative_free_sigma_init=sigma,
             derivative_free_shrink_scale=shrink_scale,
             grid_num_ticks_per_dim=num_ticks)
-
-
-class _RLOptionLearnerBase(abc.ABC):
-    """Struct defining an option learner that learns via reinforcement
-    learning, which has an abstract method for updating the policy associated
-    with an option."""
-
-    @abc.abstractmethod
-    def update(
-        self, option: _LearnedNeuralParameterizedOption,
-        experience: List[List[Tuple[State, Array, Action, int, State]]]
-    ) -> _LearnedNeuralParameterizedOption:
-        """Updates a _LearnedNeuralParameterizedOption via reinforcement
-        learning.
-
-        The inner list of `experience` corresponds to the expeirence
-        from one execution of the option.
-        """
-        raise NotImplementedError("Override me!")
-
-
-class _DummyRLOptionLearner(_RLOptionLearnerBase):
-    """Does not update the policy associated with a
-    _LearnedNeuralParameterizedOption."""
-
-    def update(
-        self, option: _LearnedNeuralParameterizedOption,
-        experience: List[List[Tuple[State, Array, Action, int, State]]]
-    ) -> _LearnedNeuralParameterizedOption:
-        # Don't actually update the option at all.
-        # Update would be made to option._regressor, which requires changing the
-        # code in ml_models.py so that you can train without re-initializing the
-        # network. Update would also be made to the policy of the parameterized
-        # option itself, e.g. to perform both exploitation and exploration.
-        return copy.deepcopy(option)
 
 
 def _create_absolute_option_param(state: State,

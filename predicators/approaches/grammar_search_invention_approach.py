@@ -25,8 +25,8 @@ from predicators.nsrt_learning.strips_learning import learn_strips_operators
 from predicators.predicate_search_score_functions import \
     _PredicateSearchScoreFunction, create_score_function
 from predicators.settings import CFG
-from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, \
-    Object, ParameterizedOption, Predicate, Segment, State, Task, Type
+from predicators.structs import Dataset, GroundAtomTrajectory, Object, \
+    ParameterizedOption, Predicate, Segment, State, Task, Type
 
 ################################################################################
 #                          Programmatic classifiers                            #
@@ -404,68 +404,10 @@ class _PredicateGrammar(abc.ABC):
 
 
 _DEBUG_PREDICATE_PREFIXES = {
-    "tools": [
-        "NOT-((0:robot).fingers<=[idx 0]0.5)",  # HandEmpty
-        "NOT-((0:screw).is_held<=[idx 0]0.5)",  # HoldingScrew
-        "NOT-((0:screwdriver).is_held<=[idx 0]0.5)",  # HoldingScrewdriver
-        "NOT-((0:nail).is_held<=[idx 0]0.5)",  # HoldingNail
-        "NOT-((0:hammer).is_held<=[idx 0]0.5)",  # HoldingHammer
-        "NOT-((0:bolt).is_held<=[idx 0]0.5)",  # HoldingBolt
-        "NOT-((0:wrench).is_held<=[idx 0]0.5)",  # HoldingWrench
-        "((0:screwdriver).size<=[idx 0]",  # ScrewdriverGraspable
-        "((0:hammer).size<=[idx 0]",  # HammerGraspable
-    ],
-    "painting": [
-        "NOT-((0:robot).fingers<=[idx 0]0.5)",  # GripperOpen
-        "((0:obj).pose_y<=[idx 2]",  # OnTable
-        "NOT-((0:obj).grasp<=[idx 0]0.5)",  # HoldingTop
-        "((0:obj).grasp<=[idx 1]0.25)",  # HoldingSide
-        "NOT-((0:obj).held<=[idx 0]0.5)",  # Holding
-        "NOT-((0:obj).wetness<=[idx 0]0.5)",  # IsWet
-        "((0:obj).wetness<=[idx 0]0.5)",  # IsDry
-        "NOT-((0:obj).dirtiness<=[idx 0]",  # IsDirty
-        "((0:obj).dirtiness<=[idx 0]",  # IsClean
-        "Forall[0:lid].[NOT-((0:lid).is_open<=[idx 0]0.5)(0)]",  # AllLidsOpen
-        # "NOT-((0:lid).is_open<=[idx 0]0.5)",  # LidOpen (doesn't help)
-    ],
-    "cover": [
-        "NOT-((0:block).grasp<=[idx 0]",  # Holding
-        "Forall[0:block].[((0:block).grasp<=[idx 0]",  # HandEmpty
-    ],
-    "cover_regrasp": [
-        "NOT-((0:block).grasp<=[idx 0]",  # Holding
-        "Forall[0:block].[((0:block).grasp<=[idx 0]",  # HandEmpty
-    ],
-    "cover_multistep_options": [
-        "NOT-((0:block).grasp<=[idx 0]",  # Holding
-        "Forall[0:block].[((0:block).grasp<=[idx 0]",  # HandEmpty
-    ],
     "blocks": [
         "NOT-((0:robot).fingers<=[idx 0]",  # GripperOpen
         "Forall[0:block].[NOT-On(0,1)]",  # Clear
         "NOT-((0:block).pose_z<=[idx 0]",  # Holding
-    ],
-    "repeated_nextto_single_option": [
-        "(|(0:dot).x - (1:robot).x|<=[idx 7]6.25)",  # NextTo
-    ],
-    "stick_button_move": [
-        # NOTE: changing the demonstration data slightly causes
-        # the value of the constant to change. Need to uncomment these
-        # as necessary.
-        # StickAboveButton
-        "(((0:button).x - (1:stick).tip_x)^2 + ((0:button).y - " + \
-            "(1:stick).tip_y)^2)<=[idx 0]0.18)",
-        # RobotAboveButton
-        "(((0:button).x - (1:robot).x)^2 + ((0:button).y - " + \
-            "(1:robot).y)^2)<=[idx 0]0.194)",
-        "((0:stick).held<=[idx 0]0.5)",  # Handempty
-        "NOT-((0:stick).held<=[idx 0]0.5)",  # Grasped
-        "((0:button).y<=[idx 0]3.01)",  # ButtonReachableByRobot
-        "NOT-((0:button).y<=[idx 0]3.01)",  # ButtonNotReachableByRobot
-    ],
-    "unittest": [
-        "((0:robot).hand<=[idx 0]0.65)", "((0:block).grasp<=[idx 0]0.0)",
-        "NOT-Forall[0:block].[((0:block).width<=[idx 0]0.085)(0)]"
     ],
 }
 
@@ -971,54 +913,10 @@ class GrammarSearchInventionApproach(NSRTLearningApproach):
         assert atom_dataset is not None
         return (atom_dataset, candidates)
 
-    def _parse_atom_dataset_from_annotated_dataset(
-        self, dataset: Dataset
-    ) -> Tuple[List[GroundAtomTrajectory], Dict[Predicate, float]]:
-        """Uses a dataset with annotations to create a candidate predicate set
-        and atoms trajectories."""
-        # We rely on the annotations as our ground atom datasets.
-        assert dataset.annotations is not None
-        # We now turn these into GroundAtomTrajectories.
-        atom_dataset = []
-        for traj, atoms in zip(dataset.trajectories, dataset.annotations):
-            atom_dataset.append((traj, atoms))
-        # Also generate the grammar by ripping out all the Predicates
-        # associated with each of the atoms in our sets.
-        candidates = {}
-        for ano_traj in dataset.annotations:
-            for ground_atom_state in ano_traj:
-                for ground_atom in ground_atom_state:
-                    assert isinstance(ground_atom, GroundAtom)
-                    if ground_atom.predicate not in candidates:
-                        # The cost of this predicate is simply its arity.
-                        candidates[ground_atom.predicate] = float(
-                            len(ground_atom.objects))
-        logging.debug(f"All candidate predicates: {candidates.keys()}")
-        return (atom_dataset, candidates)
-
     def learn_from_offline_dataset(self, dataset: Dataset) -> None:
         os.makedirs(CFG.approach_dir, exist_ok=True)
-        if CFG.offline_data_method in [
-                "geo_and_demo_with_vlm_imgs", "geo_and_demo+labelled_atoms",
-                "geo_and_saved_vlm_img_demos_folder"
-        ]:
-            atom_dataset_from_grammar, candidates_from_grammar = \
-                self._generate_atom_dataset_via_grammar(dataset)
-            atom_dataset_from_vlm, candidates_from_vlm = \
-                self._parse_atom_dataset_from_annotated_dataset(dataset)
-            atom_dataset = utils.merge_ground_atom_datasets(
-                atom_dataset_from_grammar, atom_dataset_from_vlm)
-            candidates = candidates_from_grammar | candidates_from_vlm
-        elif not CFG.offline_data_method in [
-                "demo+labelled_atoms", "saved_vlm_img_demos_folder",
-                "demo_with_vlm_imgs"
-        ]:
-            atom_dataset, candidates = self._generate_atom_dataset_via_grammar(
-                dataset)
-        else:
-            # In this case, we're inventing over already-labelled atoms.
-            atom_dataset, candidates = \
-                self._parse_atom_dataset_from_annotated_dataset(dataset)
+        atom_dataset, candidates = self._generate_atom_dataset_via_grammar(
+            dataset)
         # Select a subset of the candidates to keep.
         logging.info("Selecting a subset...")
         if CFG.grammar_search_pred_selection_approach == "score_optimization":

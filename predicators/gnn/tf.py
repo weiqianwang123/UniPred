@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Any, Optional
-from .gnn import GraphModel, MLP, _setup_dims, GraphDictDataset, \
-    _setup_dims_points
-from predicators.gnn.pointnet_utils import PointNetEncoder
+from typing import List, Dict
+from .gnn import GraphModel, MLP, _setup_dims, GraphDictDataset
 ##############
 # TRANSFORMER FOR GRAPHS
 ##############
@@ -271,84 +269,6 @@ class TransformerGraphModel(GraphModel):
         # (In your real code, you might pass in the original graph dict and update it.)
         return graph
     
-class TransformerGraphModelPC(TransformerGraphModel):
-    """Encode-process-decode GNN architecture."""
-
-    def __init__(self, dims: List[int], pointnet_ls_list: List[int],
-                    vec_ind: List[int], pcd_ind: List[int], norm_ind: List[int],
-                    d_model: int, nhead: int, num_tf_layers: int,
-                 **kwargs: List[int]) -> None:
-        super().__init__(dims, d_model, nhead, num_tf_layers, **kwargs)
-        self.merge = MLP(kwargs['node_encoder_layers'], kwargs['node_encoder_layers'][-1] \
-                            + pointnet_ls_list[-1])
-        # note this is different from vanilla GNN
-        self.params.append(self.merge.parameters())
-        self.vec_ind = vec_ind
-        self.pcd_ind = pcd_ind
-        self.norm_ind = norm_ind
-        self.pcd_feat = PointNetEncoder(pointnet_ls_list, \
-                                    global_feat=True, \
-                                    feature_transform=True, \
-                                    channel=6)
-        self.params.append(self.pcd_feat.parameters())
-
-    def forward(self, graph: Dict) -> List[Dict]:
-        """Torch forward model."""
-        in_graph = graph.copy()
-        if hasattr(self, 'node_encoder'):
-            pcd_input = graph['nodes'][:, self.pcd_ind]
-            vec_input = graph['nodes'][:, self.vec_ind]
-            norm_input = graph['nodes'][:, self.norm_ind]
-            B = graph['nodes'].shape[0]
-            pcd_input = pcd_input.view(B, -1, 3)
-            norm_input = norm_input.view(B, -1, 3)
-            pc_input = torch.cat([pcd_input, norm_input], dim=2)
-            pc_input = pc_input.permute(0, 2, 1)
-            pc_feat = self.pcd_feat(pc_input)
-            vec_feat = self.node_encoder(vec_input)
-            graph['nodes'] = self.merge(torch.cat([vec_feat, pc_feat], dim=1))
-        if hasattr(self, 'edge_encoder'):
-            graph['edges'] = self.edge_encoder(graph['edges'])
-        if hasattr(self, 'global_encoder'):
-            if graph['globals'] is not None:
-                if graph['globals'].shape[1] == 0:
-                    # handel empty globals
-                    graph['globals'] = torch.ones_like(graph['n_node'])\
-                        .to(graph['nodes'].dtype)
-                graph['globals'] = self.global_encoder(graph['globals'])
-            else:
-                graph['globals'] = None
-
-        # 2) Flatten nodes, edges, globals into tokens
-        tokens, mask, metadata = self._flatten_and_pad(graph)  
-        # 3) Pass through Transformer as message passing
-        #    src_key_padding_mask expects True for padded positions
-        #    but note that we used `batch_first=True` in our encoder layer
-        encoded = self.transformer_encoder(tokens, 
-                                           src_key_padding_mask=mask)
-        # encoded: (B, max_tokens, d_model)
-
-        # 4) Unproject, unpad, unflatten
-        graph = self._unflatten(encoded, metadata)  # returns updated graph: nodes/edges/globals
-
-        # 5) Optionally decode with MLP decoders
-        # Note: the unflatten step has assigned graph['nodes'], graph['edges'], graph['globals']
-        # to the new embeddings. Let's decode them if the user provided decoders.
-        if hasattr(self, 'node_decoder'):
-            graph['nodes'] = self.node_decoder(graph['nodes'])
-        if hasattr(self, 'edge_decoder'):
-            graph['edges'] = self.edge_decoder(graph['edges'])
-        if hasattr(self, 'global_decoder'):
-            # shape: [#graphs, global_dim]
-            graph['globals'] = self.global_decoder(graph['globals'])
-
-        graph['n_node'] = in_graph['n_node']
-        graph['n_edge'] = in_graph['n_edge']
-        graph['receivers'] = in_graph["receivers"]
-        graph['senders'] = in_graph["senders"]
-
-        return [graph]
-
 def setup_tf_net(graph_dataset: GraphDictDataset, tf_dim: int,
                     gnn_layer_size: int, num_layers: int):
     dims = _setup_dims(graph_dataset)
@@ -379,46 +299,6 @@ def setup_tf_net(graph_dataset: GraphDictDataset, tf_dim: int,
         layer_dict['global_decoder_layers'] = dec_layers['globals']
 
     model = TransformerGraphModel(dims, 
-            d_model=tf_dim, 
-            nhead=4, 
-            num_tf_layers=num_layers,
-            **layer_dict)
-    return model
-
-def setup_pointnet_tf_net(graph_dataset: GraphDictDataset, 
-                          pointnet_feat_lst: List[int],
-                        node_feature_to_index: Dict,
-                        tf_dim: int,
-                        gnn_layer_size: int, num_layers: int):
-    dims, vec_ind, pcd_ind, norm_ind = _setup_dims_points(graph_dataset, node_feature_to_index)
-    include_globals = dims[-1] > 0
-
-    enc_dims = [gnn_layer_size, gnn_layer_size]
-    enc_layers = {
-        'nodes': [gnn_layer_size, enc_dims[0]],
-        'edges': [gnn_layer_size, enc_dims[1]]
-    }
-    if include_globals:
-        enc_layers['globals'] = [gnn_layer_size, enc_dims[1]]
-
-
-    dec_layers = {'nodes': [dims[3]], 'edges': [dims[4]]}
-    if include_globals:
-        dec_layers['globals'] = [dims[-1]]
-    layer_dict = {}
-
-    layer_dict['node_encoder_layers'] = enc_layers['nodes']
-    layer_dict['edge_encoder_layers'] = enc_layers['edges']
-    if include_globals:
-        layer_dict['global_encoder_layers'] = enc_layers['globals']
-
-    layer_dict['node_decoder_layers'] = dec_layers['nodes']
-    layer_dict['edge_decoder_layers'] = dec_layers['edges']
-    if include_globals:
-        layer_dict['global_decoder_layers'] = dec_layers['globals']
-
-    model = TransformerGraphModelPC(dims, 
-            pointnet_feat_lst, vec_ind, pcd_ind, norm_ind,
             d_model=tf_dim, 
             nhead=4, 
             num_tf_layers=num_layers,

@@ -22,11 +22,7 @@ from typing import Any, Collection, Dict, FrozenSet, Iterator, List, \
 import numpy as np
 
 from predicators import utils
-from predicators.envs.view_plan import ViewPlanHardEnv 
-from predicators.envs.blocks_engraving import BlocksEngravePcdEnv
-from predicators.envs.pick_place import PickPlaceEnv
 from predicators.option_model import _OptionModelBase
-from predicators.refinement_estimators import BaseRefinementEstimator
 from predicators.settings import CFG
 from predicators.structs import NSRT, AbstractPolicy, DefaultState, \
     DummyOption, GroundAtom, Metrics, Object, OptionSpec, \
@@ -70,7 +66,6 @@ def sesame_plan(
     max_horizon: int,
     abstract_policy: Optional[AbstractPolicy] = None,
     max_policy_guided_rollout: int = 0,
-    refinement_estimator: Optional[BaseRefinementEstimator] = None,
     check_dr_reachable: bool = True,
     allow_noops: bool = False,
     use_visited_state_set: bool = False
@@ -89,8 +84,8 @@ def sesame_plan(
         return _sesame_plan_with_astar(
             task, option_model, nsrts, predicates, types, timeout, seed,
             task_planning_heuristic, max_skeletons_optimized, max_horizon,
-            abstract_policy, max_policy_guided_rollout, refinement_estimator,
-            check_dr_reachable, allow_noops, use_visited_state_set)
+            abstract_policy, max_policy_guided_rollout, check_dr_reachable,
+            allow_noops, use_visited_state_set)
     if CFG.sesame_task_planner == "fdopt":
         assert abstract_policy is None
         return _sesame_plan_with_fast_downward(task,
@@ -130,7 +125,6 @@ def _sesame_plan_with_astar(
     max_horizon: int,
     abstract_policy: Optional[AbstractPolicy] = None,
     max_policy_guided_rollout: int = 0,
-    refinement_estimator: Optional[BaseRefinementEstimator] = None,
     check_dr_reachable: bool = True,
     allow_noops: bool = False,
     use_visited_state_set: bool = False
@@ -166,28 +160,8 @@ def _sesame_plan_with_astar(
                 timeout - (time.perf_counter() - start_time), metrics,
                 max_skeletons_optimized, abstract_policy,
                 max_policy_guided_rollout, use_visited_state_set)
-            # If a refinement cost estimator is provided, generate a number of
-            # skeletons first, then predict the refinement cost of each skeleton
-            # and attempt to refine them in this order.
-            if refinement_estimator is not None:
-                estimator: BaseRefinementEstimator = refinement_estimator
-                proposed_skeletons = []
-                for _ in range(
-                        CFG.refinement_estimation_num_skeletons_generated):
-                    try:
-                        proposed_skeletons.append(next(gen))
-                    except _MaxSkeletonsFailure:
-                        break
-                gen = iter(
-                    sorted(proposed_skeletons,
-                           key=lambda s: estimator.get_cost(task, *s)))
             refinement_start_time = time.perf_counter()
             for skeleton, atoms_sequence in gen:
-                if CFG.env == "spot_pickplace_stair" and \
-                    (not CFG.in_domain_test):
-                    # a hack to make real spot test safe (always pick the cloese stair)
-                    if skeleton[0].objects[1].name != 'stair0':
-                        continue
                 if CFG.sesame_use_necessary_atoms:
                     atoms_seq = utils.compute_necessary_atoms_seq(
                         skeleton, atoms_sequence, task.goal)
@@ -237,7 +211,6 @@ def _sesame_plan_for_mdp(
     task_planning_heuristic: str,
     max_skeletons_optimized: int,
     max_horizon: int,
-    refinement_estimator: Optional[BaseRefinementEstimator] = None,
     check_dr_reachable: bool = True,
     allow_noops: bool = False,
     use_visited_state_set: bool = False
@@ -1069,10 +1042,6 @@ def run_low_level_search(
         None for _ in skeleton
     ]
     plan_found = False
-    # env = ViewPlanHardEnv()
-    # env = BlocksEngravePcdEnv()
-    # env = PickPlaceEnv()
-    # env.render_state_plt(task.init, task, save_path="0.png")
     while cur_idx < len(skeleton):
         if time.perf_counter() - start_time > timeout:
             return longest_failed_refinement, False
@@ -1102,10 +1071,6 @@ def run_low_level_search(
                 # Remember only the most recent failure.
                 discovered_failures[cur_idx - 1] = _DiscoveredFailure(e, nsrt)
             else:  # an EnvironmentFailure was not raised
-                # env = ViewPlanHardEnv()
-                # env = BlocksEngravePcdEnv()
-                # env = PickPlaceEnv()
-                # env.render_state_plt(next_state, task, save_path=f"{cur_idx}.png")
                 discovered_failures[cur_idx - 1] = None
                 num_actions_per_option[cur_idx - 1] = num_actions
                 traj[cur_idx] = next_state
@@ -1264,10 +1229,6 @@ def analyse_low_level_search(
         None for _ in skeleton
     ]
     plan_found = False
-    # env = ViewPlanHardEnv()
-    # env = BlocksEngravePcdEnv()
-    # env = PickPlaceEnv()
-    # env.render_state_plt(task.init, task, save_path="0.png")
     while cur_idx < len(skeleton):
         if time.perf_counter() - start_time > timeout:
             return longest_failed_refinement, False
@@ -1297,10 +1258,6 @@ def analyse_low_level_search(
                 # Remember only the most recent failure.
                 discovered_failures[cur_idx - 1] = _DiscoveredFailure(e, nsrt)
             else:  # an EnvironmentFailure was not raised
-                # env = ViewPlanHardEnv()
-                # env = BlocksEngravePcdEnv()
-                # env = PickPlaceEnv()
-                # env.render_state_plt(next_state, task, save_path=f"{cur_idx}.png")
                 discovered_failures[cur_idx - 1] = None
                 num_actions_per_option[cur_idx - 1] = num_actions
                 traj[cur_idx] = next_state

@@ -23,7 +23,7 @@ from predicators.option_model import create_option_model
 from predicators.ground_truth_models import get_dummy_nsrts
 from predicators.settings import CFG
 from predicators.gnn.gnn_utils import get_single_model_prediction, normalize_graph
-from predicators.structs import Action, Array, Dataset, DummyOption, \
+from predicators.structs import Action, Dataset, DummyOption, \
     GroundAtom, NSRT, ParameterizedOption, Predicate, State, Task, Type, \
     _Option
 from predicators.nsrt_learning.sampler_learning import _create_neural_sampler

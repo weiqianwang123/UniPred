@@ -56,20 +56,8 @@ def _segment_with_contact_changes(
     contacts and we look for changes in those contact predicates.
     """
 
-    if CFG.env == "stick_button":
-        keep_pred_names = {"Grasped", "Pressed"}
-    elif CFG.env in ("cover", "cover_multistep_options", "pybullet_cover"):
-        keep_pred_names = {"Covers", "HandEmpty", "Holding"}
-    elif CFG.env in ("blocks", "pybullet_blocks"):
+    if CFG.env == "blocks":
         keep_pred_names = {"Holding", "On", "OnTable"}
-    elif CFG.env == "doors":
-        keep_pred_names = {"TouchingDoor", "InRoom"}
-    elif CFG.env == "touch_point":
-        keep_pred_names = {"Touched"}
-    elif CFG.env == "coffee":
-        keep_pred_names = {"Holding", "HandEmpty", "MachineOn", "CupFilled"}
-    elif CFG.env == "exit_garage":
-        keep_pred_names = {"ObstacleCleared", "CarHasExited"}
     else:
         raise NotImplementedError("Contact-based segmentation not implemented "
                                   f"for environment {CFG.env}.")

@@ -1,11 +1,8 @@
 """An approach that trains a Transformer mapping states, atoms, and goals to
 dummy NSRTs, with GT sampler."""
 
-import time
 import logging
-import itertools
-from collections import defaultdict
-from typing import Optional, Dict, List, Set, Tuple
+from typing import Optional, List, Set
 
 import numpy as np
 import dill as pkl
@@ -20,12 +17,11 @@ from predicators.approaches.gnn_nsrt_policy_approach import GNNNSRTPolicyApproac
 from predicators.gnn.gnn_utils import GraphDictDataset, compute_normalizers, \
     graph_batch_collate, normalize_graph, \
     train_model
-from predicators.gnn.tf import setup_pointnet_tf_net, setup_tf_net
+from predicators.gnn.tf import setup_tf_net
 from predicators.settings import CFG
 from predicators.gnn.gnn_utils import normalize_graph
-from predicators.structs import Action, Array, Dataset, DummyOption, \
-    GroundAtom, NSRT, ParameterizedOption, Predicate, State, Task, Type, \
-    _Option
+from predicators.structs import Dataset, ParameterizedOption, Predicate, \
+    Task, Type
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
@@ -55,18 +51,10 @@ class TransformerNSRTPolicyApproach(GNNNSRTPolicyApproach):
         self._edge_feature_to_index = info["edge_feature_to_index"]
         self._input_normalizers = info["input_normalizers"]
         self._target_normalizers = info["target_normalizers"]
-        if CFG.gnn_use_pointnet:
-            self._gnn = setup_pointnet_tf_net(dataset,
-                                              tf_dim=CFG.gnn_layer_size,
-                                              pointnet_feat_lst=CFG.gnn_pointnet_feat_lst,
-                                              node_feature_to_index=self._node_feature_to_index.copy(),
-                                              gnn_layer_size=CFG.gnn_layer_size,
-                                              num_layers=CFG.gnn_num_layers)
-        else:
-            self._gnn = setup_tf_net(dataset,
-                                    tf_dim=CFG.gnn_layer_size,
-                                    gnn_layer_size=CFG.gnn_layer_size,
-                                    num_layers=CFG.gnn_num_layers)
+        self._gnn = setup_tf_net(dataset,
+                                 tf_dim=CFG.gnn_layer_size,
+                                 gnn_layer_size=CFG.gnn_layer_size,
+                                 num_layers=CFG.gnn_num_layers)
         self._gnn.load_state_dict(info["state_dict"])
         self._load_output_specific_fields_from_save_info(info)
 
@@ -81,18 +69,10 @@ class TransformerNSRTPolicyApproach(GNNNSRTPolicyApproach):
                                                       example_object_to_node)
         self._data_exemplar = (example_input, example_target)
         example_dataset = GraphDictDataset([example_input], [example_target])
-        if CFG.gnn_use_pointnet:
-            self._gnn = setup_pointnet_tf_net(example_dataset,
-                                              tf_dim=CFG.gnn_layer_size,
-                                              pointnet_feat_lst=CFG.gnn_pointnet_feat_lst,
-                                              node_feature_to_index=self._node_feature_to_index.copy(),
-                                              gnn_layer_size=CFG.gnn_layer_size,
-                                              num_layers=CFG.gnn_num_layers)
-        else:
-            self._gnn = setup_tf_net(example_dataset,
-                                    tf_dim=CFG.gnn_layer_size,
-                                    gnn_layer_size=CFG.gnn_layer_size,
-                                    num_layers=CFG.gnn_num_layers)
+        self._gnn = setup_tf_net(example_dataset,
+                                 tf_dim=CFG.gnn_layer_size,
+                                 gnn_layer_size=CFG.gnn_layer_size,
+                                 num_layers=CFG.gnn_num_layers)
         # Set up all the graphs, now using *all* the data.
         inputs = [(d[0], d[1], d[2]) for d in data]
         targets = [d[3] for d in data]
