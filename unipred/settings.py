@@ -58,6 +58,19 @@ class UniPredSettings:
     code_as_policy_max_repairs = 3
     code_as_policy_call_timeout = 1.0
 
+    # ViLa (unipred/approaches/vila.py): "zero_shot", "few_shot" (with
+    # demonstrations) or "hpe" (few_shot with the hand-written constraints
+    # in the text file vila_constraints).
+    vila_mode = "zero_shot"
+    vila_constraints = ""
+
+    # Pix2Pred (unipred/approaches/pix2pred.py): use the names and types of
+    # the environment's hidden ground-truth predicates instead of invented
+    # ones, and take the atoms of these predicates (comma-separated names)
+    # from the annotations instead of the VLM.
+    pix2pred_gt_predicates = False
+    pix2pred_gt_label_predicates = ""
+
     # Perception (unipred/perception): the directory that scripts/install.sh
     # downloads the weights into (default: $UNIPRED_WEIGHTS_DIR), and the
     # encoder of object crops ("dinov3", "resnet18", "fake" for tests, or
@@ -73,6 +86,10 @@ class UniPredSettings:
     packing_num_boxes_test = 3
     packing_num_large_test = 2
     packing_num_small_test = 2
+
+    # Table Clean Real: the output directory of
+    # examples/real_robot/process_demos.py.
+    table_clean_real_data_dir = ""
 
     # Table Clean Sim: number of toys in train and out-of-distribution test
     # tasks.

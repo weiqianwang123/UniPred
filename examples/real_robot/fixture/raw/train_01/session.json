@@ -1,0 +1,5 @@
+{
+ "split": "train",
+ "objects": {"box": "box", "robot": "robot", "table": "table", "toy0": "toy", "toy1": "toy", "wiper": "wiper"},
+ "goal": [["TableClean", ["table"]], ["ToyInBox", ["toy0", "box"]], ["ToyInBox", ["toy1", "box"]], ["WiperInBox", ["wiper", "box"]]]
+}

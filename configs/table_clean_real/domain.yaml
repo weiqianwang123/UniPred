@@ -1,0 +1,22 @@
+# Table Clean Real, for examples/real_robot/process_demos.py: the object
+# types and the ground-truth predicates (name: argument types) that the
+# annotations of the recorded sessions use. The options and ground-truth
+# operators are those of Table Clean Sim
+# (unipred/ground_truth_models/table_clean).
+env: table_clean_real
+types: [robot, toy, box, wiper, table]
+predicates:
+  HandEmpty: [robot]
+  HoldingToy: [robot, toy]
+  HoldingWiper: [robot, wiper]
+  ToyOnTable: [toy, table]
+  ToyInBox: [toy, box]
+  WiperInBox: [wiper, box]
+  BoxNear: [box]
+  BoxFar: [box]
+  TableClean: [table]
+  NoToyOnTable: [table]
+# Computed from the other predicates by the closure of the ground-truth
+# operators; annotations do not need to list them.
+derived_predicates: [NoToyOnTable]
+goal_predicates: [ToyInBox, TableClean, WiperInBox]

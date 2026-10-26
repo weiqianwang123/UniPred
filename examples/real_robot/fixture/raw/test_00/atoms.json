@@ -1,0 +1,3 @@
+[
+ [["BoxFar", ["box"]], ["HoldingToy", ["robot", "toy0"]], ["ToyInBox", ["toy1", "box"]], ["ToyInBox", ["toy2", "box"]], ["WiperInBox", ["wiper", "box"]]]
+]

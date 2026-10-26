@@ -130,3 +130,62 @@ design. Each entry says what was chosen and why.
 - **Run names.** scripts/run.sh names an output directory after the config
   and its overlays (unipred+no_semantic), so ablations never overwrite the
   full method's results; the table scripts skip seeds that have results.
+
+## Real-robot template (Table Clean Real)
+
+- **Data.** examples/real_robot/process_demos.py turns raw sessions (one
+  folder each: keyframe images, the objects with their types, the goal,
+  the actions, optional annotated atoms and boxes) into processed.pkl:
+  per keyframe, each object's crop features and the annotated atoms. The
+  env (unipred/envs/offline_real.py) builds the train tasks, the recorded
+  demonstrations (--offline_data_method recorded) and the test scenes
+  from it; it has no simulator.
+- **Fork hooks.** BaseEnv.get_recorded_dataset() and
+  BaseEnv.evaluate_offline(approach) let an env without a simulator
+  provide its data and score test tasks itself; get_last_nsrt_plan() is
+  available to every planning approach.
+- **Evaluation** (Table III protocol): the approach plans a skeleton
+  without a simulator; the skeleton is valid if every step matches a
+  ground-truth operator whose preconditions hold in the annotated atoms
+  (with derived atoms recomputed by the ground-truth closure) and the goal
+  holds at the end. In-domain tests plan from the first keyframes of the
+  train sessions.
+- **Given predicates** (the paper assumes goal and static predicates are
+  provided) are read from the annotations, which demonstrations and test
+  scenes must have. At deployment there are none, so each given predicate
+  is evaluated by an MLP over its arguments' crop features, trained on the
+  annotated keyframes.
+- **Recorded options** have no parameters: the middle of the parameter
+  space stands for them, and samplers are not learned
+  (sampler_learner: random). A recorded option counts as initiable and
+  terminal, since the options' own functions read features that crops do
+  not have.
+- **Object identity.** In the first keyframe, the detections of a type
+  are assigned to the session's objects of that type from left to right;
+  afterwards each object takes the nearest detection (Hungarian matching
+  on box centres). An undetected object keeps its previous box (a toy in
+  the gripper); boxes in the raw data override detection.
+- **Crops** keep the object's surroundings (padding 0.15 of the box) so
+  that relational predicates can be learned; masking with SAM2 is an
+  option.
+- **Extensibility.** Nothing in perception, processing, the env base
+  class, evaluation or deployment names a table-clean type or option. A
+  second real domain needs a config directory (domain.yaml, prompts in
+  real_robot.yaml, approach configs) and a ground-truth package (options,
+  operators, and a five-line OfflineRealEnv subclass that names the env
+  and its data-directory setting).
+- **Fixture.** Generated from Table Clean Sim: oracle demonstrations and
+  out-of-distribution test starts, drawn top-down with one colour per
+  object type, which the fake detector finds; the fake encoder averages
+  colours on a 4 x 4 grid.
+- **ViLa.** zero_shot gets no examples (the original ViLa prompt's
+  generic in-context examples are not reproduced); few_shot adds the
+  first image, goal and plan of three recorded sessions; hpe adds the
+  hand-written constraints of configs/table_clean_real/vila_constraints.txt.
+- **Pix2Pred.** Predicates are proposed from the first four keyframes of
+  the first demonstration; each image is labelled once with the true atoms
+  of all predicates; operators come from cluster-and-intersect. With
+  ground-truth predicates, the hidden predicates of the env (including
+  NoToyOnTable, labelled directly) replace invention; partial GT labels
+  take the hand-state predicates (HandEmpty, HoldingToy, HoldingWiper)
+  from the annotations.

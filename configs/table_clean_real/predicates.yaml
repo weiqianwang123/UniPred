@@ -1,0 +1,3 @@
+# What UniPred knows and learns about Table Clean Real: the same as for
+# Table Clean Sim; the features are those of the objects' image crops.
+include: ../table_clean_sim/predicates.yaml

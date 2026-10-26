@@ -1,0 +1,20 @@
+# Table Clean Real (Table III): Table Clean on a real robot, built from
+# processed recordings (examples/real_robot/process_demos.py writes them to
+# table_clean_real_data_dir). Train tasks are the recorded sessions, test
+# tasks the held-out scenes; approaches are scored by offline planning
+# against the ground-truth operators (unipred/eval/offline_planning.py).
+env: table_clean_real
+table_clean_real_data_dir: outputs/table_clean_real/processed
+excluded_predicates: HandEmpty,HoldingToy,HoldingWiper,ToyOnTable,BoxNear,BoxFar,NoToyOnTable
+offline_data_method: recorded
+# The paper's 20 demonstrations; 5 training and 5 test scenes are planned.
+num_train_tasks: 20
+num_test_tasks: 5
+timeout: 10
+# No simulator: plan skeletons only. Recordings have no option parameters,
+# so the samplers are not learned.
+bilevel_plan_without_sim: true
+sampler_learner: random
+sesame_task_planner: astar
+# A state keeps its keyframe (image and annotations) as simulator state.
+allow_state_allclose_comparison_despite_simulator_state: true
