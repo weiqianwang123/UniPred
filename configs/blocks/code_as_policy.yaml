@@ -1,0 +1,5 @@
+# Table VI "LLM propose code (Code as Policy)". The predicate config is
+# only read for the domain description.
+include: base.yaml
+approach: code_as_policy
+neupi_pred_config: configs/blocks/predicates.yaml

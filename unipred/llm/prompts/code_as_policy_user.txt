@@ -1,0 +1,28 @@
+# Task and domain
+$description
+
+Object types and their features:
+$types
+
+Skills (the arguments are object names of these types; the parameters are
+numbers in the given ranges):
+$skills
+
+Goal predicates:
+$goal_predicates
+
+# Demonstrations
+$demos
+
+# Interface
+def policy(state, goal) -> (skill_name, object_names, parameters)
+- state: a dict from each object name to a dict with its "type" and the
+  values of its features, e.g. state["$example_object"]["$example_feature"].
+- goal: a list of (predicate_name, object_names) atoms that must all hold.
+- Return the name of the next skill, the list of names of its argument
+  objects and the list of its parameters.
+The policy is called again whenever the skill it chose has finished; the
+task ends when the goal holds.
+$repair
+# Requested output
+Write the policy.

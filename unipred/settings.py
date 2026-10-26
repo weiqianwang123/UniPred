@@ -37,7 +37,7 @@ class UniPredSettings:
 
     # The domain's description and known predicates come from the predicate
     # config (--neupi_pred_config; see configs/satellites/predicates.yaml).
-    # Number of demonstrations shown in the PDDL-completion prompt.
+    # Number of demonstrations shown in the LLM prompts.
     unipred_num_demo_prompts = 3
 
     # UniPred stages; turning one off gives the ablations of the paper.
@@ -51,6 +51,13 @@ class UniPredSettings:
     unipred_semantic_names = True
     # Stage 4: derived-aware predicate selection (Algorithm 1).
     unipred_derived_selection = False
+
+    # Code as Policy (unipred/approaches/code_as_policy.py): how often the
+    # LLM may repair a policy that fails with an error on the training
+    # tasks, and the time limit of one call of the policy, in seconds.
+    code_as_policy_max_repairs = 3
+    code_as_policy_call_timeout = 1.0
+
     # Perception (unipred/perception): the directory that scripts/install.sh
     # downloads the weights into (default: $UNIPRED_WEIGHTS_DIR), and the
     # encoder of object crops ("dinov3", "resnet18", "fake" for tests, or

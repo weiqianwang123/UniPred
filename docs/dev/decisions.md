@@ -106,3 +106,14 @@ design. Each entry says what was chosen and why.
   bounded budget (at most 50 predicates, 20 demonstrations for scoring and
   a 0.1 s planning timeout while scoring), so a run ends in minutes rather
   than days.
+- **Code as Policy** (Table VI) gets what the paper lists (object states,
+  the skills, a description of the goal and constraints) plus the same
+  three demonstrations UniPred's prompts show, rendered as low-level
+  states, skills with parameters and the features each skill changed, so
+  both methods learn from the same data. The policy picks the next skill
+  (name, objects, parameters) whenever the current one finishes;
+  parameters outside a skill's range are clipped. Only errors (an
+  exception, a malformed return value, unknown names or types) are sent
+  back for repair, at most three times; failing to reach a goal is not.
+  Prompts show at most twelve features per object, so crop features of
+  image domains do not flood them; the policy receives all features.

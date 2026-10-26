@@ -7,7 +7,9 @@ A JSON file given by ``--llm_mock_responses`` can provide canned replies::
 The first entry whose task matches and whose "contains" text occurs in the
 prompt is returned. Otherwise, simple rules give valid, deterministic
 answers: PDDL completion invents one predicate per allowed type list, and
-effect proposals walk through the ADD and DEL candidates.
+effect proposals walk through the ADD and DEL candidates, and Code as
+Policy gets a policy that always uses the first skill it can fill with
+objects.
 """
 
 from __future__ import annotations
@@ -32,6 +34,8 @@ def mock_response(system: str, user: str, task: str,
         return _complete_pddl(user)
     if task == "effect_proposal":
         return _propose_effects(user)
+    if task == "code_as_policy":
+        return _write_policy(user)
     raise ValueError(f"The mock LLM cannot answer task {task!r}.")
 
 
@@ -94,3 +98,29 @@ def _propose_effects(user: str) -> str:
     add, delete = patterns[num_seen % len(patterns)]
     return (f"ADD: {', '.join(add)}\nDEL: {', '.join(delete)}\n"
             "WHY: mock proposal")
+
+
+def _write_policy(user: str) -> str:
+    section = user.split("Skills", 1)[1].split("\nGoal predicates:", 1)[0]
+    skills = [(name, [t.strip() for t in types.split(",") if t.strip()],
+               len(re.findall(r"\[[^\]]*\]", rest)))
+              for name, types, rest in re.findall(
+                  r"^- (\w+)\(([^)]*)\): (.*)$", section, re.MULTILINE)]
+    assert skills, "No skills in the prompt."
+    return f"""```python
+SKILLS = {skills!r}
+
+
+def policy(state, goal):
+    for name, types, num_params in SKILLS:
+        objects = []
+        for object_type in types:
+            names = sorted(n for n, o in state.items()
+                           if o["type"] == object_type and n not in objects)
+            if not names:
+                break
+            objects.append(names[0])
+        else:
+            return name, objects, [0.0] * num_params
+    raise RuntimeError("no skill can be filled with objects")
+```"""
