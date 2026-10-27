@@ -828,7 +828,12 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
                             w_negation: Optional[bool] = False,
                             quantifier: Optional[str] = '',
                             quantified_type_idx: Optional[List] = [],
-                            thresh: Optional[float] = 1.0) -> torch.Tensor:
+                            thresh: Optional[float] = 1.0,
+                            reject_constant: bool = False) -> torch.Tensor:
+    """Whether a delete-only or add-only predicate (or one without effects)
+    is a precondition of some option without that effect: it holds before
+    at least thresh of the option's transitions. With reject_constant, a
+    predicate that holds before every transition does not count."""
     logging.info("Checking the learned AP vector...")
     logging.info("Using the provided AE vector (Add): {}".format(final_ae_vec[:, 0]))
     if final_ae_vec.shape[1] == 2:
@@ -949,6 +954,9 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
                     else:
                         logging.info("WARNING: Found sample that is not equivalent to AE Vector")
     
+        if reject_constant and ap_vec[:, 1].sum() == 0:
+            logging.info("Failed!!! It holds before every transition.")
+            return False
         return precondition_checker(ap_vec, final_ae_vec, thresh)
     else:
         # informative! it should appear in the preconditions of another operator

@@ -1770,26 +1770,25 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                 # no target vector will use entropy
                                 learned_guidance = compute_guidance_vector(learned_ae_vector)
                                 logging.info(f"Guidance Score: {learned_guidance}")
-                                if learned_guidance.sum() < quantified_threshold:
-                                    final_ae_vec = prob_three2two(learned_ae_vector)
-                                    if (final_ae_vec==0).all():
-                                        logging.info(f"AE Vector is all zeros, skip...")
-                                        continue
-                                    logging.info(f"Checking AP Vector for {local_name}...")
-                                    precond_pass = check_learned_ap_vector(data_results, \
+                                logging.info(f"Checking {local_name}...")
+                                final_ae_vec = self._variant_ae_vector(
+                                    learned_ae_vector, learned_guidance,
+                                    quantified_threshold,
+                                    lambda vec, reject_constant: check_learned_ap_vector(data_results, \
                                     pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                                        self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index), \
-                                        CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh)
-                                    if precond_pass:
-                                        logging.info(f"Passed!!! Add to the final list.")
-                                        self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                        self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                        self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                        quantifier_str = local_name.split(', ')[0]
-                                        neg_str = local_name.split(', ')[1].split('-')[0]
-                                        basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                        self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                        neg_str, basic_pred_str))
+                                        self.ae_row_names_dict, vec, copy.deepcopy(self._node_feature_to_index), \
+                                        CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh,
+                                        reject_constant=reject_constant))
+                                if final_ae_vec is not None:
+                                    logging.info(f"Passed!!! Add to the final list.")
+                                    self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                    self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                    self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                    quantifier_str = local_name.split(', ')[0]
+                                    neg_str = local_name.split(', ')[1].split('-')[0]
+                                    basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                    self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                    neg_str, basic_pred_str))
                             else:
                                 # use idx, instead of content, to handel same name type
                                 combinded_types_idx = []
@@ -1827,26 +1826,25 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                         # no target vector will use entropy
                                         learned_guidance = compute_guidance_vector(learned_ae_vector)
                                         logging.info(f"Guidance Score: {learned_guidance}")
-                                        if learned_guidance.sum() < quantified_threshold:
-                                            final_ae_vec = prob_three2two(learned_ae_vector)
-                                            logging.info(f"Checking AP Vector for {local_name}...")
-                                            precond_pass = check_learned_ap_vector(data_results, \
+                                        logging.info(f"Checking {local_name}...")
+                                        final_ae_vec = self._variant_ae_vector(
+                                            learned_ae_vector, learned_guidance,
+                                            quantified_threshold,
+                                            lambda vec, reject_constant: check_learned_ap_vector(data_results, \
                                             pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                                            self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                                            CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                                            if (final_ae_vec==0).all():
-                                                logging.info(f"AE Vector is all zeros, skip...")
-                                                precond_pass = False
-                                            if precond_pass:
-                                                logging.info(f"Passed!!! Add to the final list.")
-                                                self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                                self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                                self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                                quantifier_str = local_name.split(', ')[0]
-                                                neg_str = local_name.split(', ')[1].split('-')[0]
-                                                basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                                self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                                neg_str, basic_pred_str))
+                                            self.ae_row_names_dict, vec, copy.deepcopy(self._node_feature_to_index),
+                                            CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh,
+                                            reject_constant=reject_constant))
+                                        if final_ae_vec is not None:
+                                            logging.info(f"Passed!!! Add to the final list.")
+                                            self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                            self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                            self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                            quantifier_str = local_name.split(', ')[0]
+                                            neg_str = local_name.split(', ')[1].split('-')[0]
+                                            basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                            self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                            neg_str, basic_pred_str))
                                     else:
                                         logging.info(f"The unquantified type has >= one choice, checking each one of them...")
                                         for loc_ent in possible_ent_idx:
@@ -1867,27 +1865,77 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                             # no target vector will use entropy
                                             learned_guidance = compute_guidance_vector(learned_ae_vector)
                                             logging.info(f"Guidance Score: {learned_guidance}")
-                                            if learned_guidance.sum() < quantified_threshold:
-                                                final_ae_vec = prob_three2two(learned_ae_vector)
-                                                logging.info(f"Checking AP Vector for {local_name}...")
-                                                precond_pass = check_learned_ap_vector(data_results, \
+                                            logging.info(f"Checking {local_name}...")
+                                            final_ae_vec = self._variant_ae_vector(
+                                                learned_ae_vector, learned_guidance,
+                                                quantified_threshold,
+                                                lambda vec, reject_constant: check_learned_ap_vector(data_results, \
                                                 pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                                                self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                                                CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                                                if (final_ae_vec==0).all():
-                                                    logging.info(f"AE Vector is all zeros, skip...")
-                                                    precond_pass = False
-                                                if precond_pass:
-                                                    logging.info(f"Passed!!! Add to the final list.")
-                                                    self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                                    self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                                    self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                                    quantifier_str = local_name.split(', ')[0]
-                                                    neg_str = local_name.split(', ')[1].split('-')[0]
-                                                    basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                                    self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                                    neg_str, basic_pred_str))
+                                                self.ae_row_names_dict, vec, copy.deepcopy(self._node_feature_to_index),
+                                                CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh,
+                                                reject_constant=reject_constant))
+                                            if final_ae_vec is not None:
+                                                logging.info(f"Passed!!! Add to the final list.")
+                                                self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                                self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                                self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                                quantifier_str = local_name.split(', ')[0]
+                                                neg_str = local_name.split(', ')[1].split('-')[0]
+                                                basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                                self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                                neg_str, basic_pred_str))
         return trajectories, init_atom_traj
+
+    def _candidate_bundles(
+            self,
+            candidate: PredicateCandidate) -> List[List[PredicateCandidate]]:
+        """The sets of candidates that selection scores, and adds together,
+        for a candidate of the pool: the candidate alone (IVNTR). A subclass
+        can add the candidate with predicates that only it brings (UniPred:
+        a basic predicate with each of its derived forms, which may lower the
+        score where the basic predicate alone does not)."""
+        return [[candidate]]
+
+    def _refine_below_threshold(self) -> Optional[float]:
+        """None: predicate selection ends once the score is below
+        CFG.neupi_selection_thresh (IVNTR). A fraction: it goes on adding
+        candidates that lower the score by at least that fraction (for
+        predicates that only tighten preconditions, like derived ones)."""
+        return None
+
+    def _derived_variants_need_effects(self) -> bool:
+        """Whether a negated or quantified variant of a learned predicate must
+        be a consistent effect of the options to be kept (IVNTR). A subclass
+        whose variants only enter preconditions (UniPred's derived-aware
+        selection) returns False: then a variant needs only be a precondition
+        of some option, like "no toy is on the table" of wiping, which picking
+        a toy sometimes makes true and sometimes not."""
+        return True
+
+    def _variant_ae_vector(
+            self, learned_ae_vector: torch.Tensor,
+            learned_guidance: torch.Tensor, threshold: float,
+            check_precondition: Callable[[torch.Tensor, bool], bool]
+    ) -> Optional[torch.Tensor]:
+        """The effect vector to keep a negated or quantified variant with, or
+        None to drop it. check_precondition(effect vector, reject_constant)
+        runs the precondition check. A variant with consistent effects is
+        kept with them if it is a precondition where it is no effect (IVNTR);
+        otherwise, unless variants need effects, it is kept without effects if
+        it is a precondition of some option without holding everywhere."""
+        if learned_guidance.sum() < threshold:
+            ae_vector = prob_three2two(learned_ae_vector)
+            if (ae_vector == 0).all():
+                logging.info("AE Vector is all zeros, skip...")
+            elif check_precondition(ae_vector, False):
+                return ae_vector
+        if self._derived_variants_need_effects():
+            return None
+        logging.info("Checking it as a precondition only...")
+        ae_vector = torch.zeros_like(prob_three2two(learned_ae_vector))
+        if check_precondition(ae_vector, True):
+            return ae_vector
+        return None
 
     def _get_predicate_identifier(
         self, traj: List ,predicate: Predicate
@@ -2016,6 +2064,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
         every candidate in the pool is scored together with the selected
         predicates and the best one is added if it improves the score. After
         each added predicate, _expand_candidate_pool() can add candidates.
+        The search ends once the score is below CFG.neupi_selection_thresh,
+        unless _refine_below_threshold() gives a fraction: then it goes on
+        adding candidates that lower the score by at least that fraction.
         If no candidate improves the score while it is still above
         CFG.neupi_selection_thresh, a random candidate is added ("imagined").
         If that does not lead to an improvement on the next level, it is
@@ -2068,50 +2119,63 @@ class BilevelLearningApproach(NSRTLearningApproach):
             selected_ent_idx = [c.ent_idx for c in selected]
             selected_consistent = self.check_matrix_consistency(
                 _stack(selected), selected_ent_idx)
-            best_candidate: Optional[PredicateCandidate] = None
+            best_bundle: List[PredicateCandidate] = []
+            refine = self._refine_below_threshold()
+            # Below the threshold, a candidate must lower the score by the
+            # refinement fraction.
+            required = best_score * (1 - refine) if refine is not None and \
+                best_score < CFG.neupi_selection_thresh else best_score
             for candidate in pool:
                 if candidate.predicate in selected_predicates:
                     continue
-                try_matrix = _stack(selected + [candidate])
-                try_effect_predicates = selected_predicates + [
-                    candidate.predicate
-                ]
-                try_ent_idx = selected_ent_idx + [candidate.ent_idx]
-                if selected_consistent and not self.check_matrix_consistency(
-                        try_matrix, try_ent_idx):
-                    logging.info("Matrix is not consistent, skip...")
-                    continue
-                start_time = time.time()
-                score = score_function.evaluate(
-                    try_matrix,
-                    try_effect_predicates + precondition_predicates,
-                    try_ent_idx,
-                    CFG.strips_learner,
-                    operator_predicates=self._operator_predicates(
-                        try_effect_predicates),
-                    atoms_closure=self._atoms_closure(try_effect_predicates))
-                logging.info(f"Predicate set {try_effect_predicates} has "
-                             f"score {score} in {time.time()-start_time} "
-                             "seconds.")
-                if score < best_score:
-                    logging.info(f"New smallest score: {score}")
-                    best_score = score
-                    best_candidate = candidate
-            if best_candidate is not None:
+                for bundle in self._candidate_bundles(candidate):
+                    try_matrix = _stack(selected + bundle)
+                    try_effect_predicates = selected_predicates + [
+                        c.predicate for c in bundle
+                    ]
+                    try_ent_idx = selected_ent_idx + [
+                        c.ent_idx for c in bundle
+                    ]
+                    if selected_consistent and \
+                            not self.check_matrix_consistency(
+                                try_matrix, try_ent_idx):
+                        logging.info("Matrix is not consistent, skip...")
+                        continue
+                    start_time = time.time()
+                    score = score_function.evaluate(
+                        try_matrix,
+                        try_effect_predicates + precondition_predicates,
+                        try_ent_idx,
+                        CFG.strips_learner,
+                        operator_predicates=self._operator_predicates(
+                            try_effect_predicates),
+                        atoms_closure=self._atoms_closure(
+                            try_effect_predicates))
+                    logging.info(f"Predicate set {try_effect_predicates} "
+                                 f"has score {score} in "
+                                 f"{time.time()-start_time} seconds.")
+                    if score < best_score and score < required:
+                        logging.info(f"New smallest score: {score}")
+                        best_score = score
+                        best_bundle = bundle
+            if best_bundle:
                 logging.info(f"New best score at level {level}: {best_score}")
-                logging.info(f"Adding Predicate {best_candidate.predicate}...")
-                selected.append(best_candidate)
+                for candidate in best_bundle:
+                    logging.info(f"Adding Predicate {candidate.predicate}...")
+                    selected.append(candidate)
+                    self._expand_candidate_pool(
+                        [c.predicate for c in selected], pool)
                 imagined = []
                 pool_before_imagined = None
-                self._expand_candidate_pool([c.predicate for c in selected],
-                                            pool)
-                if best_score < CFG.neupi_selection_thresh:
+                if best_score < CFG.neupi_selection_thresh and refine is None:
                     logging.info(f"Search Done at level {level} with score "
                                  f"{best_score}")
                     break
                 level += 1
                 continue
             if best_score <= CFG.neupi_selection_thresh:
+                logging.info(f"Search Done at level {level} with score "
+                             f"{best_score}")
                 break
             logging.info(f"Hill-Climbing Got Stuck at level {level} and not "
                          "good enough...Force to Next Level")
