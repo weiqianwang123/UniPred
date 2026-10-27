@@ -227,17 +227,20 @@ def main() -> None:
         goal = sorted((a.predicate.name, tuple(o.name for o in a.objects))
                       for a in task.goal)
         for attempt in range(_ATTEMPTS):
-            sim = scene.from_sim_state(task.init,
-                                                  seed=seed + 100000 * attempt,
-                                                  grasps=args.grasps)
+            sim = None
             try:
+                # Building the scene may fail too (no layout of it).
+                sim = scene.from_sim_state(task.init,
+                                           seed=seed + 100000 * attempt,
+                                           grasps=args.grasps)
                 _write(os.path.join(args.out, name), args.domain, sim, split,
                        goal, steps, args.give_boxes, args.video_hz)
                 break
             except SimulationError as e:
                 logging.warning(f"{name}, attempt {attempt + 1}: {e}")
             finally:
-                sim.close()
+                if sim is not None:
+                    sim.close()
         else:
             raise RuntimeError(f"{name} failed {_ATTEMPTS} times.")
         logging.info(f"{name}: {len(steps)} skills" if steps else
