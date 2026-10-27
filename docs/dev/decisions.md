@@ -354,10 +354,15 @@ design. Each entry says what was chosen and why.
   it, for recordings, learning and the closed loop without hardware.
 - **Predicates.** Blocks(obstacle, target) is invented and Clear(target)
   is its derived form ForAll ?obstacle. Not Blocks, a precondition of
-  PickTarget: test tasks have a target behind two obstacles, which a
-  predicate learned from single blockers ("cleared") gets wrong. Pickable
-  and Bulky are given static predicates, as IsSmall and IsLarge in
-  Packing: no effect would let them be invented.
+  PickTarget. Pickable and Bulky are given static predicates, as IsSmall
+  and IsLarge in Packing: no effect would let them be invented.
+- **A target is behind one obstacle at most** (the owner's choice), and
+  every obstacle stands in front of a target; test tasks have three
+  targets instead of two. Test tasks with a target behind two obstacles
+  and an obstacle in front of nothing were dropped: UniPred's learned
+  obstacle-target predicate is "this obstacle has not been moved" (62
+  percent agreement with Blocks on the training groundings), which those
+  tasks need to be relational.
 - **Clearing names the target.** RemoveObstacle and PushObstacle take the
   target as well as the obstacle: IVNTR learns effects on an option's
   arguments only, and the effect (Blocks deleted) is on both. Each
@@ -374,9 +379,11 @@ design. Each entry says what was chosen and why.
 - **Why a blocked target cannot be picked** is physical, as on the real
   robot, whose grasps come from the object's segmented point cloud: a
   target less than 90 percent in view is not segmented well enough, and
-  grasps are planned on the points of it in view (not its mesh). A target's second blocker is
-  a bottle beyond the first, to a side: a low box farther away hides too
-  little, and two side by side leave no room for the fingers to push.
+  grasps are planned on the points of it in view (not its mesh). The
+  scene also lays out a target behind two obstacles (no task has one any
+  more): the second is a bottle beyond the first, to a side, as a low box
+  farther away hides too little, and two side by side leave no room for
+  the fingers to push.
 - **Pushing.** The closed fingers come down beside the box, thin side
   first, and push it sideways as far as it takes to hide nothing (6 to 20
   cm, chosen with the layout). Boxes are low enough for the gripper's

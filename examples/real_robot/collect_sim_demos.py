@@ -11,7 +11,7 @@ cluttered_retrieval_mujoco.py) with a keyframe image before each skill and
 after the last; test scenes are the initial scenes of its
 out-of-distribution tasks (Table Clean: three toys, toys already in the
 tray, a toy or the sponge in hand, the tray on the far side; Cluttered
-Retrieval: three targets, one behind two obstacles). Numbered objects (toys,
+Retrieval: three targets, each behind one obstacle or none). Numbered objects (toys,
 targets, obstacles) are named left to right in the first keyframe, as the
 processing expects. Every
 keyframe records the ground-truth atoms (atoms.json) and the objects' image

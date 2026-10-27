@@ -118,47 +118,45 @@ def _blocked_by(env, state):
 
 
 def test_cluttered_retrieval_sim_tasks():
-    """Train tasks: two targets, each blocked by at most one obstacle, at
-    least one blocked. Test tasks: three targets, one blocked by two
-    obstacles; an obstacle blocks at most one target."""
+    """Two targets in train tasks, three in test tasks; a target is blocked
+    by at most one obstacle, at least one is blocked, and every obstacle
+    blocks exactly one target."""
     env = _env("cluttered_retrieval_sim", num_train_tasks=20,
                num_test_tasks=20)
-    for env_task in env.get_train_tasks():
-        blocked = _blocked_by(env, env_task.task.init)
-        assert len(blocked) == 2
-        assert max(map(len, blocked.values())) == 1
-    for env_task in env.get_test_tasks():
-        state = env_task.task.init
-        blocked = _blocked_by(env, state)
-        assert len(blocked) == 3
-        assert max(map(len, blocked.values())) == 2
-        blockers = [o for names in blocked.values() for o in names]
-        assert len(blockers) == len(set(blockers))
+    for tasks, num_targets in ((env.get_train_tasks(), 2),
+                               (env.get_test_tasks(), 3)):
+        for env_task in tasks:
+            state = env_task.task.init
+            blocked = _blocked_by(env, state)
+            assert len(blocked) == num_targets
+            assert max(map(len, blocked.values())) == 1
+            blockers = [o for names in blocked.values() for o in names]
+            assert sorted(blockers) == sorted(
+                o.name for o in state.get_objects(env.obstacle_type))
 
 
 def test_cluttered_retrieval_sim_rules():
     """A blocked target cannot be picked; a bottle is removed and a crate
     pushed (not the other way round), which clears the target."""
     env = _env("cluttered_retrieval_sim", num_test_tasks=20)
-    task = next(t.task for t in env.get_test_tasks()
-                if any(len(b) == 2 for b in _blocked_by(env, t.task.init)
-                       .values()))
-    state = task.init
-    target = next(t for t in state.get_objects(env.target_type)
-                  if len(_blocked_by(env, state)[t.name]) == 2)
+    # A task with a bottle and a crate.
+    state = next(
+        t.task.init for t in env.get_test_tasks()
+        if len({t.task.init.get(o, "pickable")
+                for o in t.task.init.get_objects(env.obstacle_type)}) == 2)
 
     def _act(primitive, obj, direction=1.0):
         return env.simulate(state, Action(np.array(
             [primitive, state.get(obj, "x"), state.get(obj, "y"), direction],
             dtype=np.float32)))
 
-    assert _act(crs.PICK, target).allclose(state)
-    for name in _blocked_by(env, state)[target.name]:
-        obstacle = next(o for o in state if o.name == name)
-        right, wrong = (crs.REMOVE, crs.PUSH) if state.get(
-            obstacle, "pickable") > 0.5 else (crs.PUSH, crs.REMOVE)
-        assert _act(wrong, obstacle).allclose(state)
-        state = _act(right, obstacle)
-        assert name not in _blocked_by(env, state)[target.name]
-    assert not _blocked_by(env, state)[target.name]
-    assert _act(crs.PICK, target).get(target, "held") == 1.0
+    for target in state.get_objects(env.target_type):
+        for name in _blocked_by(env, state)[target.name]:
+            assert _act(crs.PICK, target).allclose(state)
+            obstacle = next(o for o in state if o.name == name)
+            right, wrong = (crs.REMOVE, crs.PUSH) if state.get(
+                obstacle, "pickable") > 0.5 else (crs.PUSH, crs.REMOVE)
+            assert _act(wrong, obstacle).allclose(state)
+            state = _act(right, obstacle)
+        assert not _blocked_by(env, state)[target.name]
+        assert _act(crs.PICK, target).get(target, "held") == 1.0

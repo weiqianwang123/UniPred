@@ -15,7 +15,7 @@ oracle uses all predicates.
 | Packing | `packing` | poses + image crop features | 50 | 2 boxes, 3 items (1 large) | 3 boxes, 4 items (2 large) |
 | Table Clean Sim | `table_clean_sim` | SE2 poses, flags | 50 | 2 toys, standard start | 3 toys, varied starts |
 | Table Clean Real | `table_clean_real` | image crop features | recorded | recorded sessions | held-out scenes |
-| Cluttered Retrieval Sim | `cluttered_retrieval_sim` | 2D poses, flags | 50 | 2 targets, at most one obstacle each | 3 targets, one behind two obstacles |
+| Cluttered Retrieval Sim | `cluttered_retrieval_sim` | 2D poses, flags | 50 | 2 targets, at most one obstacle each | 3 targets, at most one obstacle each |
 | Cluttered Retrieval Real | `cluttered_retrieval_real` | image crop features | recorded | recorded sessions | held-out scenes |
 
 Each experiment tests on 50 tasks of the test distribution (and, with
@@ -105,8 +105,9 @@ and options are this release's.
 - Hidden: HandEmpty, Holding, OnTable, Blocks(obstacle, target), and the
   derived Clear(target) = ForAll ?obstacle. Not Blocks(?obstacle,
   ?target), a precondition of PickTarget.
-- Test tasks: three targets, one blocked by two obstacles, so that only
-  the quantified Clear generalises; an obstacle may block nothing.
+- Tasks: a target is behind one obstacle or none (at least one is behind
+  one), and every obstacle stands in front of a target; two targets in
+  train tasks, three in test tasks.
 - Planner: A* with the closure of Clear, 10 s.
 - Random options solve most tasks (no dead ends): this domain generates the
   tasks and oracle plans of the simulated robot's recordings and checks

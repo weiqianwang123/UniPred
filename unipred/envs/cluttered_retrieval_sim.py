@@ -31,10 +31,10 @@ whose conditions do not hold changes nothing: the robot holds at most one
 target, removing or pushing needs the hand empty, and a blocked target
 stays where it is.
 
-The goal is every target in the box. Train tasks have two targets, each
-blocked by at most one obstacle; out-of-distribution test tasks have three
-targets and more obstacles: a target may be blocked by two, and an obstacle
-may block nothing.
+The goal is every target in the box. A target is blocked by at most one
+obstacle, and every obstacle blocks a target; at least one target is
+blocked. Train tasks have two targets; out-of-distribution test tasks
+have three, so more obstacles.
 
 Clear(target) is a derived predicate, ForAll ?obstacle. Not
 Blocks(?obstacle, ?target): no operator adds it, so the ground-truth NSRTs
@@ -75,10 +75,9 @@ class ClutteredRetrievalSimEnv(BaseEnv):
     # camera: 0 < dy <= corridor_length and |dx| <= corridor_half_width.
     corridor_length: ClassVar[float] = 0.16
     corridor_half_width: ClassVar[float] = 0.06
-    # Obstacles stand this far in front of the target they block (two
-    # blocking one target: one near, one far), within max_offset in x.
-    near_gap: ClassVar[Tuple[float, float]] = (0.05, 0.08)
-    far_gap: ClassVar[Tuple[float, float]] = (0.12, 0.15)
+    # An obstacle stands this far in front of the target it blocks, within
+    # max_offset in x.
+    front_gap: ClassVar[Tuple[float, float]] = (0.05, 0.08)
     max_offset: ClassVar[float] = 0.03
     # Far enough to clear the target, not so far as to block the next.
     push_distance: ClassVar[float] = 0.15
@@ -182,61 +181,44 @@ class ClutteredRetrievalSimEnv(BaseEnv):
     def _generate_train_tasks(self) -> List[EnvironmentTask]:
         return [
             self._make_task(CFG.cluttered_retrieval_sim_num_targets_train,
-                            False, self._train_rng)
+                            self._train_rng)
             for _ in range(CFG.num_train_tasks)
         ]
 
     def _generate_test_tasks(self) -> List[EnvironmentTask]:
-        if CFG.in_domain_test:
-            return [
-                self._make_task(
-                    CFG.cluttered_retrieval_sim_num_targets_train, False,
-                    self._test_rng) for _ in range(CFG.num_test_tasks)
-            ]
+        num_targets = CFG.cluttered_retrieval_sim_num_targets_train \
+            if CFG.in_domain_test else \
+            CFG.cluttered_retrieval_sim_num_targets_test
         return [
-            self._make_task(CFG.cluttered_retrieval_sim_num_targets_test,
-                            True, self._test_rng)
+            self._make_task(num_targets, self._test_rng)
             for _ in range(CFG.num_test_tasks)
         ]
 
-    def _make_task(self, num_targets: int, cluttered: bool,
+    def _make_task(self, num_targets: int,
                    rng: np.random.Generator) -> EnvironmentTask:
-        """Targets on the table with obstacles in front of them: in train
-        tasks (not cluttered) each target blocked by one obstacle or none,
-        at least one blocked; in test tasks two obstacles block one target
-        (the farther a bottle), one obstacle or none each other target, and
-        an obstacle may stand aside."""
+        """Targets on the table, each with one obstacle in front of it or
+        none, at least one with one."""
         robot = Object("robot", self.robot_type)
         box = Object("box", self.box_type)
         targets = [
             Object(f"target{i}", self.target_type) for i in range(num_targets)
         ]
-        blockers = [int(rng.random() < 0.75) for _ in targets]
-        if not any(blockers):
+        blocked = [rng.random() < 0.75 for _ in targets]
+        if not any(blocked):
             # At least one obstacle: Clear quantifies over the obstacles, and
             # as in IVNTR's classifiers a quantifier over none is false.
-            blockers[int(rng.integers(num_targets))] = 1
-        if cluttered:
-            blockers = [int(rng.integers(0, 2)) for _ in targets]
-            blockers[int(rng.integers(num_targets))] = 2
+            blocked[int(rng.integers(num_targets))] = True
         xs = self._target_xs(num_targets, rng)
         data = {robot: [*self.robot_home, 0.0], box: list(self.box_xy)}
         obstacles: List[Tuple[float, float, float, float]] = []
-        for target, x, count in zip(targets, xs, blockers):
+        for target, x, has_obstacle in zip(targets, xs, blocked):
             y = float(rng.uniform(*self.target_y))
             data[target] = [x, y, 0.0, 1.0, 0.0]
-            gaps = [self.near_gap, self.far_gap][:count]
-            for k, gap in enumerate(gaps):
-                # The farther of two is a bottle.
-                pickable = float(k == 1 or rng.random() < 0.5)
+            if has_obstacle:
+                pickable = float(rng.random() < 0.5)
                 obstacles.append(
                     (x + float(rng.uniform(-1, 1)) * self.max_offset,
-                     y + float(rng.uniform(*gap)), pickable, 0.0))
-        if cluttered and rng.random() < 0.5:
-            # One that blocks nothing: behind the targets, by the box.
-            obstacles.append((float(rng.uniform(0.85, 0.95)),
-                              float(rng.uniform(0.6, 0.9)),
-                              float(rng.random() < 0.5), 0.0))
+                     y + float(rng.uniform(*self.front_gap)), pickable, 0.0))
         for i, features in enumerate(obstacles):
             data[Object(f"obstacle{i}", self.obstacle_type)] = list(features)
         state = State({
