@@ -15,7 +15,9 @@ whose appearance is less similar than min_similarity is not the object
 (toys that look alike match by place). An object that is not detected
 keeps its previous box and appearance (for example a toy hidden in the
 gripper); boxes given explicitly (e.g. annotated for a hard object) replace
-detection. The crop around each box is encoded into the object's features.
+detection. The crop around each box is encoded into the object's features;
+with box_features, the box itself follows (its centre and size over the
+image's width and height), the object's pose in the image.
 
 With a tracker (unipred/perception/tracker.py), the objects also keep their
 names through the frames recorded between two images: each object of
@@ -77,10 +79,12 @@ class ScenePerceiver:
                  position_weight: float = 0.5,
                  tracker: Optional[Tracker] = None,
                  track_types: Optional[Sequence[str]] = None,
-                 track_min_iou: float = 0.3) -> None:
+                 track_min_iou: float = 0.3,
+                 box_features: bool = False) -> None:
         self.detector = detector
         self.encoder = encoder
         self.tracker = tracker
+        self.box_features = box_features
         self._crop_padding = crop_padding
         self._mask_crops = mask_crops
         self._min_similarity = min_similarity
@@ -113,7 +117,13 @@ class ScenePerceiver:
                    config["mask_crops"], config["match_min_similarity"],
                    config["match_position_weight"],
                    None if tracker == "none" else Tracker(tracker),
-                   config["track_types"], config["track_min_iou"])
+                   config["track_types"], config["track_min_iou"],
+                   config["box_features"])
+
+    @property
+    def feature_dim(self) -> int:
+        """The length of an object's features."""
+        return self.encoder.dim + (4 if self.box_features else 0)
 
     def follow(self, previous: Optional[SceneObservation],
                frames: Iterable[np.ndarray]) -> Optional[Dict[str,
@@ -210,6 +220,15 @@ class ScenePerceiver:
                         masks[n] if self._mask_crops else None) for n in names
         ]
         features = dict(zip(names, self.encoder.encode(crops)))
+        if self.box_features:
+            height, width = image.shape[:2]
+            for name in names:
+                x0, y0, x1, y1 = boxes[name]
+                features[name] = np.concatenate([
+                    features[name],
+                    [(x0 + x1) / 2 / width, (y0 + y1) / 2 / height,
+                     (x1 - x0) / width, (y1 - y0) / height]
+                ]).astype(np.float32)
         for name, vector in features.items():
             if not np.all(np.isfinite(vector)):
                 raise PerceptionError(
@@ -331,6 +350,7 @@ _ROBOT_CONFIG_DEFAULTS = {
     "tracker": "none",
     "track_types": None,
     "track_min_iou": 0.3,
+    "box_features": False,
 }
 
 

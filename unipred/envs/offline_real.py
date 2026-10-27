@@ -103,6 +103,7 @@ class OfflineRealEnv(BaseEnv):
         self._derived_names = set(domain.get("derived_predicates", []))
         self._sessions: List[Dict] = processed["sessions"]
         self.encoder: str = processed["encoder"]
+        self.box_features: bool = processed.get("box_features", False)
         self._closure = get_gt_atoms_closure(self.get_name(), self.predicates)
         self._learned: Dict[str, MLPBinaryClassifier] = {}
 

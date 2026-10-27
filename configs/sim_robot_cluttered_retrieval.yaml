@@ -29,3 +29,6 @@ prompts:
 tracker: sam3
 track_types: [target, obstacle]
 track_min_iou: 0.3
+# The features also give each object's box in the image: which target an
+# obstacle hides is a matter of where they are, which crops barely show.
+box_features: true

@@ -97,6 +97,12 @@ class Deployment:
             raise ValueError(
                 f"The training data was encoded with {env.encoder}, but the "
                 f"perception uses {self.perceiver.encoder.backend}.")
+        if self.perceiver.box_features != env.box_features:
+            raise ValueError(
+                "The training data's features "
+                f"{'include' if env.box_features else 'do not include'} the "
+                "objects' boxes, but the perception's "
+                f"{'do' if self.perceiver.box_features else 'do not'}.")
 
     def observe(
         self,

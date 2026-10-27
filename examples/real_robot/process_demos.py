@@ -209,7 +209,8 @@ def main() -> None:
     processed = {
         "domain": domain,
         "encoder": perceiver.encoder.backend,
-        "feature_dim": perceiver.encoder.dim,
+        "box_features": perceiver.box_features,
+        "feature_dim": perceiver.feature_dim,
         "sessions": sessions,
     }
     with open(os.path.join(args.out, "processed.pkl"), "wb") as f:

@@ -300,3 +300,18 @@ def test_object_out_of_view_at_a_keyframe_stays_followed():
     assert perceiver.tracker.followed == {"toy0", "toy1"}
     perceiver.perceive(hidden, objects, second)
     assert perceiver.tracker.followed == {"toy1"}
+
+
+def test_box_features_follow_the_crop_features():
+    """With box_features, an object's features end with its box's centre
+    and size over the image's width and height."""
+    detector = _GivenDetections()
+    detector.boxes = [(10, 10, 20, 30)]
+    perceiver = ScenePerceiver(detector, CropEncoder("fake"),
+                               box_features=True)
+    assert perceiver.feature_dim == CropEncoder("fake").dim + 4
+    observation = perceiver.perceive(
+        _painted([((10, 10, 20, 30), (220, 20, 20))]), {"toy0": "toy"})
+    assert observation.features["toy0"].shape == (perceiver.feature_dim, )
+    assert np.allclose(observation.features["toy0"][-4:],
+                       [15 / 80, 20 / 60, 10 / 80, 20 / 60])
