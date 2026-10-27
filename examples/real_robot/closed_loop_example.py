@@ -31,7 +31,7 @@ import argparse
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -39,6 +39,8 @@ from predicators.approaches import ApproachFailure, ApproachTimeout
 from predicators.structs import State, _GroundNSRT
 from unipred.deploy import Deployment, RobotInterface, load_image
 from unipred.loop_video import LoopVideo, predicate_labels
+from unipred.perception.detector import Box
+from unipred.perception.scene import SceneObservation
 
 
 class FakeRobotInterface(RobotInterface):
@@ -74,13 +76,17 @@ def run_closed_loop(deployment: Deployment,
                     objects: Dict[str, str],
                     goal_atoms: Sequence[Tuple[str, Sequence[str]]],
                     max_steps: int,
-                    video: Optional[LoopVideo] = None) -> bool:
+                    video: Optional[LoopVideo] = None,
+                    first_boxes: Optional[Dict[str, Box]] = None) -> bool:
     """Run the loop (see module doc); return whether the goal holds. The
-    video, if any, receives every keyframe and skill."""
+    video, if any, receives every keyframe and skill. The objects' boxes
+    in the first image, if given, name its detections by place and stand
+    for the objects not detected (see --first_boxes)."""
     plan: List[_GroundNSRT] = []
     done: List[str] = []
     executed: Optional[_GroundNSRT] = None
-    previous = None
+    previous: Optional[Union[SceneObservation, Dict[str, Box]]] = \
+        first_boxes
     for _ in range(max_steps + 1):
         frames = robot.video() if executed is not None else None
         if video is not None and executed is not None:
@@ -140,6 +146,13 @@ def main() -> None:
     parser.add_argument("--title",
                         help="the video's title (default: the domain, the "
                         "session's name and the approach)")
+    parser.add_argument("--first_boxes",
+                        help="a file of the session with boxes per keyframe "
+                        "(the format of boxes.json, e.g. gt_boxes.json) whose "
+                        "first boxes name the objects in the first image and "
+                        "stand for those the detector misses there (a toy "
+                        "hidden in the gripper); on a real robot, boxes a "
+                        "person drew")
     parser.add_argument("--max_steps", type=int, default=20)
     parser.add_argument("--robot_config", default="configs/real_robot.yaml")
     parser.add_argument("--detector", help="override the config's detector")
@@ -149,6 +162,14 @@ def main() -> None:
     with open(os.path.join(args.session, "session.json"),
               encoding="utf-8") as f:
         session = json.load(f)
+    first_boxes = None
+    if args.first_boxes:
+        with open(os.path.join(args.session, args.first_boxes),
+                  encoding="utf-8") as f:
+            first_boxes = {
+                name: tuple(box)
+                for name, box in json.load(f)[0].items()
+            }
     deployment = Deployment(training_flags, args.robot_config, args.detector,
                             args.encoder)
     video = None
@@ -172,7 +193,7 @@ def main() -> None:
     if args.robot == "replay":
         run_closed_loop(deployment, FakeRobotInterface(args.session),
                         session["objects"], session["goal"], args.max_steps,
-                        video)
+                        video, first_boxes)
         if video is not None:
             video.save(args.video)
         return
@@ -193,7 +214,7 @@ def main() -> None:
     sim = scene.from_description(session["sim"])
     robot = MujocoRobot(sim)
     run_closed_loop(deployment, robot, session["objects"], session["goal"],
-                    args.max_steps, video)
+                    args.max_steps, video, first_boxes)
     if video is not None:
         video.save(args.video)
     goal = {(name, tuple(args_)) for name, args_ in session["goal"]}

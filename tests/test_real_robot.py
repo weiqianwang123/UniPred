@@ -55,13 +55,17 @@ def test_unipred_chain(processed, tmp_path):
         str(log)
     ])
     assert "Tasks solved:" in log.read_text()
-    for script, session in (("plan_from_image.py", "test_00"),
-                            ("closed_loop_example.py", "train_00")):
+    for script, session, extra in (
+        ("plan_from_image.py", "test_00", []),
+        ("closed_loop_example.py", "train_00", []),
+        ("closed_loop_example.py", "train_00",
+         ["--first_boxes", "boxes.json"]),
+    ):
         result = subprocess.run([
             sys.executable, f"examples/real_robot/{script}", "--session",
             f"examples/real_robot/fixture/raw/{session}", "--detector",
             "fake", "--encoder", "fake"
-        ] + flags,
+        ] + extra + flags,
                                 cwd=REPO,
                                 capture_output=True,
                                 text=True,
