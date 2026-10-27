@@ -9,7 +9,9 @@ An invented predicate is named after the hidden ground-truth predicate,
 or its negation, that it agrees with most on the annotated keyframes of the
 training sessions (with the agreement: green from 90 percent), so that what
 UniPred discovered can be read; one that matches none on at least 60
-percent is left out. Given predicates keep their names. The frames
+percent is left out, and so is one whose ground-truth predicate another
+invented predicate matches better (two would contradict each other). Given
+predicates keep their names. The frames
 recorded while a skill runs follow its keyframe, with the skill
 highlighted in the plan.
 """
@@ -75,7 +77,17 @@ def predicate_labels(
             score, name = max(scored,
                               key=lambda s: (s[0], not s[1].startswith("¬")))
             labels[pred] = (name, score)
-    return labels
+    # Each ground-truth predicate names only the invented one that matches
+    # it best.
+    best: Dict[str, Tuple[float, str]] = {}
+    for pred, (name, score) in labels.items():
+        key = name.lstrip("¬")
+        best[key] = max(best.get(key, (-1.0, "")), (score, pred.name))
+    return {
+        pred: label
+        for pred, label in labels.items()
+        if best[label[0].lstrip("¬")][1] == pred.name
+    }
 
 
 class LoopVideo:

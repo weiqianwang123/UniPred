@@ -37,6 +37,19 @@ def test_invented_predicates_are_named_after_ground_truth():
     assert labels == {invented: ("HoldingToy", 1.0)}
 
 
+def test_a_ground_truth_predicate_names_one_invented_predicate():
+    """Of two invented predicates that match the same ground-truth
+    predicate (one its negation), only the better match is named."""
+    held = Predicate("neural_b_robot_toy_0", [_ROBOT, _TOY],
+                     lambda s, o: s.get(o[1], "f0") > 0.5)
+    free = Predicate(
+        "neural_b_robot_toy_1", [_ROBOT, _TOY],
+        lambda s, o: o[1].name == "toy1" and s.get(o[1], "f0") < 0.5)
+    states = [_state(""), _state("toy0"), _state("toy1")]
+    labels = predicate_labels([held, free], [_HELD], states)
+    assert labels == {held: ("HoldingToy", 1.0)}
+
+
 def test_video_of_keyframes_and_skills(tmp_path):
     """A keyframe is held for a while, a skill's frames follow; the frames
     show the image beside the panel."""
