@@ -1360,6 +1360,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 obj = objects[0]
                 node_index = obj2node[obj]
                 attribute_value = pred_binary_graph["nodes"][node_index]
+                if negated:
+                    attribute_value = 1 - attribute_value
             elif pred.arity == 2:
                 # get the specific predicate
                 pred_type0, pred_type1 = pred.types
@@ -1667,6 +1669,19 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         pred_config['gumbel_temp'], 0.5, predicate_neural_model, curr_pred, ent_idx, \
                             self.ae_row_names_dict, ae_vector.clone(), copy.deepcopy(self._node_feature_to_index), CFG.device, \
                             thresh=CFG.precond_thresh)
+                        if not precond_pass and curr_pred.arity == 1 and \
+                                self._negates_unary_predicates():
+                            # Its negation (add and delete swapped) may be a
+                            # precondition, as "not occupied" of placing.
+                            logging.info("Checking its negation...")
+                            precond_pass = check_learned_ap_vector(
+                                val_dataloader, pred_config['gumbel_temp'],
+                                0.5, predicate_neural_model, curr_pred,
+                                ent_idx, self.ae_row_names_dict,
+                                ae_vector[:, [1, 0]].clone(),
+                                copy.deepcopy(self._node_feature_to_index),
+                                CFG.device, w_negation=True,
+                                thresh=CFG.precond_thresh)
                         outcomes[min_idx] = "kept" if precond_pass \
                             else "precondition"
                         if precond_pass:
@@ -1732,15 +1747,19 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 # config can turn this off with generate_derived: False)
                 if (CFG.neupi_w_negation or CFG.neupi_w_quantifiers) and \
                         pred_config.get("generate_derived", True):
-                    if curr_pred.arity == 1:
+                    if curr_pred.arity == 1 and (
+                            not CFG.neupi_w_negation
+                            or not self._negates_unary_predicates()):
                         logging.info("Skipping Negated / Quantified version for unary predicate...")
-                        # only support binary + quantifier now
                         continue
                     logging.info("Checking Negated / Quantified version...")
                     curr_pred_types = [types.name for types in curr_pred.types]
                     typed_quantifier = []
                     w_negation = [False] if not CFG.neupi_w_negation else [True, False]
                     quantifiers = [''] if not CFG.neupi_w_quantifiers else ['', 'ForAll', 'Exists']
+                    if curr_pred.arity == 1:
+                        # Only the negation of a unary predicate.
+                        w_negation, quantifiers = [True], ['']
                     pred_model_weights = _load_tensor(
                         self.learned_ae_pred_info[curr_pred]['model_weights'][i])
                     pred_model = setup_neupi_mlp_net(example_dataset,
@@ -1921,6 +1940,15 @@ class BilevelLearningApproach(NSRTLearningApproach):
         candidates that lower the score by at least that fraction (for
         predicates that only tighten preconditions, like derived ones)."""
         return None
+
+    def _negates_unary_predicates(self) -> bool:
+        """Whether a learned unary predicate also gets its negation as a
+        variant, and an add- or delete-only one passes the precondition
+        check if its negation is a precondition (IVNTR: neither). A
+        subclass whose variants enter preconditions (UniPred's
+        derived-aware selection) returns True: "not occupied" is what
+        placing an item needs of a region."""
+        return False
 
     def _derived_variants_need_effects(self) -> bool:
         """Whether a negated or quantified variant of a learned predicate must

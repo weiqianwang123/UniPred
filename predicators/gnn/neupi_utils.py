@@ -751,6 +751,9 @@ def distill_learned_ae_vector(val_dataloader: torch.utils.data.DataLoader,
                 if node_id is not None:
                     sample_nodes = nodes[node_id]
                     sample_nodes_ = nodes_[node_id]
+                    if w_negation:
+                        sample_nodes, sample_nodes_ = 1 - sample_nodes, \
+                            1 - sample_nodes_
                 # effect
                 # no change
                 if torch.equal(sample_nodes, sample_nodes_):
@@ -905,6 +908,9 @@ def check_learned_ap_vector(val_dataloader: torch.utils.data.DataLoader,
                     if node_id is not None:
                         sample_nodes = nodes[node_id]
                         sample_nodes_ = nodes_[node_id]
+                        if w_negation:
+                            sample_nodes, sample_nodes_ = 1 - sample_nodes, \
+                                1 - sample_nodes_
                     if equiv_effect(sample_nodes, sample_nodes_, final_ae_vec[action_id]):
                         # precondition
                         if sample_nodes:
