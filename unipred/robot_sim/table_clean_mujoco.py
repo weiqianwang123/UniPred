@@ -109,7 +109,7 @@ class TableCleanMujoco(FrankaTableScene):
                  layout: SceneLayout,
                  seed: int = 0,
                  image_size: Tuple[int, int] = (480, 640),
-                 grasps: str = "graspgenx") -> None:
+                 grasps: str = "top_down") -> None:
         self._layout, self._seed = layout, seed
         self._rng = np.random.default_rng(seed)
         self.toys = [name for name, _ in layout.toys]
@@ -136,7 +136,7 @@ class TableCleanMujoco(FrankaTableScene):
     def from_sim_state(cls,
                        state: State,
                        seed: int = 0,
-                       grasps: str = "graspgenx") -> TableCleanMujoco:
+                       grasps: str = "top_down") -> TableCleanMujoco:
         """The scene of a Table Clean Sim state (the toys stand where the
         seed puts them)."""
         toys = []
@@ -175,7 +175,7 @@ class TableCleanMujoco(FrankaTableScene):
     @classmethod
     def from_description(cls,
                          description: Dict,
-                         grasps: str = "graspgenx") -> TableCleanMujoco:
+                         grasps: str = "top_down") -> TableCleanMujoco:
         """The scene of a description()."""
         layout = SceneLayout(tuple((n, p) for n, p in description["toys"]),
                              description["wiper"], description["box_side"],

@@ -39,8 +39,13 @@ committed), at pinned commits:
 
 The gripper's mount on the arm follows R2S2R's `fr3_robotiq` (MIT). The
 simulator can take its grasps from GraspGenX (NVIDIA), served over HTTP by
-a separate server (CDG's perception servers); nothing of GraspGenX is
-included or downloaded here.
+a separate server; nothing of GraspGenX is included or downloaded here.
+
+`scripts/sam3_server.py` serves Meta's SAM3 (github.com/facebookresearch/sam3,
+the SAM License; its checkpoint is gated on Hugging Face and downloaded by
+the user) and is adapted from PhysCoder's perception servers
+(github.com/Jaraxxus-Me/physcoder, MIT License, Copyright (c) 2025 Bowen
+Li).
 
 ## Python dependencies
 

@@ -7,7 +7,7 @@ Backends:
   through transformers, from their installed weights
   (unipred/perception/weights.py);
 - "sam3": SAM3's text-prompted instance segmentation, from a SAM3 server
-  (CDG's perception servers; unipred/perception/sam3.py);
+  (scripts/sam3_server.py; unipred/perception/sam3.py);
 - "fake": no network weights, for tests and the synthetic fixture of
   examples/real_robot. The objects of each type are drawn as regions of the
   colour fake_colors() gives the type; the detector returns every connected

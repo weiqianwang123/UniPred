@@ -145,7 +145,7 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                  layout: ClutterLayout,
                  seed: int = 0,
                  image_size: Tuple[int, int] = (480, 640),
-                 grasps: str = "graspgenx") -> None:
+                 grasps: str = "top_down") -> None:
         self._layout, self._seed = layout, seed
         self._rng = np.random.default_rng(seed)
         self.targets = list(layout.targets)
@@ -192,7 +192,7 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
     def from_sim_state(cls,
                        state: State,
                        seed: int = 0,
-                       grasps: str = "graspgenx") -> ClutteredRetrievalMujoco:
+                       grasps: str = "top_down") -> ClutteredRetrievalMujoco:
         """The scene of a Cluttered Retrieval Sim state: its targets (on the
         table) and obstacles, each with the target it blocks there."""
         targets = sorted(o for o in state if o.type.name == "target")
@@ -229,7 +229,7 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
     @classmethod
     def from_description(cls,
                          description: Dict,
-                         grasps: str = "graspgenx") -> ClutteredRetrievalMujoco:
+                         grasps: str = "top_down") -> ClutteredRetrievalMujoco:
         """The scene of a description()."""
         layout = ClutterLayout(
             tuple(description["targets"]),

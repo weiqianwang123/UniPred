@@ -8,7 +8,7 @@ but is still followed, to be found again when it comes back into view.
 
 Backends:
 
-- "sam3": SAM3's video tracker on a SAM3 server (CDG's perception servers;
+- "sam3": SAM3's video tracker on a SAM3 server (scripts/sam3_server.py;
   unipred/perception/sam3.py), a track per object;
 - "fake": for tests and the synthetic fixture (unipred/perception/
   detector.py draws the objects of a type in one colour): an object is the

@@ -22,9 +22,8 @@ detection. The camera records every skill, --video_hz frames per simulated
 second (frames/<k>/<j>.jpg during skill k), for the tracker to follow the
 objects from keyframe to keyframe.
 
-Picks take their grasps from GraspGenX (CDG's perception server, see
-unipred/robot_sim/graspgenx.py), or with --grasps top_down straight from
-above. A session whose skill cannot be carried out (no grasp closes, say)
+Picks take their grasps straight from above, or with --grasps graspgenx
+from a GraspGenX server (see unipred/robot_sim/graspgenx.py). A session whose skill cannot be carried out (no grasp closes, say)
 or ends with the objects not where the atoms say is simulated again with
 another seed, up to five times.
 
@@ -188,8 +187,8 @@ def main() -> None:
     parser.add_argument("--give_boxes", action="store_true",
                         help="write the ground-truth boxes as boxes.json")
     parser.add_argument("--grasps",
-                        choices=["graspgenx", "top_down"],
-                        default="graspgenx")
+                        choices=["top_down", "graspgenx"],
+                        default="top_down")
     parser.add_argument("--video_hz",
                         type=float,
                         default=5.0,

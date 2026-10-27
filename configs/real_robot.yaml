@@ -3,7 +3,7 @@
 # (see unipred/perception/scene.py).
 
 # "groundingdino_sam2" (the paper's; weights from scripts/install.sh),
-# "sam3" (a SAM3 server, CDG's; unipred/perception/sam3.py) or "fake" (the
+# "sam3" (scripts/sam3_server.py; unipred/perception/sam3.py) or "fake" (the
 # synthetic fixture of examples/real_robot).
 detector: groundingdino_sam2
 # The crop encoder: "dinov3" (the paper's), "resnet18" or "fake".

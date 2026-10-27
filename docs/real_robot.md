@@ -18,8 +18,8 @@ perceives every keyframe with `unipred/perception/scene.py`:
    prompt of each object type (`prompts` in `configs/real_robot.yaml`; a
    list of prompts for a type whose objects look different), and SAM2
    refines them into masks; or (`detector: sam3`) SAM3 segments the
-   instances of each prompt, from a SAM3 server (CDG's perception servers,
-   `$UNIPRED_SAM3_URL`). Overlapping detections of one type keep the best
+   instances of each prompt, from a SAM3 server (`scripts/sam3_server.py`,
+   at `$UNIPRED_SAM3_URL`). Overlapping detections of one type keep the best
    scored, and so do detections of different types that overlap almost
    entirely (the tray found as a tray and taken for a toy);
    `max_box_area` drops a type's detections larger than a fraction of the
@@ -122,7 +122,7 @@ same Franka at a table (`franka_scene.py`: the robot, the cameras, the
 scripted motions, grasping, the video). Table Clean:
 
 - **Scene.** A Franka Research 3 with a Robotiq 2F-85 (mujoco_menagerie;
-  the gripper on the flange as on DROID, as CDG's and R2S2R's `fr3_robotiq`)
+  the gripper on the flange as on DROID, as R2S2R's `fr3_robotiq`)
   at the edge of a table, with two or three toys, a wooden tray (the box)
   lengthwise on the robot's right, near or pushed out, a sponge (the wiper)
   at the tray's far end, and dirt. The toys, the tray and the sponge are
@@ -130,15 +130,16 @@ scripted motions, grasping, the video). Table Clean:
   seed. A camera across the table renders 640x480 images.
 - **Skills.** The seven skills of Table Clean are scripted motions: straight
   lines of the gripper, followed through inverse kinematics by the arm's
-  position actuators while MuJoCo simulates. A pick takes its grasps from
-  GraspGenX (`unipred/robot_sim/graspgenx.py`: CDG's perception server on
-  `localhost:8116`, or `$UNIPRED_GRASPGENX_URL`), given the object's
-  surface points and the rest of the scene as two depth cameras see it; it
-  tries the reachable grasps from above, best first, until both pads close
-  on the object (up to 3 plans of 6), and a weld then holds it. Pushing and
-  pulling the tray press on its near wall and drag it; wiping moves the
-  sponge over the dirt, which goes. `grasps="top_down"` grasps straight
-  down across the object's narrow side, without GraspGenX.
+  position actuators while MuJoCo simulates. A pick grasps straight down
+  across the object's narrow side (`grasps="top_down"`, the default), or
+  takes its grasps from GraspGenX (`--grasps graspgenx`: a GraspGenX
+  server, not included, on `localhost:8116` or `$UNIPRED_GRASPGENX_URL`;
+  `unipred/robot_sim/graspgenx.py`), given the object's surface points and
+  the rest of the scene as two depth cameras see it: it tries the reachable
+  grasps from above, best first, until both pads close on the object (up
+  to 3 plans of 6). A weld then holds the object. Pushing and pulling the
+  tray press on its near wall and drag it; wiping moves the sponge over
+  the dirt, which goes.
 - **Constraints are physical.** Table Clean Sim's rules come from the
   scene, not from checks. Pushed out, the tray's far end with the sponge
   is beyond the arm's reach (straight down, it reaches x = 0.75 m on that

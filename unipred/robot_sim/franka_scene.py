@@ -10,10 +10,11 @@ unipred/robot_sim/assets.py), skills and ground-truth atoms.
 
 Skills are scripted motions of the arm: straight lines of the gripper,
 followed through inverse kinematics by the arm's position actuators while
-MuJoCo simulates the scene. A pick takes its grasp from GraspGenX
-(grasps="graspgenx": CDG's server, given the object's points in depth images
-of the scene; unipred/robot_sim/graspgenx.py) or straight from above across
-the object's narrow side (grasps="top_down"). The gripper closes on the
+MuJoCo simulates the scene. A pick takes its grasp straight from above
+across the object's narrow side (grasps="top_down", the default) or from
+GraspGenX (grasps="graspgenx": a GraspGenX server, given the object's
+points in depth images of the scene; unipred/robot_sim/graspgenx.py), with
+the top-down grasp if none of GraspGenX's closes. The gripper closes on the
 object and a weld then holds it, so that a grasp never slips; a released
 object falls and settles. While `video` is a list, the main camera's frames
 go to it as the simulation runs. MujocoRobot drives a scene through the
@@ -51,7 +52,7 @@ TABLE_TEXELS = 1024  # of the table's texture, over its whole top
 CARRY_Z = 0.30  # of the gripper's centre between the pads, carrying
 _GRASP_PLANS, _GRASP_TRIES = 3, 6  # GraspGenX plans, grasps tried of each
 
-# The 2F-85 on DROID's coupling (as CDG's and R2S2R's FR3): its base this far
+# The 2F-85 on DROID's coupling (as R2S2R's FR3): its base this far
 # beyond link7, turned this far about link7's z; GraspGenX's gripper frame
 # ("gripper", z the approach, x the closing direction) on its mounting face;
 # the pads' centre, closed, this far along its z, and the fingertips this far
@@ -183,7 +184,7 @@ class FrankaTableScene:
 
     def __init__(self,
                  image_size: Tuple[int, int] = (480, 640),
-                 grasps: str = "graspgenx") -> None:
+                 grasps: str = "top_down") -> None:
         if grasps not in ("graspgenx", "top_down"):
             raise ValueError(f"Unknown grasps {grasps!r}.")
         self._grasps = grasps

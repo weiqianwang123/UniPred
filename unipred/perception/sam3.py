@@ -1,9 +1,7 @@
-"""SAM3 text-prompted segmentation and video tracking, as CDG's perception
-servers serve them.
+"""SAM3 text-prompted segmentation and video tracking, from a SAM3 server.
 
-CDG (cd envs/perception && pixi run serve --only sam) serves SAM3 over
-HTTP on port 8114; $UNIPRED_SAM3_URL points at a server elsewhere. A
-segmentation request is an RGB image and a text prompt; the answer is every
+scripts/sam3_server.py serves SAM3 over HTTP on port 8114;
+$UNIPRED_SAM3_URL points at a server elsewhere. A segmentation request is an RGB image and a text prompt; the answer is every
 instance of the prompt with its mask, box (x0, y0, x1, y1 in pixels) and
 score, best first (the server drops scores below 0.3). A track follows one
 instance from the mask it starts with through the frames sent to it, one
@@ -100,6 +98,5 @@ def _post(path: str, body: Dict) -> Dict:
                            f"{e.read().decode(errors='replace')}") from e
     except urllib.error.URLError as e:
         raise ConnectionError(
-            f"SAM3 is not reachable at {url()} ({e.reason}). Start CDG's "
-            "perception servers (cd envs/perception && pixi run serve --only "
-            "sam) or set UNIPRED_SAM3_URL.") from e
+            f"SAM3 is not reachable at {url()} ({e.reason}). Start "
+            "scripts/sam3_server.py or set UNIPRED_SAM3_URL.") from e

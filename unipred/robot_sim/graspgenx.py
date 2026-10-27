@@ -1,8 +1,8 @@
-"""Grasps from GraspGenX, as CDG's perception servers serve it.
+"""Grasps from GraspGenX (NVIDIA), from a GraspGenX server (optional: the
+scenes take grasps straight from above by default, grasps="top_down").
 
-CDG (cd envs/perception && pixi run serve --only graspgenx) serves
-GraspGenX over HTTP on port 8116; $UNIPRED_GRASPGENX_URL points at a server
-elsewhere. A request is a scene's points (Z up, metres) with the mask of
+The server is not part of this repository; it is expected on port 8116, or
+at $UNIPRED_GRASPGENX_URL. A request is a scene's points (Z up, metres) with the mask of
 the object to grasp; the answer is grasps of the Robotiq 2F-85, best first,
 in the points' frame: GraspGenX's gripper frame, z the approach, x the
 closing direction, the origin on the gripper's mounting face.
@@ -56,8 +56,8 @@ def plan_grasps(points: np.ndarray, mask: np.ndarray,
                            f"{e.read().decode(errors='replace')}") from e
     except urllib.error.URLError as e:
         raise ConnectionError(
-            f"GraspGenX is not reachable at {url} ({e.reason}). Start CDG's "
-            "perception servers (cd envs/perception && pixi run serve --only "
-            "graspgenx) or set UNIPRED_GRASPGENX_URL.") from e
+            f"GraspGenX is not reachable at {url} ({e.reason}). Start a "
+            "GraspGenX server, set UNIPRED_GRASPGENX_URL, or use top-down "
+            "grasps (--grasps top_down).") from e
     return (_decode(answer["grasps_base64"]).reshape(-1, 4, 4),
             _decode(answer["scores_base64"]).reshape(-1))
