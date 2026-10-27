@@ -121,12 +121,16 @@ design. Each entry says what was chosen and why.
   unsolvable). A rule preferring variants that keep a single-object type
   (the table) free was tried and dropped: "the hand holds no wiper" must
   quantify the wiper to be a precondition of picking a toy.
-- **Skeletons in Table Clean Sim**: 50, as Satellites. The demonstrations
-  cannot tell whether "no toy is on the table" belongs to taking the wiper
-  or to wiping (both explain them equally); a model that puts it on the
-  former tries wiping first when a task starts with the wiper in hand, and
-  refinement rejects that. Seed 0, cached LLM replies: 34 of 50 test tasks
-  with 8 skeletons, 46 with 50; without the derived changes 22 with 50.
+- **Where derived preconditions go.** The demonstrations cannot tell
+  whether "no toy is on the table" belongs to taking the wiper or to
+  wiping, and the planning effort on them prefers the former (it even
+  saves search there); tasks that start with the wiper in hand then plan
+  wiping first. A derived precondition is therefore dropped from an
+  operator none of whose parameters has a type of its basic predicate
+  (taking the wiper is about the robot, the wiper and the box) before the
+  score-based pruning. Seed 0, cached LLM replies: Table Clean Sim 50 of 50
+  test tasks (46 without the rule, with 50 skeletons), with the default 8
+  skeletons; the simulated robot's sessions with true boxes 9 of 10 (6).
 - **Sampler inputs.** Learned samplers see every object feature but those
   `domain_sampler_data_filter` leaves out: Satellites' ids
   (object.id, calibration_obj_id, read_obj_id) are labels, and test tasks
@@ -259,11 +263,26 @@ design. Each entry says what was chosen and why.
 - **Names.** The raw format names the objects of a type left to right in
   the first keyframe; the collector renames the toys so, or the labels of
   one toy would go with another's crops.
-- **Stains** are opaque blots stacked from pale to dark: translucent ones
-  cast stippled shadows, and small dark blots were detected as toys.
+- **Stains** are painted into the texture of a thin layer over the table
+  (the table's own texture with soft brown smears), hidden once the table
+  is wiped. 3D blots, stacked or translucent, were detected as toys (a
+  held toy that went undetected was then matched to a stain for the rest
+  of its session) or cast stippled shadows.
+- **Toys** that SAM3 handles poorly were replaced: a car of separately
+  coloured parts (split into several "toys") and a stacking toy that
+  toppled.
 - **Perception.** SAM3 (CDG's server) is the simulator config's detector:
   it found 258 of 259 toys where GroundingDINO found 189 of 215, but also
   takes the arm, tray and sponge for toys; detections of different types
   that overlap almost entirely (IoU > 0.7) keep the best scored, which
-  removes those. Its "robot" is the whole arm (no prompt found the
-  gripper alone), so the robot's true box is the whole robot's.
+  removes those. Its robot is the whole arm (no prompt found the gripper
+  alone), so the robot's true box is the whole robot's; the prompt is
+  "robotic arm": "robot" also matches the toys that are robot figures
+  (Android), which then lost to it, and adding "robot arm" found parts of
+  the arm (the robot right in 452 of 510 keyframes, against 500 of 510).
+- **Tracking is the bottleneck of the real-robot pipeline on the
+  simulator.** With true boxes, a linear classifier tells a toy on the
+  table from one elsewhere by its ResNet-18 features without error, and
+  UniPred solves 9 of 10 test scenes (20 demonstrations); with detection
+  and matching it was 95 percent, too noisy for the classifiers' loss
+  threshold, and UniPred did not invent the toy-table predicate.

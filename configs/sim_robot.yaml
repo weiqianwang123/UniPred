@@ -20,12 +20,15 @@ crop_padding: 0.15
 mask_crops: false
 cameras: [0]
 # The text prompts of each object type: the Franka (the whole arm, its
-# gripper and what it holds in the crop), the scanned toys, the wooden tray
-# (the box), the sponge (the wiper) and the table. A detection that
-# overlaps a better one of another type is dropped (SAM3 also takes the
-# arm, the tray and the sponge for toys).
+# gripper and what it holds in the crop; "robot" alone also matches the
+# toys that are robot figures, which then lose to it), the scanned toys,
+# the wooden tray (the box), the sponge (the wiper) and the table. A
+# detection that overlaps a better one of another type is dropped (SAM3
+# also takes the arm, the tray and the sponge for toys). On 255 images
+# (every second keyframe of 60 sessions): every tray and table, 250 of 255
+# sponges, 512 of 515 toys and 247 of 255 robots.
 prompts:
-  robot: robot
+  robot: robotic arm
   toy: toy
   box: wooden tray
   wiper: purple sponge
