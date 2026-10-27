@@ -184,11 +184,13 @@ class LoopVideo:
         draw.rectangle((0, 0, width + _PANEL_WIDTH, _HEADER),
                        fill=(35, 40, 48))
         draw.text((12, 9), self._title, fill=(255, 255, 255), font=_font(18))
-        if note:
-            draw.text((width + 12, 11),
+        if note:  # at the right end of the header
+            font = _font(15)
+            draw.text((width + _PANEL_WIDTH - 12 - draw.textlength(note, font),
+                       11),
                       note,
                       fill=(255, 210, 90),
-                      font=_font(15))
+                      font=font)
         x, y = width + 14, _HEADER + 10
         bold, small = _font(16), _font(13)
         draw.text((x, y), "Plan", fill=(30, 30, 30), font=bold)

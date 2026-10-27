@@ -137,6 +137,9 @@ def main() -> None:
     parser.add_argument("--video",
                         help="an annotated video of the loop to write "
                         "(.mp4 or .gif; see unipred/loop_video.py)")
+    parser.add_argument("--title",
+                        help="the video's title (default: the domain, the "
+                        "session's name and the approach)")
     parser.add_argument("--max_steps", type=int, default=20)
     parser.add_argument("--robot_config", default="configs/real_robot.yaml")
     parser.add_argument("--detector", help="override the config's detector")
@@ -161,8 +164,8 @@ def main() -> None:
         approach = {"unipred": "UniPred"}.get(deployment.approach.get_name(),
                                              deployment.approach.get_name())
         video = LoopVideo(
-            f"{domain} ({robot_kind}): {scene.replace('_', ' scene ')}, "
-            f"{approach} in the closed loop",
+            args.title or f"{domain} ({robot_kind}): "
+            f"{scene.replace('_', ' scene ')}, {approach} in the closed loop",
             predicates,
             predicate_labels(invented, sorted(deployment.env.predicates),
                              deployment.env.annotated_states()))
