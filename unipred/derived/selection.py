@@ -32,13 +32,17 @@ With derived-aware selection:
   an operator none of whose parameters has a type of its basic predicate
   ("no toy is on the table", about toys and tables, from taking the
   sponge, whose arguments are the robot, the sponge and the tray), and
-  each remaining one if the planning effort on the demonstrations stays
-  within PRUNE_TOLERANCE of the operators' with all of them: demonstrations
-  in one order make "no toy is on the table" hold before every later
-  operator, and the effort on them alone cannot tell taking the sponge
-  from wiping (both rule out wiping too early; the former even saves
-  search), while tasks that start with the sponge in hand need it on
-  wiping.
+  each remaining one, in turn, if the planning effort on the
+  demonstrations without it is within PRUNE_TOLERANCE, either way, of the
+  effort with it: demonstrations in one order make "no toy is on the
+  table" hold before every later operator, and the effort on them alone
+  cannot tell taking the sponge from wiping (both rule out wiping too
+  early; the former even saves search), while tasks that start with the
+  sponge in hand need it on wiping. A precondition whose removal makes
+  the effort smaller rules plans out of the search on the demonstrations
+  (there are only correct ones to find, so fewer constraints are always
+  cheaper), and is kept: "no toy is on the table" on wiping was dropped
+  for being 1.4 percent cheaper without, and wiping came first.
 """
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ import contextlib
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
@@ -68,9 +72,35 @@ from unipred.derived.rules import DerivedRule
 # Below the selection threshold, a candidate must lower the score by this
 # fraction to be added.
 REFINE_MIN_IMPROVEMENT = 0.01
-# A derived precondition is dropped if the score rises by at most this
+# A derived precondition is dropped if the score changes by at most this
 # fraction without it.
 PRUNE_TOLERANCE = 0.01
+
+
+def _prune_unneeded_preconditions(
+        nsrts: List[NSRT], derived: Set[Predicate],
+        score: Callable[[List[NSRT]], float]) -> List[NSRT]:
+    """The NSRTs without each derived precondition, in turn, whose removal
+    changes the score by at most PRUNE_TOLERANCE (see module doc)."""
+    nsrts = list(nsrts)
+    current = score(nsrts)
+    for i in range(len(nsrts)):
+        for atom in sorted(nsrts[i].preconditions, key=str):
+            if atom.predicate not in derived:
+                continue
+            trial = list(nsrts)
+            trial[i] = nsrts[i].op.copy_with(
+                preconditions=nsrts[i].preconditions - {atom}).make_nsrt(
+                    nsrts[i].option, nsrts[i].option_vars, nsrts[i].sampler)
+            without = score(trial)
+            same = abs(without - current) <= PRUNE_TOLERANCE * current
+            logging.info(f"Derived precondition {atom} of {nsrts[i].name}: "
+                         f"score without it {without} (with it {current}), "
+                         f"{'dropped' if same else 'kept'}.")
+            if same:
+                nsrts, current = trial, without
+    return nsrts
+
 
 def _relevant_preconditions(nsrt: NSRT,
                             rules: Dict[Predicate, DerivedRule]) -> NSRT:
@@ -276,25 +306,10 @@ class DerivedSelectionMixin:
                     [n.op for n in nsrts],
                     [(n.option, list(n.option_vars)) for n in nsrts])
 
-        nsrts = [_relevant_preconditions(n, self._derived_rules)
-                 for n in sorted(self._nsrts)]  # type: ignore[attr-defined]
-        limit = _score(nsrts) * (1 + PRUNE_TOLERANCE)
-        for i in range(len(nsrts)):
-            for atom in sorted(nsrts[i].preconditions, key=str):
-                if atom.predicate not in self._derived_rules:
-                    continue
-                trial = list(nsrts)
-                trial[i] = nsrts[i].op.copy_with(
-                    preconditions=nsrts[i].preconditions - {atom}).make_nsrt(
-                        nsrts[i].option, nsrts[i].option_vars,
-                        nsrts[i].sampler)
-                score = _score(trial)
-                verdict = "dropped" if score <= limit else "kept"
-                logging.info(f"Derived precondition {atom} of "
-                             f"{nsrts[i].name}: score without it {score} "
-                             f"(limit {limit}), {verdict}.")
-                if score <= limit:
-                    nsrts = trial
+        nsrts = _prune_unneeded_preconditions(
+            [_relevant_preconditions(n, self._derived_rules)
+             for n in sorted(self._nsrts)],  # type: ignore[attr-defined]
+            set(self._derived_rules), _score)
         self._nsrts = set(nsrts)
         logging.info("NSRTs after pruning derived preconditions:")
         for nsrt in nsrts:

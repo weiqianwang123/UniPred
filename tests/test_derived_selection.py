@@ -152,3 +152,39 @@ def test_derived_preconditions_only_about_parameter_types():
                 null_sampler)
     kept = _relevant_preconditions(nsrt, rules)
     assert kept.preconditions == {LiftedAtom(free, [r])}
+
+
+def test_derived_preconditions_kept_if_the_score_changes_without():
+    """A derived precondition is dropped only if the score is the same
+    without it (within 1 percent either way): one whose removal makes
+    planning on the demonstrations cheaper rules plans out and is kept."""
+    # pylint: disable=import-outside-toplevel
+    from predicators.structs import NSRT, LiftedAtom, Type, Variable
+    from predicators.utils import null_sampler
+    from unipred.derived.selection import _prune_unneeded_preconditions
+    robot, table = Type("robot", ["x"]), Type("table", ["x"])
+    no_toy = Predicate("NoToyOn", [table], lambda s, o: True)
+    free = Predicate("HoldsNoToy", [robot], lambda s, o: True)
+    given = Predicate("Given", [robot], lambda s, o: True)
+    r, t = Variable("?r", robot), Variable("?t", table)
+    option = utils.SingletonParameterizedOption(
+        "Wipe", lambda s, m, o, p: None, types=[robot, table])
+    atoms = {LiftedAtom(no_toy, [t]), LiftedAtom(free, [r]),
+             LiftedAtom(given, [r])}
+    nsrt = NSRT("Wipe", [r, t], atoms, set(), set(), set(), option, [r, t],
+                null_sampler)
+    # Without NoToyOn wiping may come first: 1.4 percent cheaper. Without
+    # HoldsNoToy nothing changes.
+    costs = {"NoToyOn": 1.4, "HoldsNoToy": 0.0}
+
+    def _score(nsrts):
+        missing = {a.predicate.name for a in atoms} - \
+            {a.predicate.name for a in nsrts[0].preconditions}
+        return 100 - sum(costs[name] for name in missing)
+
+    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score)
+    assert pruned.preconditions == {LiftedAtom(no_toy, [t]),
+                                    LiftedAtom(given, [r])}
+    costs["NoToyOn"] = 0.5
+    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score)
+    assert pruned.preconditions == {LiftedAtom(given, [r])}

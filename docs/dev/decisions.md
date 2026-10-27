@@ -131,6 +131,20 @@ design. Each entry says what was chosen and why.
   score-based pruning. Seed 0, cached LLM replies: Table Clean Sim 50 of 50
   test tasks (46 without the rule, with 50 skeletons), with the default 8
   skeletons; the simulated robot's sessions with true boxes 9 of 10 (6).
+- **Pruning drops only what makes no difference.** The score-based
+  pruning dropped a derived precondition if the score did not rise by
+  more than 1 percent without it, so also when it fell; but planning on
+  the demonstrations only gets cheaper with fewer preconditions (there
+  are no wrong plans among them to rule out), so a precondition that
+  matters looks dispensable. On the simulated robot's recordings with 50
+  demonstrations, "no toy is on the table" on wiping was dropped for a
+  score 1.4 percent lower, and 5 of 10 test tasks (6 of 10 in-domain)
+  then wiped first. A derived precondition is now dropped only if the
+  score without it is within 1 percent either way of the score with it
+  (the operators before, after the earlier drops). The runs above make
+  the same choices under both rules; on those recordings (seed 0, cached
+  LLM replies) UniPred then solves 6 of 10 test tasks (3 before) and 10
+  of 10 in-domain (4).
 - **Sampler inputs.** Learned samplers see every object feature but those
   `domain_sampler_data_filter` leaves out: Satellites' ids
   (object.id, calibration_obj_id, read_obj_id) are labels, and test tasks
