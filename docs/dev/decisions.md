@@ -86,6 +86,15 @@ design. Each entry says what was chosen and why.
   orders of magnitude, and a fixed mapping keeps a proposal's score
   unchanged as new proposals arrive. With `unipred_loss_feedback: false`
   the LLM sees only "accepted" or "rejected".
+- **Feedback names the failed check.** A proposal whose validation loss
+  is low enough can still be rejected by IVNTR's effect check or, if it
+  only adds or only deletes, by the precondition check (it must hold
+  before some option that leaves it unchanged). The score alone told the
+  LLM such a proposal fit "well enough to be kept", so on Packing it never
+  proposed "placing deletes it" (a free region) after "placing adds it"
+  (an occupied one, which is no option's precondition) scored 100. The
+  LLM now sees after the score whether the proposal was kept, or which
+  check rejected it (fork hook _report_checks).
 - **Classifier seeds.** Each classifier is seeded from (seed, predicate,
   iteration, proposal index), so the same seed learns the same predicates
   whatever order the parallel training processes finish in.

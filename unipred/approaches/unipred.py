@@ -103,6 +103,13 @@ class UniPredApproach(DerivedSelectionMixin, BilevelLearningApproach):
                                val_losses)
         return ae_vecs, scores, val_losses, model_paths
 
+    def _report_checks(self, pred, ae_vectors, outcomes):
+        """Tell the predicate's proposer which proposals were kept and why
+        the others were not."""
+        if pred in self._proposers:
+            self._proposers[pred].record_outcomes(
+                [two2one(v).numpy() for v in ae_vectors], outcomes)
+
     def _llm(self) -> LLMClient:
         if self._client is None:
             self._client = LLMClient.from_settings(

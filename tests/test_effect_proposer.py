@@ -125,3 +125,27 @@ def test_seeds_only_and_forced_rows():
     client = _Scripted(["ADD: Pick\nDEL:\nWHY: x"])
     forced = _proposer(client, allowed=[{0, 1, 2}, {DELETE}, {0}])
     assert list(forced.propose()) == [ADD, DELETE, NO_EFFECT]
+
+
+def test_feedback_names_the_failed_check():
+    """A proposal whose loss is low but that IVNTR's checks rejected is
+    reported as rejected, with the check; a kept one as kept."""
+    client = _Scripted(["ADD:\nDEL: Wipe\nWHY: x"] * 2)
+    occupied, holding = np.array([ADD, ADD, 0]), np.array([ADD, DELETE, 0])
+    for feedback in (True, False):
+        proposer = _proposer(client, seeds=[occupied, holding],
+                             feedback=feedback)
+        proposer.propose()
+        proposer.propose()
+        proposer.record_losses([occupied, holding], [0.001, 0.002])
+        proposer.record_outcomes([occupied, holding],
+                                 ["precondition", "kept"])
+        proposer.propose()
+        _, user = client.prompts[-1]
+        if feedback:
+            assert ("ADD: pick, place | DEL:  -> score 100, rejected: the "
+                    "predicate holds before no action") in user
+            assert "ADD: pick | DEL: place -> score 100, kept" in user
+        else:
+            assert "ADD: pick, place | DEL:  -> rejected" in user
+            assert "ADD: pick | DEL: place -> accepted" in user

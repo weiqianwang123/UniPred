@@ -6,7 +6,8 @@ loop is on) new proposals from the LLM. The LLM sees the domain, the
 demonstrations and every earlier proposal with the feedback from the
 classifier trained on it: a score in
 [0, 100] derived from the validation loss, or, without loss feedback,
-only whether the proposal was accepted.
+only whether the proposal was accepted; and, for a proposal that was not
+kept although its loss was low enough, which of IVNTR's checks it failed.
 
 It implements the searcher interface that
 BilevelLearningApproach.gen_sat_vec() expects (propose() and
@@ -67,6 +68,18 @@ def allowed_codes(num_rows: int,
     return allowed
 
 
+# The feedback on a proposal after its score, by outcome.
+_CHECKS = {
+    "kept": ", kept",
+    "effects": (", rejected: on some transitions the classifier's value "
+                "does not change as the pattern says"),
+    "precondition": (", rejected: the predicate holds before no action "
+                     "that leaves it unchanged, so it is no action's "
+                     "precondition"),
+    "not needed": ", not kept: enough patterns were kept already",
+}
+
+
 class EffectProposer:
     """Proposes effect vectors of one predicate type (see module doc)."""
 
@@ -88,6 +101,8 @@ class EffectProposer:
         # Every proposal in order, with its validation loss (None until it
         # is trained, inf if it violates the constraints).
         self._history: Dict[Codes, Optional[float]] = {}
+        # What became of each trained proposal (see record_outcomes).
+        self._outcomes: Dict[Codes, str] = {}
         self._num_requests = 0
 
     @property
@@ -138,6 +153,14 @@ class EffectProposer:
         for vector, loss in zip(vectors, losses):
             self._history[tuple(int(c) for c in vector)] = float(loss)
 
+    def record_outcomes(self, vectors: Sequence[np.ndarray],
+                        outcomes: Sequence[str]) -> None:
+        """Record what became of trained proposals: "kept", or the check
+        that rejected them (see
+        BilevelLearningApproach._report_checks)."""
+        for vector, outcome in zip(vectors, outcomes):
+            self._outcomes[tuple(int(c) for c in vector)] = outcome
+
     def _describe(self, codes: Codes) -> str:
         adds = [
             self._names.option(o) for o, c in zip(self._rows, codes)
@@ -159,18 +182,20 @@ class EffectProposer:
             if DELETE in a
         ]
         history = [
-            f"- {self._describe(codes)} -> {self._feedback(loss)}"
+            f"- {self._describe(codes)} -> {self._feedback(codes, loss)}"
             for codes, loss in self._history.items()
         ] or ["(none)"]
         history += [f"Your previous reply was invalid: {n}" for n in notes]
         if self._loss_feedback:
             feedback = ("A score from 0 to 100 says how well a classifier "
                         "with the effect pattern fits the robot's data; 100 "
-                        "means it fits well enough to be kept.")
+                        "means it fits well enough. A pattern is kept only "
+                        "if its classifier also passes the checks noted "
+                        "after its score.")
         else:
             feedback = ("'accepted' means a classifier with the effect "
-                        "pattern fits the robot's data well enough to be "
-                        "kept.")
+                        "pattern fits the robot's data well enough and "
+                        "passes the checks, so it is kept.")
         return load_prompt("effect_proposal_user.txt").substitute(
             description=self._context.description or "(none)",
             domain=self._context.domain,
@@ -182,16 +207,20 @@ class EffectProposer:
             history="\n".join(history),
             feedback=feedback)
 
-    def _feedback(self, loss: Optional[float]) -> str:
+    def _feedback(self, codes: Codes, loss: Optional[float]) -> str:
         """What the LLM learns about a proposal."""
         if loss is None:
             return "not trained yet"
         if math.isinf(loss):
             return "impossible for these actions"
-        if self._loss_feedback:
-            return "score " + str(
-                loss_to_score(loss, self._accept_loss, self._zero_loss))
-        return "accepted" if loss <= self._accept_loss else "rejected"
+        outcome = self._outcomes.get(codes)
+        if not self._loss_feedback:
+            if outcome is not None:
+                return "accepted" if outcome == "kept" else "rejected"
+            return "accepted" if loss <= self._accept_loss else "rejected"
+        feedback = "score " + str(
+            loss_to_score(loss, self._accept_loss, self._zero_loss))
+        return feedback + _CHECKS.get(outcome, "")
 
     def _parse(self, reply: str) -> Tuple[Optional[Codes], str]:
         fields: Dict[str, str] = {}
