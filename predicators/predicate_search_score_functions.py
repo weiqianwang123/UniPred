@@ -228,9 +228,9 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                                 segmented_trajs: List[List[Segment]],
                                 strips_ops: List[STRIPSOperator],
                                 option_specs: List[OptionSpec],
-                                max_traj_used: Optional[int] = -1) -> float:
+                                max_traj_used: Optional[int] = None) -> float:
         """Get the expected planning effort of the operators on the
-        demonstrations."""
+        demonstrations (the first max_traj_used trajectories; None: all)."""
         assert self.metric_name in ("num_nodes_created", "num_nodes_expanded")
         score = 0.0
         seen_demos = 0
