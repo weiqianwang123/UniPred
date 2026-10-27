@@ -15,13 +15,14 @@ crop_padding: 0.15
 mask_crops: false
 cameras: [0]
 # The text prompts of each object type: the Franka, the snack bars (the
-# targets), the obstacles (bottles, a gift box, a lunch box) and the black
-# basket (the box). A detection that overlaps a better one of another type
-# is dropped.
+# targets; "yellow" finds them in the gripper and in the basket, where
+# "candy bar" alone does not), the obstacles (bottles, a gift box, a lunch
+# box on its side, which SAM3 calls a bag) and the black basket (the box).
+# A detection that overlaps a better one of another type is dropped.
 prompts:
   robot: robotic arm
-  target: candy bar
-  obstacle: [bottle, gift box, lunch box]
+  target: [yellow candy bar, candy bar]
+  obstacle: [bottle, gift box, bag, pink lunch box]
   box: black basket
 # The targets look alike, so they keep their names by being followed from
 # keyframe to keyframe (as the toys of configs/sim_robot.yaml), and so do
