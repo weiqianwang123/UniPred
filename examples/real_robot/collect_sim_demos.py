@@ -7,11 +7,13 @@ and are demonstrated by its oracle plan, executed skill by skill by the
 simulated Franka (unipred/robot_sim/table_clean_mujoco.py) with a keyframe
 image before each skill and after the last; test scenes are the initial
 scenes of its out-of-distribution tasks (three toys, toys already in the
-tray, a toy or the sponge in hand, the tray on the far side). Every keyframe
-records the ground-truth atoms (atoms.json) and the objects' image boxes
-(gt_boxes.json, for evaluating detection; the processing does not read
-it). With --give_boxes, the boxes are also written as boxes.json, which
-replaces detection.
+tray, a toy or the sponge in hand, the tray on the far side). The toys are
+named left to right in the first keyframe, as the processing expects. Every
+keyframe records the ground-truth atoms (atoms.json) and the objects' image
+boxes (gt_boxes.json, for evaluating detection, or for the boxes of objects
+the detector misses: process_demos.py --fill_missing gt_boxes.json). With
+--give_boxes, the boxes are also written as boxes.json, which replaces
+detection.
 
 Picks take their grasps from GraspGenX (CDG's perception server, see
 unipred/robot_sim/graspgenx.py), or with --grasps top_down straight from
@@ -83,25 +85,44 @@ def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
     }:
         raise RuntimeError(f"The demonstration in {directory} does not reach "
                            "the goal.")
+    # The raw format names objects of a type left to right in the first
+    # keyframe (by their boxes' centres): rename the toys so.
+    order = sorted(sim.toys,
+                   key=lambda n: (boxes[0][n][0] + boxes[0][n][2],
+                                  boxes[0][n][1] + boxes[0][n][3]))
+    rename = {old: f"toy{k}" for k, old in enumerate(order)}
+
+    def _name(name: str) -> str:
+        return rename.get(name, name)
+
+    def _atoms(entries: List) -> List:
+        return sorted([n, [_name(a) for a in args]] for n, args in entries)
+
+    description = sim.description()
+    description["toys"] = [[_name(n), p] for n, p in description["toys"]]
     files = {
         "session.json": {
             "split": split,
-            "objects": sim.objects(),
-            "goal": [[name, list(args)] for name, args in goal],
+            "objects": {_name(n): t
+                        for n, t in sorted(sim.objects().items())},
+            "goal": _atoms(goal),
             # Not read by the processing: which scanned toy each toy is,
             # and the scene to rebuild (closed_loop_example.py --robot sim).
-            "toy_models": sim.toy_models,
-            "sim": sim.description(),
+            "toy_models": {_name(n): m
+                           for n, m in sim.toy_models.items()},
+            "sim": description,
         },
         "actions.json": [{
             "option": name,
-            "objects": list(objects)
+            "objects": [_name(o) for o in objects]
         } for name, objects in steps],
-        "atoms.json": atoms,
-        "gt_boxes.json": boxes,
+        "atoms.json": [_atoms(a) for a in atoms],
+        "gt_boxes.json": [{_name(n): b
+                           for n, b in sorted(frame.items())}
+                          for frame in boxes],
     }
     if give_boxes:
-        files["boxes.json"] = boxes
+        files["boxes.json"] = files["gt_boxes.json"]
     os.makedirs(directory, exist_ok=True)
     for index, image in enumerate(images):
         image.save(os.path.join(directory, f"{index}.png"))

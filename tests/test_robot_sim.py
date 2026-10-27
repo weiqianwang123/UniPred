@@ -81,3 +81,31 @@ def test_robot_interface_records_frames(sim):
     assert ("BoxFar", ("box", )) in sim.atoms()
     assert len(robot.frames) == 1
     assert not sim.problems()
+
+
+def test_collected_sessions_name_toys_left_to_right(tmp_path):
+    """collect_sim_demos.py writes a demonstration and a test scene in the
+    raw format, the toys named left to right in the first keyframe."""
+    # pylint: disable=import-outside-toplevel
+    import json
+    import subprocess
+    import sys
+    subprocess.run([
+        sys.executable, "examples/real_robot/collect_sim_demos.py", "--out",
+        str(tmp_path), "--num_train", "1", "--num_test", "1", "--grasps",
+        "top_down"
+    ],
+                   check=True)
+    for name in ("train_00", "test_00"):
+        session = tmp_path / name
+        boxes = json.loads((session / "gt_boxes.json").read_text())
+        toys = sorted(n for n in boxes[0] if n.startswith("toy"))
+        centres = [boxes[0][t][0] + boxes[0][t][2] for t in toys]
+        assert centres == sorted(centres)
+        info = json.loads((session / "session.json").read_text())
+        assert set(info["toy_models"]) == set(toys)
+        assert sorted(n for n, _ in info["sim"]["toys"]) == toys
+    actions = json.loads((tmp_path / "train_00" / "actions.json").read_text())
+    atoms = json.loads((tmp_path / "train_00" / "atoms.json").read_text())
+    assert len(atoms) == len(actions) + 1
+    assert (tmp_path / "train_00" / f"{len(actions)}.png").exists()

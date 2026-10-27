@@ -60,6 +60,7 @@ Pose = np.ndarray  # 4 x 4
 # The world is the robot's base frame: x forward, y left, z up; the table top
 # is z = 0.
 _TABLE_X, _TABLE_Y, _TABLE_HEIGHT = (-0.3, 0.85), (-0.65, 0.65), 0.76
+_TABLE_RGB = (0.86, 0.85, 0.82)
 _TOY_AREA = ((0.38, 0.62), (0.05, 0.30))  # where toys stand (x, y)
 _TOY_GAP = 0.13  # between the centres of toys
 _DIRT_AREA = ((0.36, 0.64), (0.03, 0.31))
@@ -342,7 +343,7 @@ class TableCleanMujoco:
     def boxes(self) -> Dict[str, Tuple[float, float, float, float]]:
         """The image box (x0, y0, x1, y1 in pixels) of every object in the
         main camera: its visual geoms' vertices projected, clipped to the
-        image (occlusion aside). The robot's is its gripper's."""
+        image (occlusion aside)."""
         m, d = self.model, self.data
         cam = m.camera("main").id
         height, width = self._renderer.height, self._renderer.width
@@ -355,7 +356,7 @@ class TableCleanMujoco:
                 continue
             body = int(m.geom_bodyid[g])
             name = m.body(body).name
-            if name.startswith("gripper/"):
+            if body in self._robot_bodies:
                 groups.setdefault("robot", []).append(g)
             elif name in self.place or name == "box":
                 groups.setdefault(name, []).append(g)
@@ -1141,7 +1142,7 @@ class TableCleanMujoco:
         textures = [
             ("floor", mujoco.mjtBuiltin.mjBUILTIN_CHECKER, [0.46, 0.44, 0.42],
              [0.41, 0.39, 0.37], 0.0),
-            ("table", mujoco.mjtBuiltin.mjBUILTIN_FLAT, [0.86, 0.85, 0.82],
+            ("table", mujoco.mjtBuiltin.mjBUILTIN_FLAT, list(_TABLE_RGB),
              [0.8, 0.79, 0.76], 0.05),
             ("wall", mujoco.mjtBuiltin.mjBUILTIN_FLAT, [0.78, 0.8, 0.82],
              [0.74, 0.76, 0.78], 0.02),
@@ -1316,29 +1317,49 @@ class TableCleanMujoco:
         drive.set_to_position(kp=3000.0, kv=150.0)
 
     def _add_dirt(self, spec: mujoco.MjSpec) -> None:
-        """Smudges on the table: a few flat blots each."""
+        """Stains on the table: a few smears, each of flat blots stacked from
+        large and pale (nearly the table's colour) to small and dark, so
+        that they fade at the edges. (Translucent blots would do it too, but
+        MuJoCo draws their shadows stippled.)"""
         (x0, x1), (y0, y1) = _DIRT_AREA
+        table = np.array(_TABLE_RGB)
+        spec.add_material(name="dirt", specular=0.0, shininess=0.0)
         k = 0
         for _ in range(4):
-            cx = self._rng.uniform(x0 + 0.03, x1 - 0.03)
-            cy = self._rng.uniform(y0 + 0.03, y1 - 0.03)
-            shade = self._rng.uniform(0.4, 0.55)
-            for _ in range(self._rng.integers(4, 8)):
-                rx, ry = self._rng.uniform(0.005, 0.016, size=2)
-                spec.worldbody.add_geom(
-                    name=f"dirt{k}",
-                    type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
-                    size=[rx, ry, 0.0006],
-                    pos=[
-                        cx + self._rng.normal(0, 0.018),
-                        cy + self._rng.normal(0, 0.018), 0.0003
-                    ],
-                    quat=_yaw_quat(self._rng.uniform(0, np.pi)),
-                    rgba=[shade + 0.1, shade * 0.8, shade * 0.55, 0.6],
-                    contype=0,
-                    conaffinity=0,
-                    group=1)
-                k += 1
+            cx = self._rng.uniform(x0 + 0.04, x1 - 0.04)
+            cy = self._rng.uniform(y0 + 0.04, y1 - 0.04)
+            stretch = self._rng.uniform(1.0, 2.0)
+            angle = self._rng.uniform(0, np.pi)
+            dark = np.array([0.42, 0.31, 0.2]) * self._rng.uniform(0.85, 1.1)
+            layers = 12
+            for blob in range(3):
+                along, across = self._rng.normal(0, 0.015, size=2)
+                scale = self._rng.uniform(0.6, 1.0)
+                for layer, t in enumerate(np.linspace(0.08, 0.7, layers)):
+                    size = (1.0 - t) * 0.045 * scale
+                    rgb = table + t * (dark - table)
+                    jitter = self._rng.normal(0, 0.25 * size, size=2)
+                    a = along * stretch + jitter[0]
+                    b = across + jitter[1]
+                    c, s_ = np.cos(angle), np.sin(angle)
+                    spec.worldbody.add_geom(
+                        name=f"dirt{k}",
+                        type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
+                        size=[
+                            size * stretch * self._rng.uniform(0.8, 1.2),
+                            size * self._rng.uniform(0.8, 1.2), 0.0002
+                        ],
+                        pos=[
+                            cx + c * a - s_ * b, cy + s_ * a + c * b,
+                            0.0002 + 0.00008 * (layers * blob + layer)
+                        ],
+                        quat=_yaw_quat(angle + self._rng.normal(0, 0.4)),
+                        rgba=[*rgb, 1.0],
+                        material="dirt",
+                        contype=0,
+                        conaffinity=0,
+                        group=1)
+                    k += 1
 
     @staticmethod
     def _add_camera(spec: mujoco.MjSpec, name: str, position: Sequence[float],
