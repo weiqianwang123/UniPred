@@ -123,6 +123,17 @@ All with `scripts/run.sh` unless noted.
     (it is "this obstacle has not been moved", which holds for every
     target), while the target predicate is Clear on all of them. Closed
     loop on 6 unseen scenes of the training distribution (seed 1): 6/6.
+- Cluttered Retrieval with a target behind one obstacle at most (847a070;
+  10 new test scenes, raw_v4, processed with the current code): UniPred
+  (47 demonstrations) in-domain 6/10, OOD 0/10 offline; the
+  obstacle-target predicate agrees with Blocks on 98 percent of the
+  training groundings but 72 percent of the test scenes' (23 false
+  blocks), and every failing plan clears an obstacle for a target it
+  does not block. Closed loop on the 10 test scenes: 9 reach the goal
+  (most after replanning when a clearing did not free its target;
+  test_07 kept failing to grasp a target).
+- Blocks (500 demonstrations, codex, current code): UniPred OOD 41/50,
+  in-domain 50/50; the 9 failures are 5 s planning timeouts.
 - IVNTR's effect check on these image features: the non-change loss is
   JS divergence alone, diluted over every unchanged grounding, so a
   state never labelled by a change (a toy in the tray, a target in the
