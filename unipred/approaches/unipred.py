@@ -103,6 +103,17 @@ class UniPredApproach(DerivedSelectionMixin, BilevelLearningApproach):
                                val_losses)
         return ae_vecs, scores, val_losses, model_paths
 
+    def _keep_order(self, pred, ae_vector, val_loss, guidance):
+        """Of the proposals that passed, the PDDL seeds first (the effects
+        that PDDL completion gave the predicate), then the lowest loss:
+        losses of passing proposals differ by noise (e.g. 1e-4 against
+        2e-4), and "picking adds it" had beaten the seed "the robot holds
+        the toy"."""
+        proposer = self._proposers.get(pred)
+        seed = proposer is not None and proposer.is_seed(
+            two2one(ae_vector).numpy())
+        return (not seed, val_loss, guidance)
+
     def _report_checks(self, pred, ae_vectors, outcomes):
         """Tell the predicate's proposer which proposals were kept and why
         the others were not."""

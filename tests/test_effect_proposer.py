@@ -149,3 +149,11 @@ def test_feedback_names_the_failed_check():
         else:
             assert "ADD: pick, place | DEL:  -> rejected" in user
             assert "ADD: pick | DEL: place -> accepted" in user
+
+
+def test_seeds_are_known():
+    """The proposer tells its PDDL seeds from the LLM's proposals."""
+    seed = np.array([ADD, DELETE, 0])
+    proposer = _proposer(None, seeds=[seed])
+    assert proposer.is_seed(seed)
+    assert not proposer.is_seed(np.array([ADD, 0, 0]))

@@ -153,6 +153,10 @@ class EffectProposer:
         for vector, loss in zip(vectors, losses):
             self._history[tuple(int(c) for c in vector)] = float(loss)
 
+    def is_seed(self, vector: np.ndarray) -> bool:
+        """Whether a vector is one of the PDDL seeds."""
+        return tuple(int(c) for c in vector) in self._seeds
+
     def record_outcomes(self, vectors: Sequence[np.ndarray],
                         outcomes: Sequence[str]) -> None:
         """Record what became of trained proposals: "kept", or the check
