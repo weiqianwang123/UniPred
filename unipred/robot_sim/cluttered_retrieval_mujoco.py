@@ -8,9 +8,14 @@ obstacles), which it can only push. All are Google Scanned Objects
 (unipred/robot_sim/assets.py), the bottles and lunch boxes drawn by the
 seed.
 
-An obstacle blocks a target if, seen from the main camera, it stands in
-front of it and hides it: it is nearer the camera, and its image box covers
-at least _BLOCK_COVER of the target's. A scene keeps which obstacle blocks
+An obstacle blocks a target if, seen from the main camera, it hides at
+least _BLOCK_HIDES of the target's pixels on its own; a target no obstacle
+blocks is all but fully in view (at most _CLEAR_HIDES hidden). A target is
+picked from what the camera sees of it, as the real robot's grasps come
+from the object's segmented point cloud: one that is not in view enough
+(_PICK_VISIBLE) is not segmented well enough for a grasp, so a blocked
+target cannot be picked, and grasps are planned on the points of it in
+view. A scene keeps which obstacle blocks
 which target, the place of every target (table, box or hand) and which
 obstacles were cleared: atoms() are the ground-truth atoms of Cluttered
 Retrieval from them, and problems() lists where the simulated scene
@@ -43,8 +48,8 @@ from scipy.spatial.transform import Rotation
 
 from predicators.structs import State
 from unipred.robot_sim.franka_scene import FINGERTIPS, PADS, \
-    AtomTuple, Box2D, FrankaTableScene, MujocoRobot, SimulationError, \
-    make_pose, rot_z, top_down
+    AtomTuple, FrankaTableScene, MujocoRobot, SimulationError, make_pose, \
+    rot_z, top_down
 from unipred.robot_sim.franka_scene import mujoco
 
 __all__ = [
@@ -80,7 +85,10 @@ _CRATE_FRICTION = 0.4
 # The main camera looks at the scene from across the table, low, so that
 # obstacles hide the targets behind them.
 _CAMERA = ((1.08, 0.10, 0.52), (0.26, 0.03, 0.0), 57.0)
-_BLOCK_COVER = 0.2
+_BLOCK_HIDES = 0.2
+_CLEAR_HIDES = 0.05
+_PICK_VISIBLE = 0.9
+_SEGMENTATION_SIZE = (240, 320)
 # Targets lie in a row across the camera's view (lateral y at least
 # _TARGET_GAP apart, so that a pushed lunch box hides no other), their long
 # sides across it; obstacles stand in front of them, toward the camera (a
@@ -104,9 +112,11 @@ _PUSH_TIPS = 0.02  # the fingertips' height, pushing
 # 10 cm above them (what anything taller meets).
 _FINGERS = np.array([0.035, 0.015])
 _GRIPPER = np.array([0.065, 0.045])
-# Removed bottles stand here, behind every target as the camera sees it.
-_ASIDE = ((0.20, 0.45), (0.20, 0.55), (0.12, 0.40), (0.12, 0.50),
-          (0.28, 0.52), (0.12, 0.30))
+# Removed bottles stand in the left corner, behind every target as the
+# camera sees it: at the spot of this grid farthest from the targets and the
+# other obstacles.
+_ASIDE = tuple((x, y) for x in (0.05, 0.13, 0.21) for y in (0.30, 0.40, 0.50,
+                                                            0.60))
 # The basket: its centre, its long side along x; targets lie in it side by
 # side, their long sides along it.
 _BASKET_XY = (0.42, -0.36)
@@ -167,8 +177,8 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
         }
         self.cleared: Set[str] = set()
         self._pushes: Dict[str, Tuple[float, float]] = {}  # side, distance
+        self._segmenter: Optional[mujoco.Renderer] = None
         self._slots: Dict[str, float] = {}
-        self._aside_used = 0
         super().__init__(image_size, grasps)
         m = self.model
         for g in range(m.ngeom):
@@ -305,9 +315,14 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
 
     def _pick_target(self, objects: List[str]) -> bool:
         target = objects[1]
-        if self.held is not None or self.place.get(target) != "table" or any(
-                t == target for _, t in self.blocks):
+        if self.held is not None or self.place.get(target) != "table":
             return False
+        alone = self._target_pixels([])[target]
+        seen = self._target_pixels(list(self.kinds))[target]
+        if seen < _PICK_VISIBLE * alone:
+            raise SimulationError(
+                f"{target} is too hidden ({seen / max(alone, 1):.0%} in "
+                "view) to be segmented for a grasp.")
         self._pick(target)
         self.place[target] = "hand"
         return True
@@ -332,8 +347,16 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                 obstacle in self.cleared:
             return False
         self._pick(obstacle)
-        x, y = _ASIDE[self._aside_used % len(_ASIDE)]
-        self._aside_used += 1
+        others = [
+            self._centre(n)[:2] for n in self.targets + list(self.kinds)
+            if n != obstacle and (n not in self.place
+                                  or self.place[n] == "table")
+        ]
+        x, y = max(_ASIDE,
+                   key=lambda spot: min(
+                       (float(np.linalg.norm(np.subtract(spot, o)))
+                        for o in others),
+                       default=0.0))
         self._put_down(np.array([x, y, 0.0]), 0.0, along=None)
         self.cleared.add(obstacle)
         self.blocks = {p for p in self.blocks if p[0] != obstacle}
@@ -356,12 +379,14 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
         above[2, 3] += 0.15
         self._move(above)
         self._move(beside)
+        # Pressing on the box, the arm may lag a little behind its target;
+        # where the box ends up is what counts (problems()).
         end = beside.copy()
         end[1, 3] += side * (distance + _PUSH_CLEARANCE)
-        self._move(end)
-        back = end.copy()
+        self._move(end, required=False)
+        back = self._site_pose()
         back[1, 3] -= side * 0.03
-        self._move(back)
+        self._move(back, required=False)
         up = back.copy()
         up[2, 3] += 0.15
         self._move(up)
@@ -423,19 +448,82 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
     def _seen_blocks(self) -> Set[Tuple[str, str]]:
         """The (obstacle, target) pairs where the obstacle hides the target
         from the main camera (see module doc); only targets on the table."""
-        boxes = self.boxes()
-        camera = self.data.cam_xpos[self.model.camera("main").id]
-        seen = set()
-        for target in self.targets:
-            if self.place[target] != "table":
-                continue
-            distance = np.linalg.norm(self._centre(target) - camera)
-            for obstacle in self.kinds:
-                if np.linalg.norm(self._centre(obstacle) - camera) < \
-                        distance and _cover(boxes[obstacle],
-                                            boxes[target]) >= _BLOCK_COVER:
-                    seen.add((obstacle, target))
-        return seen
+        return {(o, t)
+                for t, by in self._hidden().items()
+                for o, part in by.items() if part >= _BLOCK_HIDES}
+
+    def _hidden(self, obstacles: Optional[Sequence[str]] = None
+               ) -> Dict[str, Dict[str, float]]:
+        """For each target on the table, the part of its pixels in the main
+        camera that each obstacle (of obstacles; all by default) hides on
+        its own."""
+        names = list(self.kinds) if obstacles is None else list(obstacles)
+        alone = self._target_pixels([])
+        hidden: Dict[str, Dict[str, float]] = {
+            t: {}
+            for t in self.targets if self.place[t] == "table"
+        }
+        for name in names:
+            seen = self._target_pixels([name])
+            for target, by in hidden.items():
+                by[name] = 1 - seen[target] / max(alone[target], 1)
+        return hidden
+
+    def _shows_blocks(self) -> bool:
+        """Whether the camera shows the scene's blocks, unambiguously: each
+        blocking obstacle hides at least _BLOCK_HIDES of its target, every
+        other at most _CLEAR_HIDES of every target."""
+        for target, by in self._hidden().items():
+            for obstacle, part in by.items():
+                if (part >= _BLOCK_HIDES) != ((obstacle, target)
+                                              in self.blocks):
+                    return False
+                if (obstacle, target) not in self.blocks and \
+                        part > _CLEAR_HIDES:
+                    return False
+        return True
+
+    def _target_pixels(self, present: Sequence[str]) -> Dict[str, int]:
+        """Each target's pixels in the main camera with only these obstacles
+        on the table (the others out of sight for the rendering)."""
+        m, d = self.model, self.data
+        qpos, qvel = d.qpos.copy(), d.qvel.copy()
+        for name in self.kinds:
+            if name not in present:
+                pose = self._body_pose(name)
+                pose[2, 3] = -2.0  # under the floor
+                self._set_object_pose(name, pose)
+        mujoco.mj_forward(m, d)
+        if self._segmenter is None:
+            self._segmenter = mujoco.Renderer(m, *_SEGMENTATION_SIZE)
+            self._segmenter.enable_segmentation_rendering()
+        self._segmenter.update_scene(d, camera="main")
+        segments = self._segmenter.render()
+        d.qpos[:], d.qvel[:] = qpos, qvel
+        mujoco.mj_forward(m, d)
+        geoms = segments[..., 0][segments[..., 1] == int(
+            mujoco.mjtObj.mjOBJ_GEOM)]
+        bodies = m.geom_bodyid[geoms[geoms >= 0]]
+        return {
+            t: int(np.count_nonzero(bodies == m.body(t).id))
+            for t in self.targets
+        }
+
+    def _cloud(self, name: str) -> Tuple[np.ndarray, np.ndarray]:
+        """GraspGenX's points: for a target, its points in view of the main
+        camera (not its whole surface) and the rest of the scene."""
+        if name not in self.targets:
+            return super()._cloud(name)
+        points, mask = super()._cloud(name)
+        world, body = self._seen_points("main")
+        seen = world[body == self.model.body(name).id].astype(np.float32)
+        points = np.concatenate([seen, points[~mask]])
+        return points, np.arange(len(points)) < len(seen)
+
+    def close(self) -> None:
+        super().close()
+        if self._segmenter is not None:
+            self._segmenter.close()
 
     # The initial scene.
 
@@ -451,7 +539,7 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                 upright = all(
                     self._body_pose(n)[2, 2] > np.cos(np.radians(10))
                     for n in self.kinds)
-                if upright and self._seen_blocks() == self.blocks:
+                if upright and self._shows_blocks():
                     return
         raise SimulationError("No layout of the scene shows its blocks.")
 
@@ -493,7 +581,7 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
             self._lay(name, np.array([0.72, -0.44 + 0.22 * k]),
                       rng.uniform(-np.pi, np.pi))
         mujoco.mj_forward(self.model, self.data)
-        if self._seen_blocks() != self.blocks or self._overlapping():
+        if self._overlapping() or not self._shows_blocks():
             return False
         # Every bulky obstacle: a side to be pushed to, and how far, so that
         # it hides nothing, with room for it and for the fingers.
@@ -524,8 +612,9 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                 moved[1, 3] += side * distance
                 self._set_object_pose(name, moved)
                 mujoco.mj_forward(self.model, self.data)
-                clear = not any(o == name for o, _ in self._seen_blocks()) \
-                    and not self._overlapping(name, grow=0.01)
+                clear = not self._overlapping(name, grow=0.01) and all(
+                    by[name] <= _CLEAR_HIDES
+                    for by in self._hidden([name]).values())
                 self._set_object_pose(name, pose)
                 mujoco.mj_forward(self.model, self.data)
                 if clear:
@@ -612,14 +701,6 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                           size=list(size),
                           pos=list(pos),
                           group=3)
-
-
-def _cover(front: Box2D, back: Box2D) -> float:
-    """The fraction of the back box that the front box covers."""
-    width = max(0.0, min(front[2], back[2]) - max(front[0], back[0]))
-    height = max(0.0, min(front[3], back[3]) - max(front[1], back[1]))
-    area = (back[2] - back[0]) * (back[3] - back[1])
-    return width * height / area if area > 0 else 0.0
 
 
 def _overlap(a: Tuple[np.ndarray, np.ndarray, np.ndarray],

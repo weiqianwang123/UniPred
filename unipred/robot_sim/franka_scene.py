@@ -178,6 +178,8 @@ class FrankaTableScene:
     # The height of the pads' centre while carrying, above what stands on
     # the table.
     carry_z = CARRY_Z
+    # The table top's extent.
+    table_x, table_y = TABLE_X, TABLE_Y
 
     def __init__(self,
                  image_size: Tuple[int, int] = (480, 640),
@@ -527,40 +529,46 @@ class FrankaTableScene:
         reached = self._fk(q)
         return bool(np.linalg.norm(reached[:3, 3] - pose[:3, 3]) < 3e-3)
 
+    def _seen_points(self, camera: str) -> Tuple[np.ndarray, np.ndarray]:
+        """The points of the scene that a camera sees (its depth image, at
+        the cloud resolution, within 3 m) and the body of each."""
+        if self._cloud_renderer is None:
+            self._cloud_renderer = mujoco.Renderer(self.model, *_CLOUD_SIZE)
+        renderer = self._cloud_renderer
+        m, d = self.model, self.data
+        height, width = _CLOUD_SIZE
+        cam = m.camera(camera).id
+        renderer.update_scene(d, camera=camera)
+        renderer.enable_depth_rendering()
+        depth = renderer.render().copy()
+        renderer.disable_depth_rendering()
+        renderer.enable_segmentation_rendering()
+        segments = renderer.render().copy()
+        renderer.disable_segmentation_rendering()
+        focal = height / 2 / np.tan(np.radians(m.cam_fovy[cam]) / 2)
+        v, u = np.mgrid[0:height, 0:width]
+        local = np.stack([(u + 0.5 - width / 2) * depth / focal,
+                          -(v + 0.5 - height / 2) * depth / focal, -depth],
+                         axis=-1).reshape(-1, 3)
+        world = local @ d.cam_xmat[cam].reshape(3, 3).T + d.cam_xpos[cam]
+        geom = segments[..., 0].reshape(-1)
+        is_geom = segments[..., 1].reshape(-1) == int(mujoco.mjtObj.mjOBJ_GEOM)
+        body = np.where(is_geom & (geom >= 0),
+                        m.geom_bodyid[np.maximum(geom, 0)], -1)
+        keep = (body >= 0) & (depth.reshape(-1) < 3.0)
+        return world[keep], body[keep]
+
     def _cloud(self, name: str) -> Tuple[np.ndarray, np.ndarray]:
         """GraspGenX's points: the object's surface (its mesh's vertices, as
         a reconstruction of it would give; the cameras see little of an object
         at the far end of the table or of the sides of the sponge in the
         tray), and the rest of the scene as depth images of the cloud
         cameras see it, the robot left out; and which are the object's."""
-        if self._cloud_renderer is None:
-            self._cloud_renderer = mujoco.Renderer(self.model, *_CLOUD_SIZE)
-        renderer = self._cloud_renderer
-        m, d = self.model, self.data
-        height, width = _CLOUD_SIZE
         scene = []
         for camera in _CLOUD_CAMERAS:
-            cam = m.camera(camera).id
-            renderer.update_scene(d, camera=camera)
-            renderer.enable_depth_rendering()
-            depth = renderer.render().copy()
-            renderer.disable_depth_rendering()
-            renderer.enable_segmentation_rendering()
-            segments = renderer.render().copy()
-            renderer.disable_segmentation_rendering()
-            focal = height / 2 / np.tan(np.radians(m.cam_fovy[cam]) / 2)
-            v, u = np.mgrid[0:height, 0:width]
-            local = np.stack([(u + 0.5 - width / 2) * depth / focal,
-                              -(v + 0.5 - height / 2) * depth / focal,
-                              -depth], axis=-1).reshape(-1, 3)
-            world = local @ d.cam_xmat[cam].reshape(3, 3).T + d.cam_xpos[cam]
-            geom = segments[..., 0].reshape(-1)
-            is_geom = segments[..., 1].reshape(-1) == int(
-                mujoco.mjtObj.mjOBJ_GEOM)
-            body = np.where(is_geom & (geom >= 0),
-                            m.geom_bodyid[np.maximum(geom, 0)], -1)
-            keep = (body >= 0) & (depth.reshape(-1) < 3.0) & ~np.isin(
-                body, list(self._robot_bodies) + [m.body(name).id])
+            world, body = self._seen_points(camera)
+            keep = ~np.isin(body,
+                            list(self._robot_bodies) + [self.model.body(name).id])
             scene.append(world[keep])
         rest = np.concatenate(scene)
         rest = rest[self._rng.permutation(len(rest))[:_CLOUD_POINTS]]
@@ -795,8 +803,7 @@ class FrankaTableScene:
         for body in [base, *base.find_all(mujoco.mjtObj.mjOBJ_BODY)]:
             body.gravcomp = 1.0
 
-    @staticmethod
-    def _add_room(spec: mujoco.MjSpec) -> None:
+    def _add_room(self, spec: mujoco.MjSpec) -> None:
         """Floor, walls, lights and the table (its top at z = 0)."""
         textures = [
             ("floor", mujoco.mjtBuiltin.mjBUILTIN_CHECKER, [0.46, 0.44, 0.42],
@@ -860,8 +867,8 @@ class FrankaTableScene:
                            material="wall",
                            contype=0,
                            conaffinity=0)
-        sx, sy = np.ptp(TABLE_X) / 2, np.ptp(TABLE_Y) / 2
-        cx, cy = np.mean(TABLE_X), np.mean(TABLE_Y)
+        sx, sy = np.ptp(self.table_x) / 2, np.ptp(self.table_y) / 2
+        cx, cy = np.mean(self.table_x), np.mean(self.table_y)
         table = world.add_body(name="table", pos=[cx, cy, 0.0])
         table.add_geom(name="table_top",
                        type=mujoco.mjtGeom.mjGEOM_BOX,

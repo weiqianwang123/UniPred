@@ -124,10 +124,10 @@ scripted motions, grasping, the video). Table Clean:
 - **Scene.** A Franka Research 3 with a Robotiq 2F-85 (mujoco_menagerie;
   the gripper on the flange as on DROID, as CDG's and R2S2R's `fr3_robotiq`)
   at the edge of a table, with two or three toys, a wooden tray (the box)
-  on the robot's right, near or far, a sponge (the wiper) and dirt. The
-  toys, the tray and the sponge are Google Scanned Objects; each scene
-  draws its toys from eight by its seed. A camera across the table renders
-  640x480 images.
+  lengthwise on the robot's right, near or pushed out, a sponge (the wiper)
+  at the tray's far end, and dirt. The toys, the tray and the sponge are
+  Google Scanned Objects; each scene draws its toys from eight by its
+  seed. A camera across the table renders 640x480 images.
 - **Skills.** The seven skills of Table Clean are scripted motions: straight
   lines of the gripper, followed through inverse kinematics by the arm's
   position actuators while MuJoCo simulates. A pick takes its grasps from
@@ -139,10 +139,19 @@ scripted motions, grasping, the video). Table Clean:
   pulling the tray press on its near wall and drag it; wiping moves the
   sponge over the dirt, which goes. `grasps="top_down"` grasps straight
   down across the object's narrow side, without GraspGenX.
-- **Ground truth.** The scene keeps the places of the objects and the
-  rules of Table Clean Sim (a skill whose conditions do not hold does
-  nothing); `atoms()` are the true atoms, and `problems()` lists where the
-  simulated objects disagree with them.
+- **Constraints are physical.** Table Clean Sim's rules come from the
+  scene, not from checks. Pushed out, the tray's far end with the sponge
+  is beyond the arm's reach (straight down, it reaches x = 0.75 m on that
+  side; the sponge is at 0.86), so the sponge can be taken out or put back
+  only with the tray pulled in. The near tray stands on part of the dirt
+  and the toys stand on it, so a wipe stops where the sponge meets the
+  tray or a toy. A skill that cannot be carried out raises
+  SimulationError (the closed loop sees its effects missing and replans);
+  only what is impossible outright (picking with a full hand) does
+  nothing.
+- **Ground truth.** The scene keeps the places of the objects, the tray's
+  side and whether the table is clean; `atoms()` are the true atoms, and
+  `problems()` lists where the simulated objects disagree with them.
 
 `examples/real_robot/collect_sim_demos.py` records sessions in the raw
 format: train sessions are Table Clean Sim's oracle demonstrations executed
@@ -165,13 +174,19 @@ perception in `configs/sim_robot_cluttered_retrieval.yaml`):
 - **Scene.** The Franka puts snack bars (the targets) into a black basket
   (the box). In front of them, seen from a low camera across the table,
   stand obstacles: scanned bottles, and a gift box and a lunch box on its
-  side (too wide to grasp). An obstacle blocks a target if it is nearer
-  the camera and its image box covers at least a fifth of the target's.
-  Positions are drawn until the scene's blocks are those of the Cluttered
-  Retrieval Sim task and every bulky obstacle has a side to be pushed to
-  where it hides nothing.
-- **Skills.** PickTarget and PlaceTargetInBox pick a target no obstacle
-  blocks and lay it in the basket; RemoveObstacle picks a bottle, carries
+  side (too wide to grasp). An obstacle blocks a target if, on its own, it
+  hides at least a fifth of the target's pixels from the camera; a target
+  no obstacle blocks is all but fully in view. Positions are drawn until
+  the camera shows the scene's blocks of the Cluttered Retrieval Sim task
+  so, and every bulky obstacle has a side to be pushed to where it hides
+  nothing.
+- **Blocked targets cannot be picked, physically.** As the real robot's
+  grasps come from the object's segmented point cloud, a pick sees the
+  target through the camera: one less than 90 percent in view is not
+  segmented well enough for a grasp (the pick fails), and grasps are
+  planned on the target's points in view.
+- **Skills.** PickTarget and PlaceTargetInBox pick a target in view and lay
+  it in the basket; RemoveObstacle picks a bottle, carries
   it high over the others and stands it upright in a corner behind every
   target; PushObstacle lowers the closed fingers beside a bulky obstacle
   (which slides rather than tips) and pushes it sideways as far as it

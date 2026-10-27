@@ -42,3 +42,6 @@ prompts:
 tracker: sam3
 track_types: [toy]
 track_min_iou: 0.3
+# The features also give each object's box in the image (where a toy is:
+# on the table, in the tray), see configs/real_robot.yaml.
+box_features: true

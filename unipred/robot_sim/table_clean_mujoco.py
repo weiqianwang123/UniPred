@@ -1,24 +1,31 @@
 """Table Clean in MuJoCo: a stand-in for the real robot of Table Clean Real.
 
 The Franka at the table (unipred/robot_sim/franka_scene.py) has on the
-table toys, a wooden tray (the box) on the robot's right, near it or far
-from it, a sponge (the wiper) and dirt. The toys, the tray and the sponge
-are Google Scanned Objects, the toys drawn by the seed from eight
-(unipred/robot_sim/assets.py).
+table toys, a wooden tray (the box) on the robot's right, lengthwise, near
+it or pushed out far from it, a sponge (the wiper) and dirt. The toys, the
+tray and the sponge are Google Scanned Objects, the toys drawn by the seed
+from eight (unipred/robot_sim/assets.py).
 
 The seven skills of Table Clean are the robot's scripted motions. To push
 or pull the tray, the gripper presses on its near wall and drags it: the
 tray slides along x, a drive keeping it with the gripper. Wiping moves the
-sponge over the table, and the dirt goes.
+sponge over the dirt, which goes.
 
-A skill whose conditions do not hold leaves the scene unchanged, with the
-rules of Table Clean Sim (unipred/envs/table_clean_sim.py): the robot holds
-one object, the sponge leaves and enters the tray only while the tray is
-near, and wiping needs the sponge in hand, the tray far and no toy on the
-table. The scene keeps the place of every toy and of the sponge (table, box
-or hand), the side of the tray and whether the table is clean: atoms() are
-the ground-truth atoms of Table Clean from them, and problems() lists where
-the simulated objects disagree with them (say, a toy that missed the tray).
+The rules of Table Clean Sim (unipred/envs/table_clean_sim.py) are the
+scene's physics, not checks. The sponge lies at the tray's far end: with
+the tray pushed out, it is beyond the arm's reach, so the sponge can be
+taken out or put back only while the tray is near (pulled in); the toys go
+to the near end, within reach either way. The near tray stands on part of
+the dirt, so wiping runs into it until it is pushed out; and the toys
+stand on the dirt, so wiping runs into those still on the table. A skill
+that cannot be carried out raises SimulationError (where a wipe meets the
+tray or a toy, it stops there); only what is impossible outright (picking
+with a full hand, placing with an empty one, pushing out a tray already
+out) leaves the scene unchanged. The scene keeps the place of every toy and
+of the sponge (table, box or hand), the side of the tray and whether the
+table is clean: atoms() are the ground-truth atoms of Table Clean from
+them, and problems() lists where the simulated objects disagree with them
+(say, a toy that missed the tray).
 
 A scene is built from a Table Clean Sim state (from_sim_state), so that
 Table Clean Sim's tasks and oracle plans can be executed and recorded
@@ -35,25 +42,30 @@ import numpy as np
 
 from predicators.structs import State
 from unipred.robot_sim.franka_scene import FINGERTIPS, PADS, \
-    TABLE_TEXELS, TABLE_X, TABLE_Y, AtomTuple, FrankaTableScene, \
-    MujocoRobot, Pose, SimulationError, rot_z, scale3, table_texels, \
-    yaw_quat
+    TABLE_TEXELS, AtomTuple, FrankaTableScene, MujocoRobot, Pose, \
+    SimulationError, rot_z, scale3, table_texels
 from unipred.robot_sim.franka_scene import mujoco
 
 __all__ = ["MujocoRobot", "SceneLayout", "SimulationError", "TableCleanMujoco"]
 
 _DIRT_THICKNESS = 0.0003  # half of the stain layer's, over the table top
 
-_TOY_AREA = ((0.38, 0.62), (0.05, 0.30))  # where toys stand (x, y)
+# On the robot's right (y = -0.30) the arm reaches straight down to x = 0.75
+# near the table and 0.70 at 30 cm up.
+_TRAY_X = (0.42, 0.72)  # the tray's centre, near and pushed out
+_TRAY_Y = -0.30
+# Along the tray (x, from its centre), the objects' long sides across it:
+# the sponge at the far end (x 0.56 near, 0.86 pushed out: beyond reach)
+# and the toys at the near end (at most x 0.68 pushed out: within reach).
+_SPONGE_SLOT = 0.14
+_TOY_SLOTS = (-0.19, -0.115, -0.04)
+# The dirt: under part of the near tray (y below -0.19) and the toys, short
+# of the pushed-out tray (from x 0.50); toys stand on it, clear of the
+# tray.
+_DIRT_AREA = ((0.26, 0.48), (-0.36, 0.28))
+_TOY_AREA = ((0.30, 0.46), (-0.08, 0.26))  # where toys stand (x, y)
 _TOY_GAP = 0.13  # between the centres of toys
-_DIRT_AREA = ((0.36, 0.64), (0.03, 0.31))
-_TRAY_X = (0.36, 0.60)  # the tray's centre, near and far
-_TRAY_Y = -0.23
-# Along the tray (y, from its centre): the sponge's place, its long side
-# along the tray (so that the open fingers, across it, clear the walls), and
-# the toys', their long sides across the tray.
-_SPONGE_SLOT = -0.117
-_TOY_SLOTS = (0.1405, 0.0628, -0.0149)
+_WIPE_MARGIN = 0.045  # of the sponge's centre from the dirt's edge, along x
 _RELEASE_HEIGHT = 0.015  # of an object's bottom above the tray's floor
 
 
@@ -69,7 +81,7 @@ TOY_MODELS = (
     ("Schleich_Lion_Action_Figure", 1.0),
     ("Toysmith_Windem_Up_Flippin_Animals_Dog", 1.3),
 )
-_TRAY_MODEL = ("Design_Ideas_Drawer_Store_Organizer", 1.25)
+_TRAY_MODEL = ("Design_Ideas_Drawer_Store_Organizer", 1.4)
 _SPONGE_MODEL = ("Big_O_Sponges_Assorted_Cellulose_12_pack", (0.9, 0.9, 1.6))
 _TOY_MASS, _SPONGE_MASS, _TRAY_MASS = 0.08, 0.03, 0.6
 
@@ -87,6 +99,10 @@ class SceneLayout:
 class TableCleanMujoco(FrankaTableScene):
     """The simulated scene (see module doc)."""
     model_name = "table_clean"
+    # The table runs out under the pushed-out tray; the camera looks from
+    # beyond it.
+    table_x = (-0.3, 1.0)
+    camera = ((1.12, 0.26, 0.84), (0.42, -0.07, 0.0), 50.0)
 
     def __init__(self,
                  layout: SceneLayout,
@@ -269,8 +285,7 @@ class TableCleanMujoco(FrankaTableScene):
 
     def _pick_wiper(self, objects: List[str]) -> bool:
         del objects  # the sponge and the tray are the scene's
-        if self.held is not None or self.place["wiper"] != "box" or \
-                self.box_side != 0:
+        if self.held is not None or self.place["wiper"] != "box":
             return False
         self._pick("wiper")
         self.place["wiper"] = "hand"
@@ -279,7 +294,7 @@ class TableCleanMujoco(FrankaTableScene):
 
     def _place_wiper(self, objects: List[str]) -> bool:
         del objects  # the sponge and the tray are the scene's
-        if self.held != "wiper" or self.box_side != 0:
+        if self.held != "wiper":
             return False
         self._place_in_tray("wiper")
         return True
@@ -300,23 +315,24 @@ class TableCleanMujoco(FrankaTableScene):
 
     def _wipe(self, objects: List[str]) -> bool:
         del objects  # the sponge, the table and the tray are the scene's
-        if self.held != "wiper" or self.box_side != 1 or any(
-                self.place[t] == "table" for t in self.toys):
+        if self.held != "wiper":
             return False
         # Back and forth along y in rows, the sponge's long side along x, its
-        # centre over the dirt, its bottom 2 mm above the table.
+        # centre over the dirt, its bottom 2 mm above the table; stopping
+        # where it meets the tray or a toy.
         target, centre, lift = self._turned(self._site_pose())
         z = 0.002 - lift
         (x0, x1), (y0, y1) = _DIRT_AREA
         path = []
-        for k, x in enumerate(np.linspace(x0, x1, 4)):
+        for k, x in enumerate(
+                np.linspace(x0 + _WIPE_MARGIN, x1 - _WIPE_MARGIN, 4)):
             path += [(x, y0), (x, y1)] if k % 2 == 0 else [(x, y1), (x, y0)]
         target[:3, 3] = (path[0][0] - centre[0], path[0][1] - centre[1],
                          z + 0.08)
         self._move(target)
         for x, y in path:
             target[:3, 3] = (x - centre[0], y - centre[1], z)
-            self._move(target)
+            self._move(target, follow=self._wipe_contact)
         for g in self._dirt:
             self.model.geom_rgba[g, 3] = 0.0
         self.clean = True
@@ -325,6 +341,24 @@ class TableCleanMujoco(FrankaTableScene):
         self._move(target)
         self._go_home()
         return True
+
+    def _wipe_contact(self, pose: Pose) -> None:
+        """Raise SimulationError if the sponge touches the tray or a toy."""
+        del pose  # what matters is what the sponge touches
+        m, d = self.model, self.data
+        wiper = m.body("wiper").id
+        others = {m.body("box").id: "the tray"}
+        others.update({
+            m.body(t).id: "the tray" if self.place[t] == "box" else t
+            for t in self.toys
+        })
+        for contact in d.contact[:d.ncon]:
+            bodies = (m.geom_bodyid[contact.geom1],
+                      m.geom_bodyid[contact.geom2])
+            for this, other in (bodies, bodies[::-1]):
+                if this == wiper and other in others:
+                    raise SimulationError(
+                        f"Wiping, the sponge ran into {others[other]}.")
 
     # Motions.
 
@@ -335,13 +369,12 @@ class TableCleanMujoco(FrankaTableScene):
             used = {s for n, s in self._slots.items() if n != name}
             slot = next(s for s in _TOY_SLOTS if s not in used)
         tray = self._body_pose("box")
-        goal = tray[:3, 3] + tray[:3, :3] @ np.array([0.0, slot, 0.0])
+        goal = tray[:3, 3] + tray[:3, :3] @ np.array([slot, 0.0, 0.0])
         goal += self._rng.uniform(-0.004, 0.004, size=3) * (1, 1, 0)
         start = self._site_pose()
-        # A toy's long side across the tray, the sponge's along it, the
-        # footprint's centre over the slot, the bottom just above the floor.
-        target, centre, lift = self._turned(
-            start, np.pi / 2 if name == "wiper" else 0.0)
+        # Its long side across the tray, the footprint's centre over the
+        # slot, the bottom just above the floor.
+        target, centre, lift = self._turned(start, np.pi / 2)
         target[:2, 3] = goal[:2] - centre[:2]
         floor = tray[2, 3] + self._tray_floor
         release = target.copy()
@@ -422,9 +455,9 @@ class TableCleanMujoco(FrankaTableScene):
                 s for s in _TOY_SLOTS if s not in self._slots.values())
             self._slots[name] = slot
             shape = self._shapes[name]
-            # A toy's long side across the tray, the sponge's along it.
-            yaw = (0.0 if name == "wiper" else np.pi / 2) - shape.narrow_angle
-            goal = tray[:3, 3] + np.array([0.0, slot, 0.0])
+            # Its long side across the tray (its narrow side along x).
+            yaw = -shape.narrow_angle
+            goal = tray[:3, 3] + np.array([slot, 0.0, 0.0])
             centre = rot_z(yaw)[:2, :2] @ shape.centre
             self._set_object(name, goal[:2] - centre, yaw,
                              self._tray_floor + 0.003)
@@ -457,13 +490,12 @@ class TableCleanMujoco(FrankaTableScene):
         self._add_dirt(spec)
 
     def _add_tray(self, spec: mujoco.MjSpec) -> None:
-        """The tray: its mesh turned so that its long side runs along y, a
-        floor and four walls to collide with, sliding along x on the table,
-        a drive holding it where it is put."""
+        """The tray: its mesh (its long side along x), a floor and four walls
+        to collide with, sliding along x on the table, a drive holding it
+        where it is put."""
         shape = self._shapes["box"]
-        # Turned a quarter, the mesh's x is the tray's y.
-        half = np.array([(shape.hi[1] - shape.lo[1]) / 2,
-                         (shape.hi[0] - shape.lo[0]) / 2])
+        half = np.array([(shape.hi[0] - shape.lo[0]) / 2,
+                         (shape.hi[1] - shape.lo[1]) / 2])
         height = float(shape.hi[2] - shape.lo[2])
         wall = 0.01 * scale3(_TRAY_MODEL[1])[0]
         floor = 0.013 * scale3(_TRAY_MODEL[1])[2]
@@ -478,7 +510,7 @@ class TableCleanMujoco(FrankaTableScene):
                        type=mujoco.mjtJoint.mjJNT_SLIDE,
                        axis=[1, 0, 0],
                        damping=5.0)
-        self._add_textured_mesh(spec, body, "box", yaw_quat(np.pi / 2))
+        self._add_textured_mesh(spec, body, "box", [1, 0, 0, 0])
         boxes = [((half[0], half[1], floor / 2), (0, 0, floor / 2))]
         for sign in (-1, 1):
             boxes.append(((wall / 2, half[1], height / 2),
@@ -506,13 +538,18 @@ class TableCleanMujoco(FrankaTableScene):
         rows, cols = np.mgrid[0:size, 0:size]
         # Texel (row, col) -> table (x, y): rows run along y (top row at the
         # largest y), columns along x.
-        xs = TABLE_X[0] + (cols + 0.5) / size * np.ptp(TABLE_X)
-        ys = TABLE_Y[1] - (rows + 0.5) / size * np.ptp(TABLE_Y)
+        table_x, table_y = self.table_x, self.table_y
+        xs = table_x[0] + (cols + 0.5) / size * np.ptp(table_x)
+        ys = table_y[1] - (rows + 0.5) / size * np.ptp(table_y)
         alpha = np.zeros((size, size), dtype=np.float32)
         (x0, x1), (y0, y1) = _DIRT_AREA
-        for _ in range(4):
+        # Smears spread over the whole area, from under the near tray to
+        # among the toys.
+        clusters = 7
+        for k in range(clusters):
             cx = self._rng.uniform(x0 + 0.04, x1 - 0.04)
-            cy = self._rng.uniform(y0 + 0.04, y1 - 0.04)
+            cy = y0 + 0.04 + (k + self._rng.uniform()) / clusters * (
+                y1 - y0 - 0.08)
             strength = self._rng.uniform(0.55, 0.8)
             for _ in range(self._rng.integers(3, 7)):
                 bx, by = np.array([cx, cy]) + self._rng.normal(0, 0.015, size=2)
@@ -542,12 +579,12 @@ class TableCleanMujoco(FrankaTableScene):
         spec.worldbody.add_geom(name="dirt",
                                 type=mujoco.mjtGeom.mjGEOM_BOX,
                                 size=[
-                                    np.ptp(TABLE_X) / 2,
-                                    np.ptp(TABLE_Y) / 2, _DIRT_THICKNESS
+                                    np.ptp(table_x) / 2,
+                                    np.ptp(table_y) / 2, _DIRT_THICKNESS
                                 ],
                                 pos=[
-                                    np.mean(TABLE_X),
-                                    np.mean(TABLE_Y), _DIRT_THICKNESS
+                                    np.mean(table_x),
+                                    np.mean(table_y), _DIRT_THICKNESS
                                 ],
                                 material="dirt",
                                 rgba=[1, 1, 1, 0 if self._layout.clean else 1],

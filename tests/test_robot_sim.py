@@ -20,7 +20,7 @@ except FileNotFoundError:
 from unipred.robot_sim.cluttered_retrieval_mujoco import ClutterLayout, \
     ClutteredRetrievalMujoco
 from unipred.robot_sim.table_clean_mujoco import MujocoRobot, SceneLayout, \
-    TableCleanMujoco
+    SimulationError, TableCleanMujoco
 
 
 @pytest.fixture(name="sim")
@@ -49,8 +49,43 @@ def test_scene_starts_as_its_layout(sim):
         assert 0 <= x0 < x1 <= 160 and 0 <= y0 < y1 <= 120
 
 
+def test_table_clean_constraints_are_physical():
+    """Pushed out, the tray's far end with the sponge is beyond reach; the
+    near tray stands on the dirt, and so do the toys, so wiping runs into
+    them; toys go into the tray pushed out."""
+    def _sim(toys, wiper, side):
+        return TableCleanMujoco(SceneLayout(toys, wiper, side, False),
+                                seed=0,
+                                image_size=(60, 80),
+                                grasps="top_down")
+
+    robot, wipe = "robot", ["robot", "wiper", "table", "box"]
+    for toys, wiper, side, skill, args, message in [
+        ((("toy0", "box"), ), "box", 1, "PickWiperFromBox",
+         [robot, "wiper", "box"], "short of"),
+        ((("toy0", "box"), ), "hand", 1, "PlaceWiperInBox",
+         [robot, "wiper", "box"], "short of"),
+        ((("toy0", "box"), ), "hand", 0, "WipeTable", wipe, "the tray"),
+        ((("toy0", "table"), ), "hand", 1, "WipeTable", wipe, "toy0"),
+    ]:
+        sim = _sim(toys, wiper, side)
+        try:
+            with pytest.raises(SimulationError, match=message):
+                sim.execute(skill, args)
+        finally:
+            sim.close()
+    sim = _sim((("toy0", "table"), ), "box", 1)
+    try:
+        assert sim.execute("PickToyFromTable", [robot, "toy0", "table"])
+        assert sim.execute("PlaceToyInBox", [robot, "toy0", "box"])
+        assert ("ToyInBox", ("toy0", "box")) in sim.atoms()
+        assert not sim.problems()
+    finally:
+        sim.close()
+
+
 def test_skills_follow_table_clean_rules(sim):
-    """A skill whose conditions do not hold does nothing; pick and place
+    """A skill that is impossible outright does nothing; pick and place
     move the toy into the tray."""
     assert not sim.execute("PlaceToyInBox", ["robot", "toy0", "box"])
     assert not sim.execute("PullBoxIn", ["robot", "box"])
@@ -126,9 +161,10 @@ def test_collected_sessions_name_toys_left_to_right(tmp_path):
 
 
 def test_cluttered_retrieval_skills():
-    """A blocked target cannot be picked; removing the bottle and pushing
-    the bulky obstacle in front of it unblock it (and the camera no longer
-    sees them hide it); then it goes into the basket."""
+    """A blocked target is too hidden to be segmented for a grasp; pushing
+    the bulky obstacle and removing the bottle in front of it bring it into
+    view (and the camera no longer sees them hide it); then it goes into
+    the basket."""
     layout = ClutterLayout(("target0", "target1"),
                            (("obstacle0", "crate", "target0", 0),
                             ("obstacle1", "bottle", "target0", 1),
@@ -144,11 +180,13 @@ def test_cluttered_retrieval_skills():
                 ("Bulky", ("obstacle0", )),
                 ("Pickable", ("obstacle1", ))} <= atoms
         assert not sim.problems()
-        assert not sim.execute("PickTarget", ["robot", "target0"])
+        with pytest.raises(SimulationError, match="too hidden"):
+            sim.execute("PickTarget", ["robot", "target0"])
         assert not sim.execute("RemoveObstacle",
                                ["robot", "obstacle0", "target0"])
         assert sim.execute("PushObstacle", ["robot", "obstacle0", "target0"])
-        assert not sim.execute("PickTarget", ["robot", "target0"])
+        with pytest.raises(SimulationError, match="too hidden"):
+            sim.execute("PickTarget", ["robot", "target0"])
         assert sim.execute("RemoveObstacle",
                            ["robot", "obstacle1", "target0"])
         assert not any(a[0] == "Blocks" and a[1][1] == "target0"

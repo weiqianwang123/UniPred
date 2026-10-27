@@ -307,6 +307,16 @@ design. Each entry says what was chosen and why.
   and matching it was 95 percent, too noisy for the classifiers' loss
   threshold, and UniPred did not invent the toy-table predicate.
 
+- **Table Clean's constraints are the scene's physics** (the owner's
+  requirement: each skill must be needed for a reason the scene shows).
+  The tray lies lengthwise and slides along x; the sponge sits at its far
+  end, which, pushed out, is 11 cm beyond the arm's straight-down reach,
+  so the sponge leaves and enters the tray only with the tray pulled in;
+  the toys go to the near end, within reach either way. The near tray
+  stands on part of the dirt and the toys stand on it, so a wipe stops
+  where the sponge touches the tray or a toy. Skills no longer check these
+  rules; a skill that cannot be done fails.
+
 ## Cluttered Retrieval
 
 - **Why.** The paper's second real domain ("the robot retrieves targets
@@ -329,11 +339,16 @@ design. Each entry says what was chosen and why.
 - **At least one obstacle per task.** The closure, as IVNTR's classifiers,
   makes a quantifier over no objects false, so a task without obstacles
   would have no Clear target.
-- **Blocks in the scene is visual**: an obstacle nearer the camera whose
-  image box covers at least a fifth of the target's. The scene keeps
-  which obstacle blocks which target (its atoms), problems() compares
-  that with the camera's view after every skill, and the layout is drawn
-  again until the two agree at the start. A target's second blocker is
+- **Blocks in the scene is visual**: an obstacle that on its own hides at
+  least a fifth of the target's pixels from the camera, a target unblocked
+  being at most 5 percent hidden (so that no layout is in between). The
+  scene keeps which obstacle blocks which target (its atoms), problems()
+  compares that with the camera's view after every skill, and the layout
+  is drawn again until the two agree at the start.
+- **Why a blocked target cannot be picked** is physical, as on the real
+  robot, whose grasps come from the object's segmented point cloud: a
+  target less than 90 percent in view is not segmented well enough, and
+  grasps are planned on the points of it in view (not its mesh). A target's second blocker is
   a bottle beyond the first, to a side: a low box farther away hides too
   little, and two side by side leave no room for the fingers to push.
 - **Pushing.** The closed fingers come down beside the box, thin side
