@@ -62,9 +62,11 @@ class FakeRobotInterface(RobotInterface):
         self._index = min(self._index + 1, len(self._images) - 1)
 
 
-def _effects_happened(nsrt: _GroundNSRT, state: State) -> bool:
-    return all(a.holds(state) for a in nsrt.add_effects) and not any(
-        a.holds(state) for a in nsrt.delete_effects)
+def _unmet_effects(nsrt: _GroundNSRT, state: State) -> List[str]:
+    """The operator's add effects that do not hold and delete effects that
+    still do."""
+    return [str(a) for a in sorted(nsrt.add_effects) if not a.holds(state)] \
+        + [f"still {a}" for a in sorted(nsrt.delete_effects) if a.holds(state)]
 
 
 def _step(nsrt: _GroundNSRT) -> str:
@@ -106,9 +108,10 @@ def run_closed_loop(deployment: Deployment,
                 video.keyframe(image, observation, objects, state, done,
                                len(done), "the goal holds")
             return True
-        if executed is not None and not _effects_happened(executed, state):
-            logging.info(f"The effects of {executed.name} did not happen; "
-                         "replanning.")
+        unmet = _unmet_effects(executed, state) if executed else []
+        if unmet:
+            logging.info(f"The effects of {executed.name} did not happen "
+                         f"({', '.join(unmet)}); replanning.")
             note = f"{_step(executed)} did not work: replanning"
             plan = []
         if not plan:
@@ -116,6 +119,9 @@ def run_closed_loop(deployment: Deployment,
                 plan = deployment.plan(state, goal)
             except (ApproachFailure, ApproachTimeout) as err:
                 logging.info(f"No plan: {err}")
+                if video is not None:
+                    video.keyframe(image, observation, objects, state, done,
+                                   len(done), "no plan")
                 return False
             logging.info(f"Plan: {', '.join(_step(n) for n in plan)}")
         if not plan:
