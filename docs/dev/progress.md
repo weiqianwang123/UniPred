@@ -35,6 +35,11 @@ Root (refactor/paper-release), oldest first:
   tracker between keyframes, 738a2ff Franka base class of the scenes.
 - 06d7598 Cluttered Retrieval (Sim, Real, MuJoCo scene); 7090656 image
   boxes as features (optional); 408360d annotated closed-loop video.
+- 8cf4204 the scenes' constraints are physical; 6cecf15 cameras;
+  fede043 clutter prompts; 177e300 derived preconditions pruned only if
+  the score is the same without them; 7012b09 real domains use the
+  paper's image thresholds; 1879311, 2bc0291 perception fixes; 9f3bf70,
+  e74fd5d, 6c35eb8, 9a0f40f closed loop and its video.
 
 Fork (third_party/IVNTR, unipred), after a406fa2 (later: fdad623
 derived-aware hooks, 6bed62c, 8ab1712 Satellites samplers, 0eef079):
@@ -98,9 +103,34 @@ All with `scripts/run.sh` unless noted.
 - Simulated robots' constraints made physical (8cf4204): the far tray's
   sponge is out of reach, the near tray and the toys stand on the dirt,
   a hidden target is not segmented for a grasp; tests check each, and ten
-  GraspGenX demonstrations of each domain reach the goal. Both domains
-  are being recollected (raw_v3) and processed with the tracker and
-  image boxes.
+  GraspGenX demonstrations of each domain reach the goal.
+- Recollected with these constraints (raw_v3; seed 0, cached LLM replies,
+  processed with SAM3, ResNet-18, the tracker and image boxes):
+  - Table Clean (50 demonstrations, 10 test scenes of 3 toys): UniPred
+    OOD 6/10, in-domain 10/10 (3/10 and 4/10 before 177e300, which keeps
+    "no toy is on the table" on wiping; with 20 demonstrations the
+    toy-table predicate is not invented: its classifier passes the effect
+    check for none of 10 seeds). Closed loop on the simulated Franka with
+    annotated videos: 9 of 10 test scenes reach the goal (test_01: no
+    plan, as offline); this needed the arm not to be taken for a toy
+    (1879311), a toy hidden in the gripper at the start to get its box
+    (--first_boxes, 9f3bf70) and to be matched once it shows (2bc0291).
+  - Cluttered Retrieval (47 demonstrations; test scenes have 3 targets,
+    one behind two obstacles): perception with the new prompts (fede043)
+    boxes 640 of 642 targets right. UniPred in-domain 10/10 (5/10 with
+    the state thresholds, see 7012b09), OOD 0/10: the obstacle-target
+    predicate agrees with Blocks on 62 percent of the training groundings
+    (it is "this obstacle has not been moved", which holds for every
+    target), while the target predicate is Clear on all of them. Closed
+    loop on 6 unseen scenes of the training distribution (seed 1): 6/6.
+- IVNTR's effect check on these image features: the non-change loss is
+  JS divergence alone, diluted over every unchanged grounding, so a
+  state never labelled by a change (a toy in the tray, a target in the
+  basket) can be classified either way. A confidence (entropy) term and a
+  heavier non-change weight were tried in the fork and dropped: Table
+  Clean 0/10, and the change rows' own labels lost. The features
+  separate ToyOnTable linearly (accuracy 0.997), so more demonstrations
+  (50 instead of 20) were the remedy.
 - Cluttered Retrieval Sim: oracle 50/50 OOD and in-domain, random options
   50/50 and 48/50 (no dead ends). UniPred (codex): 0/50 OOD, 18/50
   in-domain, the same with 500 demonstrations; Blocks fails the
@@ -117,12 +147,13 @@ All with `scripts/run.sh` unless noted.
   in region" (proposed by the LLM) fails the consistency check on Pick
   (0.28; threshold 0.05), so Free is never derived and placing has no
   region precondition. Removing the items' held flag (a suspected
-  shortcut) left the same 0.28 and 0/50, and was reverted. A
-  500-demonstration run is going.
+  shortcut) left the same 0.28 and 0/50, and was reverted. With 500
+  demonstrations In still fails the check (0.11 on Pick, 0.30 on another
+  option; stopped after 5 h, log in outputs/packing/unipred_500_stopped).
 - Fork README commands: oracle satellites 5/5, blocks_onclear 5/5; GNN on
   satellites with 50 demos 0/50 OOD.
 
-Tests: root `pytest tests` (187) and fork `pytest tests` (41) pass;
+Tests: root `pytest tests` (191) and fork `pytest tests` (41) pass;
 earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
 (311 s).
 
@@ -167,6 +198,14 @@ earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
 
 - Packing's Shift on regions of two boxes moved the divider of the box
   halfway between them (fa4361c).
+- Derived-precondition pruning dropped a precondition whenever planning
+  on the demonstrations got cheaper without it, which it always does, so
+  "no toy is on the table" left wiping (177e300).
+- The real domains used the simulated domains' effect-check and loss
+  thresholds, which image-crop classifiers do not reach (7012b09).
+- SAM3's "toy" boxed the arm holding the sponge above "robotic arm"
+  (1879311); a toy hidden in the gripper at the start took the fingers'
+  appearance and was not matched once placed (2bc0291).
 - Identity in the simulated robot's recordings: toys swapped behind the
   arm or in the gripper (c4783c3: SAM3 video tracker); the arm's prompt
   "robot" matched toys that are robot figures (cefa196).
@@ -177,10 +216,9 @@ earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
 - Packing: UniPred 0/50 (the paper: 100%); the binary predicate In is not
   consistent enough to be selected (see Results). The task matches the
   paper's description; its exact distributions are not in the paper.
-- Cluttered Retrieval: UniPred on the processed recordings (with image
-  boxes as features), closed-loop videos.
-- Table Clean on the simulated robot: 50 demonstrations, image boxes as
-  features (the toy-table predicate), more closed-loop videos.
+- Cluttered Retrieval on the simulated robot: OOD 0/10 (the
+  obstacle-target predicate is not relational, see Results).
+- Table Clean on the simulated robot: test_01 finds no plan.
 - The real-robot fixture cannot express where the box is (the fake
   encoder sees the same crop near and far), so UniPred cannot solve its
   test scenes; it is a smoke test. The simulated robot's sessions are the
