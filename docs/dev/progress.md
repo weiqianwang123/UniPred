@@ -62,13 +62,28 @@ All with `scripts/run.sh` unless noted.
     refinable with the learned samplers.
   - satellites ivntr (500 demos): OOD 20/50, in-domain 48/50, learning
     13374 s (random_options: 0/50).
-  Reruns from the final code (snapshot run3) are running one after the
-  other; their numbers replace these.
+  Final-code reruns (snapshot run3, before the fixes below): satellites
+  unipred OOD 20/50, in-domain 47/50; table_clean_sim unipred 32/50,
+  50/50; satellites ivntr (uncapped) 20/50, 48/50; ablation
+  no_derived_selection on table_clean_sim 1/50, 0/50; the quickstart
+  (mock LLM, 50 demos) 0/10, as expected of the mock.
+- After the Satellites sampler fix (fork 8ab1712; snapshot satfix, cached
+  LLM replies of run3): satellites unipred OOD 48/50, in-domain 50/50
+  (the paper: 95.2%). The ids-free samplers swapped into the saved run1
+  IVNTR model: 49/50.
+- After the derived-aware selection fixes (60db615; cached replies):
+  table_clean_sim unipred OOD 34/50 with 8 skeletons, 46/50 with 50 (now
+  the setting), in-domain 50/50; the same replies without the fixes 22/50
+  with 50 skeletons (the paper: 93.4%).
+- Simulated robot (unipred/robot_sim): 24/24 full demonstrations with
+  GraspGenX grasps; 60 sessions collected (50 demonstrations, 10 test
+  scenes), processed with SAM3 and ResNet-18; UniPred on them pending.
 - Fork README commands: oracle satellites 5/5, blocks_onclear 5/5; GNN on
   satellites with 50 demos 0/50 OOD.
 
-Tests: root `pytest tests` (141) and fork `pytest tests` (40) pass,
-also in a fresh clone installed by scripts/install.sh (311 s).
+Tests: root `pytest tests` (151) and fork `pytest tests` (41) pass;
+earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
+(311 s).
 
 ## Bugs fixed
 
@@ -94,26 +109,33 @@ also in a fresh clone installed by scripts/install.sh (311 s).
   keeps every passing vector, as upstream; capped types keep the best
   (fork 6dbccae, b5d863d).
 - A 2 x 1 pixel sliver detected as an object gave NaN crop features and
-  diverged UniPred's training on a 20-session fixture (7204a1d).
+  diverged UniPred's training on a 20-session fixture (7204a1d); that fix
+  resized every crop of the fake encoder, which hid Packing's divider and
+  failed test_packing (fbe69d2: only crops smaller than the grid).
+- The fixture kept Table Clean Sim's object names instead of naming toys
+  left to right in the first keyframe, so one toy's labels went with the
+  other's crops (30375d6; a test checks held toys' boxes).
+- Satellites' learned samplers saw the objects' ids, labels whose test
+  values no training task has: OOD 20/50 instead of 48/50 (fork 8ab1712).
+- Derived predicates that are preconditions but not consistent effects
+  ("no toy is on the table") were never candidates, selection stopped
+  before trying them, and the fixed demonstration order spread them over
+  every later operator (fork fdad623, root 60db615).
+- The planning-effort score skipped the last demonstration (fork
+  6bed62c, inherited).
 
 ## Remaining
 
-- Numbers of the final runs (above) and of the README commands that train
-  (quickstart, the ablation example, the real-robot template with full
-  budgets).
-- Satellites OOD success is far below the paper's (UniPred 13/50, IVNTR
-  20/50 vs ~95%) while in-domain success is 48-49/50. Diagnosis on the
-  saved UniPred model: the learned operators match the ground truth; the
-  plans fail at MoveTo, where the learned sampler (a Gaussian fitted to
-  the demonstrations' ring of positions around the object) puts the
-  satellite where even the ground-truth Sees does not hold (0/30 samples
-  at the failing steps of 6 tasks), so refinement backtracks until the
-  timeout; a 20 s budget gives the same 5/20 as 5 s. The environment, the
-  ground-truth sampler, sampler learning and low-level search are the
-  same as upstream IVNTR's. Open: why upstream's samplers generalise to
-  three satellites and ours do not.
-- Perception with real weights is untested: GroundingDINO tiny, SAM2.1
-  tiny and the gated DINOv3 ViT-S/16 need a download (scripts/install.sh
-  --weights).
+- IVNTR on Satellites retrained with the sampler fix (running), and the
+  Table III methods on the simulated robot's sessions.
+- Packing: review of the environment's tasks (the owner suspects problems
+  in how they are written).
+- The real-robot fixture cannot express where the box is (the fake
+  encoder sees the same crop near and far), so UniPred cannot solve its
+  test scenes; it is a smoke test. The simulated robot's sessions are the
+  realistic check.
+- GroundingDINO tiny and SAM2.1 tiny are downloaded and tested on the
+  simulator's images; DINOv3 is gated (accept its licence, `hf auth
+  login`), so ResNet-18 features stand in.
 - The paper tables need five seeds of every experiment (days of compute);
   the table scripts run them.

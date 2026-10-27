@@ -150,9 +150,11 @@ LLM=mock scripts/run.sh configs/satellites/unipred.yaml 0 --num_train_tasks 50 -
 
 Results are in `outputs/satellites/unipred/seed0/` (`train_test.log`, the
 out-of-distribution test; `test_in_domain.log`, the test on tasks from the
-training distribution with the saved model). Drop `LLM=mock` and the task
-counts for the paper's setting (a real LLM, 500 demonstrations, 50 test
-tasks).
+training distribution with the saved model). The mock LLM only checks that
+the whole pipeline runs (about 5 minutes): its proposals are placeholders,
+so the learned model solves few or no test tasks. Drop `LLM=mock` and the
+task counts for the paper's setting (a real LLM, 500 demonstrations, 50
+test tasks).
 
 ## Domains
 

@@ -104,6 +104,35 @@ design. Each entry says what was chosen and why.
   had kept "Calibrate adds Sees" over "MoveTo adds Sees" in one run and
   solved no Satellites task.
 
+- **Derived-aware selection** (unipred/derived/selection.py, the fork's
+  hooks in bilevel_learning_approach.py). IVNTR keeps a negated or
+  quantified variant only if it is a consistent effect, so "no toy is on
+  the table" (picking a toy makes it true only for the last toy) never
+  reached selection, and Table Clean Sim's learned wiping had no such
+  precondition. UniPred also keeps a variant that is a precondition of some
+  option (holding before all its unchanged transitions, not before every
+  transition), scores a basic candidate together with each of its variants
+  (the toy-table predicate helps only through "no toy is on the table"),
+  goes on below the selection threshold while a candidate lowers the score
+  by 1 percent, and after operator learning drops each derived
+  precondition whose removal keeps the score within 1 percent (the
+  demonstrations, all in one order, put "no toy is on the table" before
+  every later operator, which made tasks starting with the wiper in hand
+  unsolvable). A rule preferring variants that keep a single-object type
+  (the table) free was tried and dropped: "the hand holds no wiper" must
+  quantify the wiper to be a precondition of picking a toy.
+- **Skeletons in Table Clean Sim**: 50, as Satellites. The demonstrations
+  cannot tell whether "no toy is on the table" belongs to taking the wiper
+  or to wiping (both explain them equally); a model that puts it on the
+  former tries wiping first when a task starts with the wiper in hand, and
+  refinement rejects that. Seed 0, cached LLM replies: 34 of 50 test tasks
+  with 8 skeletons, 46 with 50; without the derived changes 22 with 50.
+- **Sampler inputs.** Learned samplers see every object feature but those
+  `domain_sampler_data_filter` leaves out: Satellites' ids
+  (object.id, calibration_obj_id, read_obj_id) are labels, and test tasks
+  have an id no training task has. A sampler keeps the filter it was
+  trained with.
+
 ## Baselines
 
 - **GNN and transformer policies** use the ground-truth NSRTs' samplers to
@@ -196,3 +225,45 @@ design. Each entry says what was chosen and why.
   NoToyOnTable, labelled directly) replace invention; partial GT labels
   take the hand-state predicates (HandEmpty, HoldingToy, HoldingWiper)
   from the annotations.
+
+## Simulated robot (unipred/robot_sim)
+
+- **Why.** Table IV needs the real robot; the simulator gives Table Clean
+  Real's pipeline (record, perceive, invent, plan, closed loop) images of
+  a real-looking scene and a robot to execute on, with true atoms.
+- **Assets.** The FR3 and the 2F-85 are mujoco_menagerie's, the gripper
+  mounted as CDG's and R2S2R's fr3_robotiq (flange 0.107 m, turned 90
+  degrees, pads at R2S2R's friction and squeeze). Toys, tray and sponge
+  are Google Scanned Objects chosen to fit the gripper (narrow side under
+  7 cm) and the tray (long side under 12 cm); a stacking toy that toppled
+  was dropped. Fetched at pinned commits, not committed.
+- **Skills** are scripted Cartesian lines through damped least squares IK
+  on the arm's position actuators. A grasp closes the real fingers and is
+  then held by a weld, so that a demonstration never fails on a slip (the
+  demonstrations are what is learned from, not grasping). Likewise the
+  tray slides along x only, a position drive keeping it with the gripper
+  that presses on its wall, rather than being pushed by contact. The
+  skills' conditions are Table Clean Sim's, so its oracle plans are the
+  demonstrations.
+- **GraspGenX** gets the object's mesh vertices as its points (the
+  cameras saw ~170 points of a toy at the far end and none of the sponge's
+  sides in the tray, and GraspGenX then gave no grasp) and the rest of the
+  scene from two depth cameras for its collision filter (5 mm). Grasps
+  from above (within 50 degrees) that the arm reaches are tried best
+  first until both pads touch the object; grasps whose open pads would
+  land on the object are skipped. 24 of 24 full demonstrations succeed.
+- **Layout.** The sponge lies along the tray, so that the fingers close
+  across it clear of the walls; across, GraspGenX's collision filter
+  removed every grasp of its narrow side and only pinches of its ends
+  were left.
+- **Names.** The raw format names the objects of a type left to right in
+  the first keyframe; the collector renames the toys so, or the labels of
+  one toy would go with another's crops.
+- **Stains** are opaque blots stacked from pale to dark: translucent ones
+  cast stippled shadows, and small dark blots were detected as toys.
+- **Perception.** SAM3 (CDG's server) is the simulator config's detector:
+  it found 258 of 259 toys where GroundingDINO found 189 of 215, but also
+  takes the arm, tray and sponge for toys; detections of different types
+  that overlap almost entirely (IoU > 0.7) keep the best scored, which
+  removes those. Its "robot" is the whole arm (no prompt found the
+  gripper alone), so the robot's true box is the whole robot's.
