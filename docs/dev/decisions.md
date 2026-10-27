@@ -209,6 +209,18 @@ design. Each entry says what was chosen and why.
   scenes must have. At deployment there are none, so each given predicate
   is evaluated by an MLP over its arguments' crop features, trained on the
   annotated keyframes.
+- **Thresholds of image predicates.** The real domains' classifiers see
+  image-crop features and fit the effects less tightly than those of
+  simulator states, so their effect check and validation loss allow what
+  the paper's code allows its image predicates (guidance 0.1, loss 0.06:
+  the block predicate of predicators/config/blocks_img/pred_up12.yaml on
+  main; its state predicates keep 0.05 and 0.005, as the simulated
+  domains here). On the simulated robot's Cluttered Retrieval recordings
+  (47 demonstrations), no candidate effect of the obstacle-target
+  predicate reached validation loss 0.005 (0.011 to 0.21), and UniPred
+  solved 5 of 10 in-domain tasks; with these thresholds it kept one at
+  0.014 and solved 10 of 10. On Table Clean's (50 demonstrations) both
+  give the same predicates.
 - **Recorded options** have no parameters: the middle of the parameter
   space stands for them, and samplers are not learned
   (sampler_learner: random). A recorded option counts as initiable and

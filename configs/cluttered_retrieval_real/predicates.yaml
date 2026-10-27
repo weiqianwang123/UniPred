@@ -2,3 +2,12 @@
 # for Cluttered Retrieval Sim; the features are those of the objects' image
 # crops.
 include: ../cluttered_retrieval_sim/predicates.yaml
+
+# A classifier of image-crop features fits the effects less tightly than
+# one of simulator states, so the effect check and the validation loss
+# allow what the paper's code allows its image predicates (the block
+# predicate of predicators/config/blocks_img/pred_up12.yaml on main; its
+# state predicates keep 0.05 and 0.005, as the simulated domains here).
+defaults:
+  guidance_thresh: 0.1
+  loss_thresh: 0.06
