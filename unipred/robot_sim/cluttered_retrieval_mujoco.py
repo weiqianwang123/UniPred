@@ -76,7 +76,9 @@ CRATE_MODELS = (
     ("KS_Chocolate_Cube_Box_Assortment_By_Neuhaus_2010_Ounces", 0.55),
     ("Paul_Frank_Dot_Lunch_Box", 0.6, _ON_SIDE),
 )
-_BASKET_MODEL = ("Curver_Storage_Bin_Black_Small", 1.0)
+# Shallower than the scanned bin, for the low camera to see the targets in
+# it over its walls.
+_BASKET_MODEL = ("Curver_Storage_Bin_Black_Small", (1.0, 1.0, 0.4))
 _TARGET_MASS, _BOTTLE_MASS, _CRATE_MASS = 0.06, 0.25, 0.4
 # A bulky obstacle slides on the table (cardboard on a smooth top) rather
 # than tipping over when the fingers push it.
@@ -112,11 +114,10 @@ _PUSH_TIPS = 0.02  # the fingertips' height, pushing
 # 10 cm above them (what anything taller meets).
 _FINGERS = np.array([0.035, 0.015])
 _GRIPPER = np.array([0.065, 0.045])
-# Removed bottles stand in the left corner, behind every target as the
-# camera sees it: at the spot of this grid farthest from the targets and the
-# other obstacles.
-_ASIDE = tuple((x, y) for x in (0.05, 0.13, 0.21) for y in (0.30, 0.40, 0.50,
-                                                            0.60))
+# Removed bottles stand behind the basket, on the robot's right: in view,
+# behind every target and the basket's inside as the camera sees them; at
+# the spot of this grid farthest from the other objects.
+_ASIDE = tuple((x, y) for x in (0.06, 0.15) for y in (-0.30, -0.42, -0.54))
 # The basket: its centre, its long side along x; targets lie in it side by
 # side, their long sides along it.
 _BASKET_XY = (0.42, -0.36)
@@ -574,11 +575,11 @@ class ClutteredRetrievalMujoco(FrankaTableScene):
                 centre = xy + toward * along + across * offset
                 self._lay(name, centre, facing + rng.uniform(-0.1, 0.1))
                 reach = along + half
-        # Obstacles that block nothing: in the far corner by the basket,
-        # out of the targets' lines of sight.
+        # Obstacles that block nothing: behind the basket, where removed
+        # bottles go, out of the targets' and the basket's lines of sight.
         free = [o for o in layout.obstacles if not o[2]]
         for k, (name, _, _, _) in enumerate(free):
-            self._lay(name, np.array([0.72, -0.44 + 0.22 * k]),
+            self._lay(name, np.array(_ASIDE[2 * k + 1]),
                       rng.uniform(-np.pi, np.pi))
         mujoco.mj_forward(self.model, self.data)
         if self._overlapping() or not self._shows_blocks():

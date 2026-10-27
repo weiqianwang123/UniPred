@@ -103,7 +103,7 @@ class TableCleanMujoco(FrankaTableScene):
     # The table runs out under the pushed-out tray; the camera looks from
     # beyond it.
     table_x = (-0.3, 1.0)
-    camera = ((1.12, 0.26, 0.84), (0.42, -0.07, 0.0), 50.0)
+    camera = ((1.25, 0.32, 0.95), (0.35, -0.08, 0.18), 52.0)
 
     def __init__(self,
                  layout: SceneLayout,
