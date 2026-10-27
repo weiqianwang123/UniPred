@@ -1,6 +1,6 @@
 """Tests for the simulated environments: task generation, the rules of
-Table Clean Sim, and the oracle on small tasks of every domain (Packing in
-test_packing.py)."""
+Table Clean Sim and Cluttered Retrieval Sim, and the oracle on small tasks
+of every domain (Packing in test_packing.py)."""
 
 import numpy as np
 import pytest
@@ -10,6 +10,7 @@ from predicators.approaches.oracle_approach import OracleApproach
 from predicators.envs import create_new_env
 from predicators.ground_truth_models import get_gt_options
 from predicators.structs import Action
+from unipred.envs import cluttered_retrieval_sim as crs
 from unipred.envs.table_clean_sim import PICK, PUSH_OUT, WIPE, \
     TableCleanSimEnv
 
@@ -25,8 +26,10 @@ def _env(name, **settings):
     return create_new_env(name)
 
 
-@pytest.mark.parametrize("name", ["satellites", "blocks_onclear",
-                                  "table_clean_sim"])
+@pytest.mark.parametrize(
+    "name",
+    ["satellites", "blocks_onclear", "table_clean_sim",
+     "cluttered_retrieval_sim"])
 @pytest.mark.parametrize("in_domain_test", [False, True])
 def test_oracle_solves_tasks(name, in_domain_test):
     """The ground-truth operators solve train and test tasks."""
@@ -103,3 +106,59 @@ def test_table_clean_sim_constraints():
         cleared.set(toy, "on_table", 0.0)
         cleared.set(toy, "in_box", 1.0)
     assert _act(cleared, WIPE, 0.5, 0.5).get(table, "is_clean") == 1.0
+
+
+def _blocked_by(env, state):
+    """For each target, the obstacles that block it."""
+    return {
+        t.name: sorted(o.name for o in state.get_objects(env.obstacle_type)
+                       if env._blocks(state, [o, t]))  # pylint: disable=protected-access
+        for t in state.get_objects(env.target_type)
+    }
+
+
+def test_cluttered_retrieval_sim_tasks():
+    """Train tasks: two targets, each blocked by at most one obstacle, at
+    least one blocked. Test tasks: three targets, one blocked by two
+    obstacles; an obstacle blocks at most one target."""
+    env = _env("cluttered_retrieval_sim", num_train_tasks=20,
+               num_test_tasks=20)
+    for env_task in env.get_train_tasks():
+        blocked = _blocked_by(env, env_task.task.init)
+        assert len(blocked) == 2
+        assert max(map(len, blocked.values())) == 1
+    for env_task in env.get_test_tasks():
+        state = env_task.task.init
+        blocked = _blocked_by(env, state)
+        assert len(blocked) == 3
+        assert max(map(len, blocked.values())) == 2
+        blockers = [o for names in blocked.values() for o in names]
+        assert len(blockers) == len(set(blockers))
+
+
+def test_cluttered_retrieval_sim_rules():
+    """A blocked target cannot be picked; a bottle is removed and a crate
+    pushed (not the other way round), which clears the target."""
+    env = _env("cluttered_retrieval_sim", num_test_tasks=20)
+    task = next(t.task for t in env.get_test_tasks()
+                if any(len(b) == 2 for b in _blocked_by(env, t.task.init)
+                       .values()))
+    state = task.init
+    target = next(t for t in state.get_objects(env.target_type)
+                  if len(_blocked_by(env, state)[t.name]) == 2)
+
+    def _act(primitive, obj, direction=1.0):
+        return env.simulate(state, Action(np.array(
+            [primitive, state.get(obj, "x"), state.get(obj, "y"), direction],
+            dtype=np.float32)))
+
+    assert _act(crs.PICK, target).allclose(state)
+    for name in _blocked_by(env, state)[target.name]:
+        obstacle = next(o for o in state if o.name == name)
+        right, wrong = (crs.REMOVE, crs.PUSH) if state.get(
+            obstacle, "pickable") > 0.5 else (crs.PUSH, crs.REMOVE)
+        assert _act(wrong, obstacle).allclose(state)
+        state = _act(right, obstacle)
+        assert name not in _blocked_by(env, state)[target.name]
+    assert not _blocked_by(env, state)[target.name]
+    assert _act(crs.PICK, target).get(target, "held") == 1.0

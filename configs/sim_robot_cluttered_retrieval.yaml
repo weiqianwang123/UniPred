@@ -1,0 +1,31 @@
+# The simulated robot of Cluttered Retrieval (unipred/robot_sim,
+# cluttered_retrieval_mujoco.py): perception for processing its recordings
+# (examples/real_robot/collect_sim_demos.py --domain cluttered_retrieval),
+# planning from its images and the closed loop on it. As
+# configs/sim_robot.yaml, with prompts for this scene's objects.
+
+detector: sam3
+# The crop encoder: "dinov3" (the paper's), "resnet18", "auto" (DINOv3 if
+# its weights are installed, else ResNet-18) or "fake".
+encoder: dinov3
+device: cuda
+box_threshold: 0.3
+text_threshold: 0.25
+crop_padding: 0.15
+mask_crops: false
+cameras: [0]
+# The text prompts of each object type: the Franka, the snack bars (the
+# targets), the obstacles (bottles, a gift box, a lunch box) and the black
+# basket (the box). A detection that overlaps a better one of another type
+# is dropped.
+prompts:
+  robot: robotic arm
+  target: candy bar
+  obstacle: [bottle, gift box, lunch box]
+  box: black basket
+# The targets look alike, so they keep their names by being followed from
+# keyframe to keyframe (as the toys of configs/sim_robot.yaml), and so do
+# the obstacles.
+tracker: sam3
+track_types: [target, obstacle]
+track_min_iou: 0.3

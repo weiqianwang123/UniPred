@@ -1,0 +1,42 @@
+# What UniPred knows and learns about Cluttered Retrieval Sim (passed as
+# --neupi_pred_config; see configs/satellites/predicates.yaml for the
+# format).
+
+description: >-
+  A robot puts target objects (snack packs) from a table into a box (a
+  basket). Obstacles stand on the table: bottles, which the robot can pick
+  up and put aside, and bulky crates, which it can only push sideways. An
+  obstacle that stands in front of a target, between it and the camera,
+  hides it, and the robot cannot pick a target while any obstacle stands in
+  front of it. Clearing an obstacle names the target it stands in front of.
+  The robot holds at most one target at a time and needs an empty hand to
+  clear an obstacle.
+
+known_predicates:
+  - {name: InBox, effects: {PlaceTargetInBox: add}}
+  - {name: Pickable, precondition_of: [RemoveObstacle]}
+  - {name: Bulky, precondition_of: [PushObstacle]}
+
+static_predicates: [Pickable, Bulky]
+
+defaults:
+  architecture: {type: MLP, layer_size: 128, initializer: xavier}
+  optimizer: {type: AdamW, kwargs: {lr: 0.001}}
+  lr_scheduler: {type: StepLR, kwargs: {step_size: 50, gamma: 0.2}}
+  batch_size: 512
+  epochs: 100
+  gumbel_temp: 0.7
+  val_freq: 10
+  guidance_thresh: 0.05
+  loss_thresh: 0.005
+  num_iter: 10
+  batch_vect_num: 4
+  matrix_vec_try: 20
+  max_num_vectors: 1
+
+predicate_types:
+  - {name: neural_u_robot, types: [robot], ent_idx: [0]}
+  - {name: neural_u_target, types: [target], ent_idx: [0]}
+  - {name: neural_b_robot_target, types: [robot, target], ent_idx: [0, 0]}
+  - {name: neural_b_obstacle_target, types: [obstacle, target],
+     ent_idx: [0, 0]}

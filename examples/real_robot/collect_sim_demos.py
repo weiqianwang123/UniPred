@@ -1,14 +1,19 @@
-"""Collect recorded sessions of Table Clean in the MuJoCo simulator, in the
-raw format of README.md, as a stand-in for demonstrations on a real robot.
+"""Collect recorded sessions of a real-robot domain in the MuJoCo simulator,
+in the raw format of README.md, as a stand-in for demonstrations on a real
+robot: Table Clean (--domain table_clean, the default) or Cluttered
+Retrieval (--domain cluttered_retrieval).
 
-Tasks come from Table Clean Sim: train sessions start from its training
-distribution (two toys on the table, the sponge in the tray near the robot)
-and are demonstrated by its oracle plan, executed skill by skill by the
-simulated Franka (unipred/robot_sim/table_clean_mujoco.py) with a keyframe
-image before each skill and after the last; test scenes are the initial
-scenes of its out-of-distribution tasks (three toys, toys already in the
-tray, a toy or the sponge in hand, the tray on the far side). The toys are
-named left to right in the first keyframe, as the processing expects. Every
+Tasks come from the domain's simulated counterpart (Table Clean Sim,
+Cluttered Retrieval Sim): train sessions start from its training
+distribution and are demonstrated by its oracle plan, executed skill by
+skill by the simulated Franka (unipred/robot_sim/table_clean_mujoco.py,
+cluttered_retrieval_mujoco.py) with a keyframe image before each skill and
+after the last; test scenes are the initial scenes of its
+out-of-distribution tasks (Table Clean: three toys, toys already in the
+tray, a toy or the sponge in hand, the tray on the far side; Cluttered
+Retrieval: three targets, one behind two obstacles). Numbered objects (toys,
+targets, obstacles) are named left to right in the first keyframe, as the
+processing expects. Every
 keyframe records the ground-truth atoms (atoms.json) and the objects' image
 boxes (gt_boxes.json, for evaluating detection, or for the boxes of objects
 the detector misses: process_demos.py --fill_missing gt_boxes.json). With
@@ -34,7 +39,8 @@ import json
 import logging
 import os
 import tempfile
-from typing import List
+import re
+from typing import Any, Dict, List
 
 from PIL import Image
 
@@ -42,10 +48,18 @@ from predicators import utils
 from predicators.datasets import create_dataset
 from predicators.envs import get_or_create_env
 from predicators.ground_truth_models import get_gt_options
-from unipred.robot_sim.table_clean_mujoco import SimulationError, \
-    TableCleanMujoco
+from unipred.robot_sim.cluttered_retrieval_mujoco import \
+    ClutteredRetrievalMujoco
+from unipred.robot_sim.franka_scene import FrankaTableScene, SimulationError
+from unipred.robot_sim.table_clean_mujoco import TableCleanMujoco
 
 _ATTEMPTS = 3
+# Domain -> its simulated counterpart and its scene.
+_DOMAINS = {
+    "table_clean": ("table_clean_sim", TableCleanMujoco),
+    "cluttered_retrieval":
+    ("cluttered_retrieval_sim", ClutteredRetrievalMujoco),
+}
 
 
 def _dumps(content: object) -> str:
@@ -65,8 +79,20 @@ def _jpeg(frame) -> bytes:
         return f.getvalue()
 
 
-def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
-           steps: List, give_boxes: bool, video_hz: float) -> None:
+def _renamed(content: Any, rename: Dict[str, str]) -> Any:
+    """Content (JSON) with every string that is an old name renamed."""
+    if isinstance(content, str):
+        return rename.get(content, content)
+    if isinstance(content, (list, tuple)):
+        return [_renamed(c, rename) for c in content]
+    if isinstance(content, dict):
+        return {_renamed(k, rename): _renamed(v, rename)
+                for k, v in content.items()}
+    return content
+
+
+def _write(directory: str, domain: str, sim: FrankaTableScene, split: str,
+           goal: List, steps: List, give_boxes: bool, video_hz: float) -> None:
     """Execute the steps in the scene and write the session (nothing if a
     step fails)."""
     images, atoms, boxes, videos = [], [], [], []
@@ -99,41 +125,39 @@ def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
     }:
         raise RuntimeError(f"The demonstration in {directory} does not reach "
                            "the goal.")
-    # The raw format names objects of a type left to right in the first
-    # keyframe (by their boxes' centres): rename the toys so.
-    order = sorted(sim.toys,
-                   key=lambda n: (boxes[0][n][0] + boxes[0][n][2],
-                                  boxes[0][n][1] + boxes[0][n][3]))
-    rename = {old: f"toy{k}" for k, old in enumerate(order)}
-
-    def _name(name: str) -> str:
-        return rename.get(name, name)
-
-    def _atoms(entries: List) -> List:
-        return sorted([n, [_name(a) for a in args]] for n, args in entries)
-
-    description = sim.description()
-    description["toys"] = [[_name(n), p] for n, p in description["toys"]]
+    # The raw format names the objects of a type left to right in the first
+    # keyframe (by their boxes' centres): rename the numbered ones so.
+    rename: Dict[str, str] = {}
+    for object_type in set(sim.objects().values()):
+        numbered = [n for n, t in sim.objects().items()
+                    if t == object_type and re.fullmatch(
+                        re.escape(object_type) + r"\d+", n)]
+        order = sorted(numbered,
+                       key=lambda n: (boxes[0][n][0] + boxes[0][n][2],
+                                      boxes[0][n][1] + boxes[0][n][3]))
+        rename.update(
+            {old: f"{object_type}{k}" for k, old in enumerate(order)})
     files = {
         "session.json": {
             "split": split,
-            "objects": {_name(n): t
-                        for n, t in sorted(sim.objects().items())},
-            "goal": _atoms(goal),
-            # Not read by the processing: which scanned toy each toy is,
-            # and the scene to rebuild (closed_loop_example.py --robot sim).
-            "toy_models": {_name(n): m
-                           for n, m in sim.toy_models.items()},
-            "sim": description,
+            "objects": dict(sorted(_renamed(sim.objects(), rename).items())),
+            "goal": sorted(_renamed(goal, rename)),
+            # Not read by the processing: the domain, the objects' scanned
+            # models, and the scene to rebuild (closed_loop_example.py
+            # --robot sim).
+            "domain": domain,
+            "models": dict(
+                sorted(_renamed(sim.scanned_models(), rename).items())),
+            "sim": _renamed(sim.description(), rename),
         },
         "actions.json": [{
             "option": name,
-            "objects": [_name(o) for o in objects]
+            "objects": _renamed(list(objects), rename)
         } for name, objects in steps],
-        "atoms.json": [_atoms(a) for a in atoms],
-        "gt_boxes.json": [{_name(n): b
-                           for n, b in sorted(frame.items())}
-                          for frame in boxes],
+        "atoms.json": [sorted(_renamed(a, rename)) for a in atoms],
+        "gt_boxes.json": [
+            dict(sorted(_renamed(frame, rename).items())) for frame in boxes
+        ],
     }
     if give_boxes:
         files["boxes.json"] = files["gt_boxes.json"]
@@ -156,6 +180,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("--out", required=True)
+    parser.add_argument("--domain", choices=sorted(_DOMAINS),
+                        default="table_clean")
     parser.add_argument("--num_train", type=int, default=20)
     parser.add_argument("--num_test", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
@@ -171,15 +197,16 @@ def main() -> None:
                         "the skills (0: none)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    env_name, scene = _DOMAINS[args.domain]
     utils.reset_config({
-        "env": "table_clean_sim",
+        "env": env_name,
         "seed": args.seed,
         "num_train_tasks": args.num_train,
         "num_test_tasks": args.num_test,
         "sesame_task_planner": "astar",
         "data_dir": tempfile.mkdtemp(),
     })
-    env = get_or_create_env("table_clean_sim")
+    env = get_or_create_env(env_name)
     train_tasks = [t.task for t in env.get_train_tasks()]
     dataset = create_dataset(env, train_tasks, get_gt_options(env.get_name()))
     sessions = []
@@ -200,12 +227,12 @@ def main() -> None:
         goal = sorted((a.predicate.name, tuple(o.name for o in a.objects))
                       for a in task.goal)
         for attempt in range(_ATTEMPTS):
-            sim = TableCleanMujoco.from_sim_state(task.init,
+            sim = scene.from_sim_state(task.init,
                                                   seed=seed + 100000 * attempt,
                                                   grasps=args.grasps)
             try:
-                _write(os.path.join(args.out, name), sim, split, goal, steps,
-                       args.give_boxes, args.video_hz)
+                _write(os.path.join(args.out, name), args.domain, sim, split,
+                       goal, steps, args.give_boxes, args.video_hz)
                 break
             except SimulationError as e:
                 logging.warning(f"{name}, attempt {attempt + 1}: {e}")

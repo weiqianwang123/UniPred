@@ -84,6 +84,15 @@ class UniPredSettings:
     perception_weights_dir = os.environ.get("UNIPRED_WEIGHTS_DIR", "")
     perception_encoder = "auto"
 
+    # Cluttered Retrieval Real: the output directory of
+    # examples/real_robot/process_demos.py.
+    cluttered_retrieval_real_data_dir = ""
+
+    # Cluttered Retrieval Sim: number of targets in train and
+    # out-of-distribution test tasks.
+    cluttered_retrieval_sim_num_targets_train = 2
+    cluttered_retrieval_sim_num_targets_test = 3
+
     # Packing: numbers of boxes and of large and small items in train and
     # out-of-distribution test tasks.
     packing_num_boxes_train = 2

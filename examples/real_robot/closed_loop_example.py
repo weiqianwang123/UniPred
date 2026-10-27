@@ -133,12 +133,18 @@ def main() -> None:
     # pylint: disable=import-outside-toplevel
     from PIL import Image
 
-    from unipred.robot_sim.table_clean_mujoco import MujocoRobot, \
-        TableCleanMujoco
+    from unipred.robot_sim.cluttered_retrieval_mujoco import \
+        ClutteredRetrievalMujoco
+    from unipred.robot_sim.franka_scene import MujocoRobot
+    from unipred.robot_sim.table_clean_mujoco import TableCleanMujoco
     if "sim" not in session:
         raise ValueError(f"{args.session} was not recorded in the simulator "
                          "(its session.json has no \"sim\").")
-    sim = TableCleanMujoco.from_description(session["sim"])
+    scene = {
+        "table_clean": TableCleanMujoco,
+        "cluttered_retrieval": ClutteredRetrievalMujoco,
+    }[session.get("domain", "table_clean")]
+    sim = scene.from_description(session["sim"])
     robot = MujocoRobot(sim)
     run_closed_loop(deployment, robot, session["objects"], session["goal"],
                     args.max_steps)

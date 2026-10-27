@@ -1,0 +1,14 @@
+# Cluttered Retrieval Sim: put every target into the box, clearing the
+# obstacles in front of them (bottles are removed, crates pushed aside).
+# Train with two targets, each blocked by at most one obstacle; test with
+# three targets and more obstacles. The excluded predicates are hidden and
+# must be invented; Clear is derived (ForAll ?obstacle. Not
+# Blocks(?obstacle, ?target)).
+env: cluttered_retrieval_sim
+excluded_predicates: HandEmpty,Holding,OnTable,Blocks,Clear
+num_train_tasks: 50
+num_test_tasks: 50
+timeout: 10
+# The atoms closure of the derived predicates needs A*.
+sesame_task_planner: astar
+execution_monitor: expected_atoms

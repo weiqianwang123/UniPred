@@ -306,3 +306,47 @@ design. Each entry says what was chosen and why.
   UniPred solves 9 of 10 test scenes (20 demonstrations); with detection
   and matching it was 95 percent, too noisy for the classifiers' loss
   threshold, and UniPred did not invent the toy-table predicate.
+
+## Cluttered Retrieval
+
+- **Why.** The paper's second real domain ("the robot retrieves targets
+  into a box while reasoning about visual obstruction; it removes pickable
+  obstacles (e.g., bottles) or repositions non-pickable ones (e.g.,
+  boxes)"; training tasks two targets, test tasks three and more
+  obstacles) is described only in outline; there is no simulated version
+  in the paper. Cluttered Retrieval Sim and the MuJoCo scene stand in for
+  it, for recordings, learning and the closed loop without hardware.
+- **Predicates.** Blocks(obstacle, target) is invented and Clear(target)
+  is its derived form ForAll ?obstacle. Not Blocks, a precondition of
+  PickTarget: test tasks have a target behind two obstacles, which a
+  predicate learned from single blockers ("cleared") gets wrong. Pickable
+  and Bulky are given static predicates, as IsSmall and IsLarge in
+  Packing: no effect would let them be invented.
+- **Clearing names the target.** RemoveObstacle and PushObstacle take the
+  target as well as the obstacle: IVNTR learns effects on an option's
+  arguments only, and the effect (Blocks deleted) is on both. Each
+  obstacle blocks at most one target, so the effect is complete.
+- **At least one obstacle per task.** The closure, as IVNTR's classifiers,
+  makes a quantifier over no objects false, so a task without obstacles
+  would have no Clear target.
+- **Blocks in the scene is visual**: an obstacle nearer the camera whose
+  image box covers at least a fifth of the target's. The scene keeps
+  which obstacle blocks which target (its atoms), problems() compares
+  that with the camera's view after every skill, and the layout is drawn
+  again until the two agree at the start. A target's second blocker is
+  a bottle beyond the first, to a side: a low box farther away hides too
+  little, and two side by side leave no room for the fingers to push.
+- **Pushing.** The closed fingers come down beside the box, thin side
+  first, and push it sideways as far as it takes to hide nothing (6 to 20
+  cm, chosen with the layout). Boxes are low enough for the gripper's
+  body to pass over (it starts 7.3 cm above the fingertips) and slide
+  rather than tip (friction 0.4); tall lunch boxes standing up were
+  pushed over by the spring links.
+- **Bottles** are carried 42 cm up (the pads' centre), so that a hanging
+  bottle passes over standing ones, and are turned upright before they
+  are set down (a GraspGenX grasp holds them tilted).
+- **Assets.** Targets are a scanned candy bar thickened to 4.6 cm so that
+  the pads close on it above the table; all targets look alike, as the
+  real ones, and the tracker keeps them apart. Bottles: three scanned
+  bottles (57 to 63 mm across). Bulky obstacles: a gift box (9.4 by 10.1
+  cm) and a lunch box on its side, both wider than the open fingers.

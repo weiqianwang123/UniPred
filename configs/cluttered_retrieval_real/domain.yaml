@@ -1,0 +1,20 @@
+# Cluttered Retrieval Real, for examples/real_robot/process_demos.py: the
+# object types and the ground-truth predicates (name: argument types) that
+# the annotations of the recorded sessions use. The options and
+# ground-truth operators are those of Cluttered Retrieval Sim
+# (unipred/ground_truth_models/cluttered_retrieval).
+env: cluttered_retrieval_real
+types: [robot, target, obstacle, box]
+predicates:
+  HandEmpty: [robot]
+  Holding: [robot, target]
+  OnTable: [target]
+  InBox: [target, box]
+  Blocks: [obstacle, target]
+  Clear: [target]
+  Pickable: [obstacle]
+  Bulky: [obstacle]
+# Computed from the other predicates by the closure of the ground-truth
+# operators; annotations do not need to list them.
+derived_predicates: [Clear]
+goal_predicates: [InBox]

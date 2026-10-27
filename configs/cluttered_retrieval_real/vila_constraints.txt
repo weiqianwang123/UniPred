@@ -1,0 +1,7 @@
+- The robot holds at most one target; it can only pick a target, remove a
+  bottle or push a crate with an empty hand.
+- A target can only be placed in the box while the robot holds it.
+- A target cannot be picked while any obstacle stands in front of it.
+- Bottles can be removed (picked up and put aside); crates cannot be
+  picked and can only be pushed sideways.
+- Removing or pushing an obstacle clears the target it stands in front of.

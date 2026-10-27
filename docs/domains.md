@@ -15,6 +15,8 @@ oracle uses all predicates.
 | Packing | `packing` | poses + image crop features | 50 | 2 boxes, 3 items (1 large) | 3 boxes, 4 items (2 large) |
 | Table Clean Sim | `table_clean_sim` | SE2 poses, flags | 50 | 2 toys, standard start | 3 toys, varied starts |
 | Table Clean Real | `table_clean_real` | image crop features | recorded | recorded sessions | held-out scenes |
+| Cluttered Retrieval Sim | `cluttered_retrieval_sim` | 2D poses, flags | 50 | 2 targets, at most one obstacle each | 3 targets, one behind two obstacles |
+| Cluttered Retrieval Real | `cluttered_retrieval_real` | image crop features | recorded | recorded sessions | held-out scenes |
 
 Each experiment tests on 50 tasks of the test distribution (and, with
 `--in_domain_test True`, 50 of the training distribution).
@@ -86,17 +88,48 @@ the recorded sessions, test tasks held-out scenes, and approaches are
 scored by offline planning. A synthetic fixture
 (`examples/real_robot/fixture`) runs the chain without a robot.
 
+## Cluttered Retrieval Sim
+
+The simulated counterpart of the paper's Cluttered Retrieval Real: a robot
+puts targets (snack packs) into a box (a basket) while reasoning about
+visual obstruction. An obstacle in front of a target, between it and the
+camera, blocks it, and a blocked target cannot be picked; bottles are
+removed (picked and put aside), bulky obstacles (boxes) pushed sideways.
+The paper describes the real domain only in outline, so the predicates
+and options are this release's.
+
+- Options: PickTarget, PlaceTargetInBox, RemoveObstacle(robot, obstacle,
+  target), PushObstacle(robot, obstacle, target); clearing an obstacle
+  names the target it blocks, as its effect is on both.
+- Given: InBox (goal); Pickable and Bulky (static).
+- Hidden: HandEmpty, Holding, OnTable, Blocks(obstacle, target), and the
+  derived Clear(target) = ForAll ?obstacle. Not Blocks(?obstacle,
+  ?target), a precondition of PickTarget.
+- Test tasks: three targets, one blocked by two obstacles, so that only
+  the quantified Clear generalises; an obstacle may block nothing.
+- Planner: A* with the closure of Clear, 10 s.
+- Random options solve most tasks (no dead ends): this domain generates the
+  tasks and oracle plans of the simulated robot's recordings and checks
+  planning; the challenge is learning Blocks and Clear from images
+  (Cluttered Retrieval Real).
+
+## Cluttered Retrieval Real
+
+The types, options and operators of Cluttered Retrieval Sim, built from
+recordings (see [real_robot.md](real_robot.md)): the simulated robot's
+(`collect_sim_demos.py --domain cluttered_retrieval`) or a real one's.
+
 ## Approaches per domain
 
-| Config | Approach | Satellites | Blocks | Packing | Table Clean Sim | Table Clean Real |
-|---|---|---|---|---|---|---|
-| `unipred` | UniPred | x | x | x | x | x |
-| `ivntr` | IVNTR | x | x | x | x | |
-| `ivntr_derived` | IVNTR with derived-aware selection | | | x | x | x |
-| `oracle` | ground-truth operators | x | x | x | x | x |
-| `gnn`, `transformer` | behaviour cloning with shooting | x | x | x | x | |
-| `grammar` | grammar-based predicate invention | x | x | x | x | |
-| `random` | random options | x | x | x | x | |
-| `code_as_policy` | LLM-written policy | x | x | x | x | |
-| `vila_*` | VLM planning from images | | | | | x |
-| `pix2pred*` | VLM predicates and labels | | | | | x |
+| Config | Approach | Satellites | Blocks | Packing | Table Clean Sim | Table Clean Real | Cluttered Retrieval Sim | Cluttered Retrieval Real |
+|---|---|---|---|---|---|---|---|---|
+| `unipred` | UniPred | x | x | x | x | x | x | x |
+| `ivntr` | IVNTR | x | x | x | x | | x | |
+| `ivntr_derived` | IVNTR with derived-aware selection | | | x | x | x | x | x |
+| `oracle` | ground-truth operators | x | x | x | x | x | x | x |
+| `gnn`, `transformer` | behaviour cloning with shooting | x | x | x | x | | | |
+| `grammar` | grammar-based predicate invention | x | x | x | x | | | |
+| `random` | random options | x | x | x | x | | x | |
+| `code_as_policy` | LLM-written policy | x | x | x | x | | | |
+| `vila_*` | VLM planning from images | | | | | x | | x |
+| `pix2pred*` | VLM predicates and labels | | | | | x | | x |

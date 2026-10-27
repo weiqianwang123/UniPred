@@ -1,0 +1,4 @@
+# Plain IVNTR: derived forms are ordinary candidates.
+include: base.yaml
+approach: ivntr
+neupi_pred_config: configs/cluttered_retrieval_sim/ivntr_predicates.yaml

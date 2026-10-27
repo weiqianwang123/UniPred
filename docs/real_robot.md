@@ -105,8 +105,12 @@ needs the hardware. The simulated robot below stands in for it.
 
 ## Simulated robot
 
-`unipred/robot_sim/table_clean_mujoco.py` is Table Clean Real in MuJoCo, to
-record demonstrations, train and run the closed loop without hardware:
+The real-robot domains have MuJoCo stand-ins, to record demonstrations,
+train and run the closed loop without hardware:
+`unipred/robot_sim/table_clean_mujoco.py` (Table Clean Real) and
+`cluttered_retrieval_mujoco.py` (Cluttered Retrieval Real), scenes of the
+same Franka at a table (`franka_scene.py`: the robot, the cameras, the
+scripted motions, grasping, the video). Table Clean:
 
 - **Scene.** A Franka Research 3 with a Robotiq 2F-85 (mujoco_menagerie;
   the gripper on the flange as on DROID, as CDG's and R2S2R's `fr3_robotiq`)
@@ -145,3 +149,21 @@ the plan run on the simulated Franka, and the end says whether the goal
 holds in the simulator. `configs/sim_robot.yaml` has the perception for
 the simulator's images: SAM3 with a prompt per type, and its video tracker
 for the toys.
+
+Cluttered Retrieval (`collect_sim_demos.py --domain cluttered_retrieval`,
+perception in `configs/sim_robot_cluttered_retrieval.yaml`):
+
+- **Scene.** The Franka puts snack bars (the targets) into a black basket
+  (the box). In front of them, seen from a low camera across the table,
+  stand obstacles: scanned bottles, and a gift box and a lunch box on its
+  side (too wide to grasp). An obstacle blocks a target if it is nearer
+  the camera and its image box covers at least a fifth of the target's.
+  Positions are drawn until the scene's blocks are those of the Cluttered
+  Retrieval Sim task and every bulky obstacle has a side to be pushed to
+  where it hides nothing.
+- **Skills.** PickTarget and PlaceTargetInBox pick a target no obstacle
+  blocks and lay it in the basket; RemoveObstacle picks a bottle, carries
+  it high over the others and stands it upright in a corner behind every
+  target; PushObstacle lowers the closed fingers beside a bulky obstacle
+  (which slides rather than tips) and pushes it sideways as far as it
+  takes.

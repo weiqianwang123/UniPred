@@ -1,0 +1,4 @@
+# Table III "Pix2Pred w/ GT preds. and partial GT labels": the atoms of
+# these predicates come from the annotations; the VLM labels the others.
+include: pix2pred_gt_predicates.yaml
+pix2pred_gt_label_predicates: HandEmpty,Holding

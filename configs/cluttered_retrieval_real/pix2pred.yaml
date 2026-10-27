@@ -1,0 +1,7 @@
+# Table III "Pix2Pred": a VLM invents predicates and labels images;
+# operators by effect extraction and intersection.
+include: base.yaml
+approach: pix2pred
+strips_learner: cluster_and_intersect
+# Read for the domain description.
+neupi_pred_config: configs/cluttered_retrieval_real/predicates.yaml

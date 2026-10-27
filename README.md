@@ -165,6 +165,8 @@ test tasks).
 | Packing | `configs/packing` | poses + image crop features | movable dividers; fit is visible only in images |
 | Table Clean Sim | `configs/table_clean_sim` | poses and flags | derived predicate "no toy on the table" |
 | Table Clean Real | `configs/table_clean_real` | image crop features | built from recordings, offline evaluation |
+| Cluttered Retrieval Sim | `configs/cluttered_retrieval_sim` | poses and flags | derived predicate "no obstacle blocks the target"; generates the simulated robot's tasks |
+| Cluttered Retrieval Real | `configs/cluttered_retrieval_real` | image crop features | built from recordings, offline evaluation |
 
 Each domain has a config per approach: `unipred`, `ivntr`, `oracle`, `gnn`,
 `transformer`, `grammar`, `random`, `code_as_policy` (and `ivntr_derived`,
@@ -188,7 +190,7 @@ prints it from existing results.
 | Table | Script | Experiments |
 |---|---|---|
 | II | `scripts/paper/table2.sh` | every method on the four simulated domains, UniPred with Qwen and Gemini |
-| III | see [docs/real_robot.md](docs/real_robot.md) | UniPred, IVNTR w/ derived, ViLa, Pix2Pred on Table Clean Real |
+| III | see [docs/real_robot.md](docs/real_robot.md) | UniPred, IVNTR w/ derived, ViLa, Pix2Pred on Table Clean Real and Cluttered Retrieval Real |
 | V | `scripts/paper/table5.sh` | UniPred without PDDL completion, without the LLM loop, without loss feedback |
 | VI | `scripts/paper/table6.sh` | LLM-completed PDDL and Code as Policy in Blocks |
 | VII | `scripts/paper/table7.sh` | UniPred without semantic names, and IVNTR |

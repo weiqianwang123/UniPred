@@ -236,6 +236,10 @@ class FrankaTableScene:
         """The scene's objects (name -> type)."""
         raise NotImplementedError
 
+    def scanned_models(self) -> Dict[str, str]:
+        """The scanned model of each object that has one."""
+        return {name: model[0] for name, model in self._models.items()}
+
     def execute(self, option_name: str, objects: Sequence[str]) -> bool:
         """Run a skill on the named objects; return whether its conditions
         held (otherwise nothing happens). Raises SimulationError if the

@@ -1,0 +1,5 @@
+# Ground-truth operators on the annotated atoms: a check of the data and of
+# the offline evaluation.
+include: base.yaml
+approach: oracle
+excluded_predicates: ""

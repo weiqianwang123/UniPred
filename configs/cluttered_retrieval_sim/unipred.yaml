@@ -1,0 +1,4 @@
+include: base.yaml
+approach: unipred
+neupi_pred_config: configs/cluttered_retrieval_sim/predicates.yaml
+unipred_derived_selection: true

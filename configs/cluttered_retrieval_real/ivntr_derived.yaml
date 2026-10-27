@@ -1,0 +1,4 @@
+# IVNTR with derived-aware selection (Table III "IVNTR w/ derived").
+include: base.yaml
+approach: ivntr_derived
+neupi_pred_config: configs/cluttered_retrieval_real/ivntr_predicates.yaml

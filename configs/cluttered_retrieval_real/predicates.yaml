@@ -1,0 +1,4 @@
+# What UniPred knows and learns about Cluttered Retrieval Real: the same as
+# for Cluttered Retrieval Sim; the features are those of the objects' image
+# crops.
+include: ../cluttered_retrieval_sim/predicates.yaml

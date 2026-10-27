@@ -30,7 +30,9 @@ _PREDICATE_CONFIGS = [
 ]
 _SPECIAL = {
     "configs/real_robot.yaml", "configs/sim_robot.yaml",
-    "configs/table_clean_real/domain.yaml"
+    "configs/sim_robot_cluttered_retrieval.yaml",
+    "configs/table_clean_real/domain.yaml",
+    "configs/cluttered_retrieval_real/domain.yaml"
 }
 _EXPERIMENT_CONFIGS = [
     p for p in _CONFIGS if p not in _PREDICATE_CONFIGS and p not in _SPECIAL
@@ -42,6 +44,8 @@ _SIM_ENV = {
     "packing": "packing",
     "table_clean_sim": "table_clean_sim",
     "table_clean_real": "table_clean_sim",
+    "cluttered_retrieval_sim": "cluttered_retrieval_sim",
+    "cluttered_retrieval_real": "cluttered_retrieval_sim",
 }
 
 
@@ -92,17 +96,24 @@ def test_predicate_config(path):
         assert set(static) <= {p.name for p in env.predicates}
 
 
-def test_real_robot_configs():
-    """The robot configs (the real robot's and the simulated one's) give a
-    prompt per object type of the domain spec, whose predicates use its
+@pytest.mark.parametrize("domain_path, robot_paths", [
+    ("configs/table_clean_real/domain.yaml",
+     ["configs/real_robot.yaml", "configs/sim_robot.yaml"]),
+    ("configs/cluttered_retrieval_real/domain.yaml",
+     ["configs/sim_robot_cluttered_retrieval.yaml"]),
+])
+def test_real_robot_configs(domain_path, robot_paths):
+    """The robot configs (a real robot's or a simulated one's) give a
+    prompt per object type of their domain's spec, whose predicates use its
     types."""
     os.chdir(REPO)
-    with open("configs/table_clean_real/domain.yaml", encoding="utf-8") as f:
+    with open(domain_path, encoding="utf-8") as f:
         domain = yaml.safe_load(f)
-    for path in ("configs/real_robot.yaml", "configs/sim_robot.yaml"):
+    for path in robot_paths:
         robot = load_robot_config(path)
         assert set(domain["types"]) <= set(robot["prompts"])
         assert set(robot["max_box_area"]) <= set(robot["prompts"])
+        assert set(robot["track_types"] or []) <= set(domain["types"])
     for types in domain["predicates"].values():
         assert set(types) <= set(domain["types"])
     assert set(domain["goal_predicates"]) <= set(domain["predicates"])

@@ -1,0 +1,3 @@
+# IVNTR's budgets on Cluttered Retrieval Real, as on Cluttered Retrieval
+# Sim.
+include: ../cluttered_retrieval_sim/ivntr_predicates.yaml
