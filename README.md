@@ -7,230 +7,229 @@
 <p align="center">
   <b>Unifying Deep Predicate Invention with Pre-trained Foundation Models</b><br>
   <a href="https://arxiv.org/abs/2512.17992">Paper</a> ·
-  <a href="https://unipred.github.io/">Project page</a>
+  <a href="https://unipred.github.io/">Project page</a> ·
+  <a href="#citation">Citation</a>
+</p>
+
+<p align="center">
+  <img src="metadata/main_demo.gif" width="72%" alt="UniPred cleaning a table with a learned symbolic world model">
 </p>
 
 UniPred learns a symbolic world model for long-horizon planning from a few
-demonstrations: a large language model proposes what predicates mean (their
-effects on the robot's skills), neural classifiers learn them from the
-robot's own data, and the training loss tells the language model how to
-revise its proposals. Predicates defined by quantifiers ("no toy is on the
-table") are handled by derived-aware predicate selection, and in image
-domains the classifiers work on DINOv3 features of object crops.
+demonstrations. A large language model proposes what each predicate means
+(which skills make it true or false), neural classifiers learn the
+predicates from the robot's own observations, and the classifiers'
+training feedback tells the language model how to revise its proposals.
+Predicates defined with quantifiers ("no toy is on the table") come from
+derived-aware predicate selection, and in image domains the classifiers
+work on foundation-model features of object crops. The robot then plans
+with the learned predicates and operators over its skill library, and
+replans whenever what it observes differs from what it expected.
 
-This repository has the code of the paper: UniPred, its ablations and every
-baseline, on the four simulated domains (Satellites, Blocks, Packing, Table
-Clean Sim), and a real-robot template (Table Clean Real) that turns your
-own recordings into a model you can deploy in a closed loop.
+This repository has:
+
+- **UniPred**, its ablations and every baseline of the paper (IVNTR, GNN
+  and transformer policies, grammar search, Code as Policy, ViLa,
+  Pix2Pred), on the simulated domains Satellites, Blocks, Packing and
+  Table Clean;
+- **a simulated robot** (a Franka in MuJoCo) for the paper's two
+  real-world tasks, Table Clean and Cluttered Retrieval: record
+  demonstrations, learn from camera images, and run the closed loop with
+  an annotated video of what the robot sees, believes and does;
+- **a real-robot template** that turns your own recordings into a model
+  you deploy in a closed loop on your robot.
+
+## Contents
 
 - [Install](#install)
 - [Quickstart](#quickstart)
-- [Domains](#domains)
+- [The simulated robot](#the-simulated-robot)
+- [Your own robot](#your-own-robot)
+- [Domains and methods](#domains-and-methods)
 - [Reproducing the paper's tables](#reproducing-the-papers-tables)
-- [Real-robot template](#real-robot-template)
-- [Adding a domain](#adding-a-domain)
-- [Repository layout and tests](#repository-layout-and-tests)
+- [Repository layout](#repository-layout)
 - [Citation](#citation)
-
-## Demo Videos
-
-### Main Demo
-
-<p align="center">
-  <img src="metadata/main_demo.gif" width="70%" alt="Main UniPred demo">
-</p>
-
-<p align="center">
-  <b>UniPred performs long horizon planning with a learned neural-symbolic world model.</b>
-</p>
-
-### Demos for Other Tasks
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="metadata/main_2.gif" width="100%" alt="Table clean demo 1"><br>
-      <b>Table Clean</b><br>
-      Train Task
-    </td>
-    <td align="center" width="50%">
-      <img src="metadata/main_3.gif" width="100%" alt="Table clean demo 2"><br>
-      <b>Table Clean</b><br>
-      Test Task
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <img src="metadata/pick_clutter_hard.gif" width="100%" alt="Pick target in clutter hard demo"><br>
-      <b>Pick Target in Clutter</b><br>
-      Test Task
-    </td>
-    <td align="center" width="33%">
-      <img src="metadata/pick_clutter_mid.gif" width="100%" alt="Pick target in clutter mid demo"><br>
-      <b>Pick Target in Clutter</b><br>
-      Test Task
-    </td>
-    <td align="center" width="33%">
-      <img src="metadata/pick_clutter_easy.gif" width="100%" alt="Pick target in clutter easy demo"><br>
-      <b>Pick Target in Clutter</b><br>
-      Train Task
-    </td>
-  </tr>
-</table>
-
-### Failure Recovery
-
-<p align="center">
-  <img src="metadata/recovery_main.gif" width="70%" alt="Failure recovery main demo">
-</p>
-
-<p align="center">
-  <b>UniPred replans from observation feedback and recovers from execution failures.</b><br>
-  Across 13 execution steps, the system detects action failures, replans, and completes the task.
-</p>
-
-<p align="center">
-  <img src="metadata/recovery_1.gif" width="40%" alt="Failure recovery demo 1">
-  <img src="metadata/recovery_3.gif" width="40%" alt="Failure recovery demo 2">
-</p>
-
-### Remaining Failure Cases
-
-<p align="center">
-  <img src="metadata/fail1.gif" width="30%" alt="Failure case 1">
-  <img src="metadata/fail2.gif" width="30%" alt="Failure case 2">
-  <img src="metadata/fail3.gif" width="30%" alt="Failure case 3">
-</p>
-
-<p align="center">
-  <b>Long horizon manipulation remains challenging.</b><br>
-  Planning errors and accumulated execution errors can still cause failures over extended task horizons.
-</p>
 
 ## Install
 
-Linux, Python 3.10, a CUDA GPU for the image domains (classifier training
-is small), conda, and cmake with a C++ compiler for Fast Downward.
+Linux, Python 3.10, conda, cmake and a C++ compiler (for Fast Downward),
+and a CUDA GPU for the image domains.
 
 ```bash
-git clone --branch refactor/paper-release --recurse-submodules https://github.com/weiqianwang123/UniPred.git
+git clone --recurse-submodules https://github.com/weiqianwang123/UniPred.git
 cd UniPred
 scripts/install.sh
 conda activate unipred
 export FD_EXEC_PATH=$PWD/third_party/IVNTR/ext/downward
 ```
 
-`scripts/install.sh` creates the conda environment `unipred`, installs the
-IVNTR fork and UniPred in editable mode (`pip install -e third_party/IVNTR
-&& pip install -e ".[dev,perception]"`) and builds Fast Downward.
-`scripts/install.sh --weights` also downloads GroundingDINO, SAM2 and
-DINOv3 into `weights/` (or `$UNIPRED_WEIGHTS_DIR`); set
-`UNIPRED_WEIGHTS_DIR` to that directory when running. DINOv3 is gated on
-Hugging Face: accept its licence and log in (`hf auth login`) first. Without
-DINOv3, Packing uses ResNet-18 features.
+`scripts/install.sh` creates the conda environment `unipred`, installs
+UniPred and its IVNTR fork (`third_party/IVNTR`, the `predicators`
+package) in editable mode, and builds Fast Downward. Options:
 
-**LLMs.** `scripts/run.sh` uses the LLM named by `LLM`: `codex` (the local
-Codex CLI; the default when it is installed), `openai` (GPT-4o, the
-paper's; the default otherwise), `qwen`, `gemini`, or `mock` (no network;
-tests and smoke runs). Put API keys in `.env.local` (see `.env.example`) or
-the environment. Replies are cached in `outputs/llm_cache`, so reruns are
-free.
+- `--weights` downloads GroundingDINO, SAM2 and DINOv3 into `weights/`
+  (set `UNIPRED_WEIGHTS_DIR` to use another directory). DINOv3 is gated on
+  Hugging Face: accept its licence and run `hf auth login` first. Without
+  it, image domains use ResNet-18 features.
+- `--sim` installs MuJoCo and downloads the simulated robot's assets (the
+  Franka, the gripper and the scanned objects) into `sim_assets/`.
+
+**Language models.** `scripts/run.sh` uses the one named by `LLM`:
+`openai` (GPT-4o, the paper's), `qwen`, `gemini`, `codex` (a local Codex
+CLI), or `mock` (no network; for tests and smoke runs). Put API keys in
+`.env.local` (see `.env.example`) or the environment. Replies are cached
+in `outputs/llm_cache`, so a rerun costs nothing.
 
 ## Quickstart
 
-Train UniPred on Satellites and test it, with the offline mock LLM and 50
-demonstrations:
+Learn predicates on Satellites and plan with them, with the offline mock
+language model (about 5 minutes):
 
 ```bash
 LLM=mock scripts/run.sh configs/satellites/unipred.yaml 0 --num_train_tasks 50 --num_test_tasks 10
 ```
 
-Results are in `outputs/satellites/unipred/seed0/` (`train_test.log`, the
-out-of-distribution test; `test_in_domain.log`, the test on tasks from the
-training distribution with the saved model). The mock LLM only checks that
-the whole pipeline runs (about 5 minutes): its proposals are placeholders,
-so the learned model solves few or no test tasks. Drop `LLM=mock` and the
-task counts for the paper's setting (a real LLM, 500 demonstrations, 50
-test tasks).
+The results are in `outputs/satellites/unipred/seed0/`: `train_test.log`
+(learning, then the test tasks, larger than the training ones) and
+`test_in_domain.log` (tasks like the training ones). The mock model only
+checks that the pipeline runs; use a real one (`LLM=openai`) and the
+paper's 500 demonstrations (the config's default) to learn a useful model.
 
-## Domains
+## The simulated robot
 
-| Domain | Config directory | State | Notes |
+<table>
+  <tr>
+    <td align="center" width="50%"><b>Table Clean</b>: put the toys and the sponge into the tray and wipe the table. The tray blocks the dirt when near; the sponge is out of reach when the tray is pushed out.</td>
+    <td align="center" width="50%"><b>Cluttered Retrieval</b>: put the snack bars into the basket. A target hidden behind a bottle or a box cannot be grasped until the obstacle is removed or pushed aside.</td>
+  </tr>
+</table>
+
+A Franka with a Robotiq gripper performs both tasks in MuJoCo with
+scripted skills; the constraints are physical, not rules. UniPred learns
+from the camera images only: objects are segmented with SAM3, followed
+between keyframes with its video tracker, and encoded by DINOv3 (or
+ResNet-18). The pipeline is the real robot's.
+
+**1. Start a SAM3 server** (in an environment of its own; SAM3 is gated
+on Hugging Face):
+
+```bash
+pip install "sam3 @ git+https://github.com/facebookresearch/sam3" fastapi uvicorn huggingface_hub
+python scripts/sam3_server.py --port 8114
+```
+
+**2. Record demonstrations and test scenes** (oracle plans executed skill
+by skill, with keyframes, the frames of every skill and ground-truth
+annotations):
+
+```bash
+python examples/real_robot/collect_sim_demos.py --domain table_clean --out outputs/table_clean_mujoco/raw --num_train 50 --num_test 10
+```
+
+**3. Turn the images into object features:**
+
+```bash
+python examples/real_robot/process_demos.py --raw outputs/table_clean_mujoco/raw --out outputs/table_clean_mujoco/processed \
+    --domain configs/table_clean_real/domain.yaml --robot_config configs/sim_robot.yaml --encoder resnet18
+```
+
+**4. Learn the predicates and operators:**
+
+```bash
+scripts/run.sh configs/table_clean_real/unipred.yaml 0 --table_clean_real_data_dir outputs/table_clean_mujoco/processed \
+    --num_train_tasks 50 --num_test_tasks 10
+```
+
+**5. Run the closed loop on a test scene**, with an annotated video:
+
+```bash
+python examples/real_robot/closed_loop_example.py --session outputs/table_clean_mujoco/raw/test_00 --robot sim \
+    --robot_config configs/sim_robot.yaml --encoder resnet18 --first_boxes gt_boxes.json --video test_00.mp4 \
+    --config configs/table_clean_real/unipred.yaml --config configs/llm/mock.yaml --seed 0 --num_train_tasks 50 --num_test_tasks 10 \
+    --table_clean_real_data_dir outputs/table_clean_mujoco/processed --approach_dir outputs/table_clean_real/unipred/seed0/approach
+```
+
+The loop perceives the scene, plans, executes a skill, perceives again,
+and replans when the skill's expected effects did not happen; the video
+shows the camera, the plan and the atoms the robot believes, with each
+invented predicate named after the ground-truth predicate it matches.
+For Cluttered Retrieval, use `--domain cluttered_retrieval`,
+`configs/cluttered_retrieval_real/` and
+`configs/sim_robot_cluttered_retrieval.yaml`. See
+[docs/real_robot.md](docs/real_robot.md) for the scenes, the skills and
+the perception.
+
+## Your own robot
+
+Record sessions in the raw format of
+[examples/real_robot/README.md](examples/real_robot/README.md) (a
+keyframe image before each skill, the skills, the goal), process and
+learn as above, then implement `RobotInterface`: `capture()` returns a
+camera image and `execute(option_name, objects)` runs your skill on the
+named objects. `examples/real_robot/fixture` is a small synthetic dataset
+to try every step without a robot or network weights.
+
+## Domains and methods
+
+| Domain | Config | Observations | Train → test |
 |---|---|---|---|
-| Satellites | `configs/satellites` | poses and attributes | 2 → 3 satellites and objects |
-| Blocks | `configs/blocks` | 3D poses | two-level towers, 4-5 → 6-7 blocks |
-| Packing | `configs/packing` | poses + image crop features | movable dividers; fit is visible only in images |
-| Table Clean Sim | `configs/table_clean_sim` | poses and flags | derived predicate "no toy on the table" |
-| Table Clean Real | `configs/table_clean_real` | image crop features | built from recordings, offline evaluation |
-| Cluttered Retrieval Sim | `configs/cluttered_retrieval_sim` | poses and flags | derived predicate "no obstacle blocks the target"; generates the simulated robot's tasks |
-| Cluttered Retrieval Real | `configs/cluttered_retrieval_real` | image crop features | built from recordings, offline evaluation |
+| Satellites | `configs/satellites` | object poses and attributes | 2 → 3 satellites and objects |
+| Blocks | `configs/blocks` | 3D poses | towers of 4-5 → 6-7 blocks |
+| Packing | `configs/packing` | poses and image crop features | 2 → 3 boxes with movable dividers |
+| Table Clean Sim | `configs/table_clean_sim` | poses and flags | 2 → 3 toys |
+| Table Clean | `configs/table_clean_real` | camera images | recordings (real or simulated) |
+| Cluttered Retrieval | `configs/cluttered_retrieval_real` | camera images | recordings (real or simulated) |
 
-Each domain has a config per approach: `unipred`, `ivntr`, `oracle`, `gnn`,
-`transformer`, `grammar`, `random`, `code_as_policy` (and `ivntr_derived`,
-`vila_*`, `pix2pred*` where they apply). See [docs/domains.md](docs/domains.md).
-
-Run any of them with `scripts/run.sh CONFIG SEED [FLAGS...]`; ablations are
-overlays:
+Each domain has a config per method: `unipred`, `ivntr`, `oracle`, `gnn`,
+`transformer`, `grammar`, `random`, `code_as_policy`, and `ivntr_derived`,
+`vila_*` and `pix2pred*` where they apply. Run any of them with
+`scripts/run.sh CONFIG SEED [FLAGS...]`; ablations are overlays:
 
 ```bash
 scripts/run.sh configs/table_clean_sim/unipred.yaml 0 --config configs/ablations/no_derived_selection.yaml
 ```
 
-writes to `outputs/table_clean_sim/unipred+no_derived_selection/seed0/`.
+See [docs/domains.md](docs/domains.md) for the domains and
+[docs/adding_a_domain.md](docs/adding_a_domain.md) to add one.
 
 ## Reproducing the paper's tables
 
 Each script runs its experiments for five seeds (`SEEDS="0 1 2 3 4"`),
-skips seeds that already have results, and prints the table; `RUN=0` only
-prints it from existing results.
+skips the seeds that already have results, and prints the table; `RUN=0`
+only prints it.
 
 | Table | Script | Experiments |
 |---|---|---|
-| II | `scripts/paper/table2.sh` | every method on the four simulated domains, UniPred with Qwen and Gemini |
-| III | see [docs/real_robot.md](docs/real_robot.md) | UniPred, IVNTR w/ derived, ViLa, Pix2Pred on Table Clean Real and Cluttered Retrieval Real |
-| V | `scripts/paper/table5.sh` | UniPred without PDDL completion, without the LLM loop, without loss feedback |
-| VI | `scripts/paper/table6.sh` | LLM-completed PDDL and Code as Policy in Blocks |
-| VII | `scripts/paper/table7.sh` | UniPred without semantic names, and IVNTR |
-| VIII | `scripts/paper/table8.sh` | derived-aware selection in Table Clean Sim |
+| II | `scripts/paper/table2.sh` | every method on the simulated domains; UniPred with Qwen and Gemini |
+| V | `scripts/paper/table5.sh` | without PDDL completion, the LLM loop or the loss feedback |
+| VI | `scripts/paper/table6.sh` | LLM-completed PDDL and Code as Policy on Blocks |
+| VII | `scripts/paper/table7.sh` | without semantic names; IVNTR |
+| VIII | `scripts/paper/table8.sh` | derived-aware selection on Table Clean Sim |
 
-The Tools domain of the paper is not part of this release, so tables that
-average over domains use the remaining ones; Table IV needs the robot.
-`python -m unipred.eval.summarize --domains ... --runs ...` prints a table
-from any runs.
+The Tools domain of the paper is not part of this release. `python -m
+unipred.eval.summarize --domains ... --runs ...` prints a table from any
+runs.
 
-## Real-robot template
+## Repository layout
 
-```bash
-python examples/real_robot/process_demos.py --raw examples/real_robot/fixture/raw --out outputs/table_clean_real/processed --domain configs/table_clean_real/domain.yaml --detector fake --encoder fake
-LLM=mock scripts/run.sh configs/table_clean_real/unipred.yaml 0 --num_train_tasks 4 --num_test_tasks 2
+```
+unipred/            the UniPred package
+  approaches/         UniPred and the language-model baselines
+  llm/                PDDL completion, effect proposals, prompts, clients
+  derived/            derived predicates and derived-aware selection
+  envs/               Packing, Table Clean Sim, Cluttered Retrieval Sim, recorded domains
+  perception/         detection, tracking and crop features
+  robot_sim/          the simulated Franka and its two scenes
+third_party/IVNTR/  the fork of IVNTR (predicate invention, planning)
+configs/            a directory per domain, LLM and ablation overlays
+examples/real_robot/ recording, processing, planning from images, the closed loop
+scripts/            install, run, the paper's tables, the SAM3 server
+docs/               architecture, domains, real robot, adding a domain
 ```
 
-process the synthetic recordings shipped in `examples/real_robot/fixture`
-and invent predicates on them. Record your own sessions in the same format,
-drop the `fake` backends, then plan from images and run the closed loop
-through a `RobotInterface` you implement. See
-[examples/real_robot/README.md](examples/real_robot/README.md) and
-[docs/real_robot.md](docs/real_robot.md).
-
-## Adding a domain
-
-A simulated domain is an environment class, its ground-truth options and
-operators, and a config directory; a real domain is a config directory and
-a ground-truth package. See [docs/adding_a_domain.md](docs/adding_a_domain.md).
-
-## Repository layout and tests
-
-`unipred/` is the UniPred package and `third_party/IVNTR` the fork of IVNTR
-(the `predicators` package) it builds on; [docs/architecture.md](docs/architecture.md)
-describes both and how they connect.
-
-```bash
-pytest tests
-cd third_party/IVNTR && pytest tests
-```
+[docs/architecture.md](docs/architecture.md) describes how UniPred and
+the fork fit together. Tests: `pytest tests` and `cd third_party/IVNTR &&
+pytest tests`.
 
 ## Citation
 
@@ -243,5 +242,8 @@ cd third_party/IVNTR && pytest tests
 }
 ```
 
-UniPred is MIT-licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-for the licenses of the included and downloaded third-party components.
+UniPred is released under the MIT license. It builds on
+[IVNTR](https://github.com/centaur-ai/IVNTR) and
+[predicators](https://github.com/Learning-and-Intelligent-Systems/predicators);
+see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the licenses of
+the included and downloaded components.
