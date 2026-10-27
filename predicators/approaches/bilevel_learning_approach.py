@@ -398,6 +398,15 @@ class BilevelLearningApproach(NSRTLearningApproach):
         assert sep, f"Not a predicate model path: {model_path}"
         return os.path.join(directory, f"{stem}_{artifact}{suffix}")
 
+    def _keep_order(self, pred: DummyPredicate, ae_vector: torch.Tensor,
+                    val_loss: float, guidance: float) -> Tuple:
+        """The sort key of a vector that passed, among those of an
+        iteration: the first ones are kept while the type may keep more
+        (max_num_vectors). Here the lowest validation loss first, then the
+        lowest guidance."""
+        del pred, ae_vector  # unused here
+        return (val_loss, guidance)
+
     def _report_checks(self, pred: DummyPredicate,
                        ae_vectors: List[torch.Tensor],
                        outcomes: List[str]) -> None:
@@ -1640,8 +1649,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     # cap of max_num_vectors keeps the best ones.
                     min_idxes = sorted(
                         torch.where(all_pass_mask)[0].tolist(),
-                        key=lambda i: (float(all_iter_losses[i]),
-                                       float(all_iter_objective[i])))
+                        key=lambda i: self._keep_order(
+                            curr_pred, iter_ae_vectors[i],
+                            float(all_iter_losses[i]),
+                            float(all_iter_objective[i])))
                     for min_idx in min_idxes:
                         if max_num_vectors is not None and len(
                                 self.learned_ae_pred_info[curr_pred]
