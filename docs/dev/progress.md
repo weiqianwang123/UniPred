@@ -95,12 +95,23 @@ All with `scripts/run.sh` unless noted.
   perception 1/10); the failures plan wiping first, as the toy-table
   predicate is not invented. Closed loop with the annotated video on
   test_01: the goal holds in the simulator.
-- Simulated robot, Cluttered Retrieval: 60 sessions collected (10 min),
-  every GraspGenX demonstration reaching the goal; processing pending.
+- Simulated robots' constraints made physical (8cf4204): the far tray's
+  sponge is out of reach, the near tray and the toys stand on the dirt,
+  a hidden target is not segmented for a grasp; tests check each, and ten
+  GraspGenX demonstrations of each domain reach the goal. Both domains
+  are being recollected (raw_v3) and processed with the tracker and
+  image boxes.
 - Cluttered Retrieval Sim: oracle 50/50 OOD and in-domain, random options
   50/50 and 48/50 (no dead ends). UniPred (codex): 0/50 OOD, 18/50
-  in-domain; Blocks fails the consistency check on the options without an
-  obstacle (Pick, Place). A 500-demonstration run is going.
+  in-domain, the same with 500 demonstrations; Blocks fails the
+  consistency check on the options without an obstacle (Pick, Place).
+- Both failures (Packing's In, Cluttered Retrieval's Blocks) are binary
+  predicates checked on the options that lack one of their types: the
+  check draws an object of that type and requires the value not to
+  change, and those groundings are trained only with the JS non-change
+  loss, which leaves outputs that flip at the 0.5 boundary. The fork's
+  learning functions are upstream IVNTR's (except seeded sampling), so
+  this is IVNTR's behaviour on these domains, not a refactoring bug.
 - Packing: random options OOD 3/50, in-domain 24/50 (the paper: 1.6% and
   12.4%; tighter train tasks give 1-2%). UniPred (codex): OOD 0/50; "item
   in region" (proposed by the LLM) fails the consistency check on Pick
