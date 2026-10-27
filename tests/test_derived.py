@@ -44,6 +44,18 @@ def test_quantified_and_negated_rules():
     assert both.evaluate(one_on, _OBJECTS) == {GroundAtom(_ANY_ON, [])}
 
 
+def test_negated_unary_rule():
+    """The negation of a unary predicate holds of the objects of its type
+    for which the predicate does not."""
+    region = Type("region", [])
+    occupied = Predicate("Occupied", [region], lambda s, o: True)
+    free = Predicate("NotOccupied", [region], lambda s, o: True)
+    left, right = region("left"), region("right")
+    rule = DerivedRule(free, occupied, negated=True)
+    assert rule.evaluate({GroundAtom(occupied, [left])},
+                         {left, right, _T0}) == {GroundAtom(free, [right])}
+
+
 def test_empty_domain_and_repeated_objects():
     """As in IVNTR's classifiers, a quantifier over no groundings is false,
     and groundings that repeat an object are skipped."""

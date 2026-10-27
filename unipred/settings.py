@@ -51,6 +51,8 @@ class UniPredSettings:
     unipred_semantic_names = True
     # Stage 4: derived-aware predicate selection (Algorithm 1).
     unipred_derived_selection = False
+    # With it, a learned unary predicate's negation is a variant too.
+    unipred_negate_unary = True
 
     # Code as Policy (unipred/approaches/code_as_policy.py): how often the
     # LLM may repair a policy that fails with an error on the training

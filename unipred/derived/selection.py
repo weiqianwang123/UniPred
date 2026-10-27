@@ -1,7 +1,10 @@
 """Derived-aware predicate selection (Algorithm 1 of the paper).
 
 IVNTR adds negated and quantified variants of every learned binary
-predicate to the selection candidates. Each candidate carries a tag
+predicate to the selection candidates (with derived-aware selection, a
+unary predicate's negation too: "not occupied" is what placing an item
+needs of a region, and a predicate that only placing adds, which is no
+option's precondition itself, is kept for it). Each candidate carries a tag
 (template, group, variant): variant 0 is the learned basic predicate and
 variants 1, 2, ... are its derived forms. Plain IVNTR treats the variants
 like any other predicate, so they must be consistent operator effects, which
@@ -23,6 +26,9 @@ With derived-aware selection:
   appear in preconditions but never in effects;
 - while scoring a predicate set and while planning, an atoms closure (see
   unipred/derived/closure.py) recomputes the variants from the basic atoms;
+- IVNTR's constraints on the effect matrix (no two effect columns alike)
+  leave out the variants kept as preconditions only, whose columns are
+  empty;
 - selection does not end as soon as the score is below the threshold: it
   goes on adding candidates that lower the score by at least
   REFINE_MIN_IMPROVEMENT, since derived predicates often only tighten
@@ -42,7 +48,10 @@ With derived-aware selection:
   the effort smaller rules plans out of the search on the demonstrations
   (there are only correct ones to find, so fewer constraints are always
   cheaper), and is kept: "no toy is on the table" on wiping was dropped
-  for being 1.4 percent cheaper without, and wiping came first.
+  for being 1.4 percent cheaper without, and wiping came first. Unless
+  without it a demonstration that could not be planned can (the score
+  falls by half the score of an unsolved one or more): the demonstration
+  contradicts it.
 """
 
 from __future__ import annotations
@@ -77,11 +86,14 @@ REFINE_MIN_IMPROVEMENT = 0.01
 PRUNE_TOLERANCE = 0.01
 
 
-def _prune_unneeded_preconditions(
-        nsrts: List[NSRT], derived: Set[Predicate],
-        score: Callable[[List[NSRT]], float]) -> List[NSRT]:
+def _prune_unneeded_preconditions(nsrts: List[NSRT],
+                                  derived: Set[Predicate],
+                                  score: Callable[[List[NSRT]], float],
+                                  unsolved: float) -> List[NSRT]:
     """The NSRTs without each derived precondition, in turn, whose removal
-    changes the score by at most PRUNE_TOLERANCE (see module doc)."""
+    changes the score by at most PRUNE_TOLERANCE, or lowers it by at least
+    half the score of an unsolved demonstration (unsolved): with it, a
+    demonstration could not be planned (see module doc)."""
     nsrts = list(nsrts)
     current = score(nsrts)
     for i in range(len(nsrts)):
@@ -94,10 +106,11 @@ def _prune_unneeded_preconditions(
                     nsrts[i].option, nsrts[i].option_vars, nsrts[i].sampler)
             without = score(trial)
             same = abs(without - current) <= PRUNE_TOLERANCE * current
+            blocking = current - without >= unsolved / 2
             logging.info(f"Derived precondition {atom} of {nsrts[i].name}: "
                          f"score without it {without} (with it {current}), "
-                         f"{'dropped' if same else 'kept'}.")
-            if same:
+                         f"{'dropped' if same or blocking else 'kept'}.")
+            if same or blocking:
                 nsrts, current = trial, without
     return nsrts
 
@@ -147,6 +160,10 @@ class DerivedSelectionMixin:
         """Variants only enter preconditions (see module doc)."""
         return not self._use_derived_selection()
 
+    def _negates_unary_predicates(self) -> bool:
+        """A unary predicate's negation is a variant too (see module doc)."""
+        return self._use_derived_selection() and CFG.unipred_negate_unary
+
     def _candidate_bundles(
             self,
             candidate: PredicateCandidate) -> List[List[PredicateCandidate]]:
@@ -157,6 +174,23 @@ class DerivedSelectionMixin:
             bundles += [[candidate, variant] for variant in
                         self._withheld_variants.get(candidate.predicate, [])]
         return bundles
+
+    def check_matrix_consistency(self, ae_matrix: torch.Tensor,
+                                 col_ent: List[List[int]]) -> bool:
+        """IVNTR's constraints on the effect matrix, without the columns of
+        no effects (variants kept as preconditions only): they are no
+        operator's effects, and two of them (say "the hand holds no toy"
+        and "no toy is on the table", both about argument 0) would count
+        as the same column."""
+        if self._use_derived_selection():
+            keep = [
+                c for c in range(ae_matrix.shape[1])
+                if ae_matrix[:, c].any()
+            ]
+            ae_matrix = ae_matrix[:, keep]
+            col_ent = [col_ent[c] for c in keep]
+        return super().check_matrix_consistency(  # type: ignore[misc]
+            ae_matrix, col_ent)
 
     def _refine_below_threshold(self) -> Optional[float]:
         """Selection goes on below the threshold (see module doc)."""
@@ -309,7 +343,8 @@ class DerivedSelectionMixin:
         nsrts = _prune_unneeded_preconditions(
             [_relevant_preconditions(n, self._derived_rules)
              for n in sorted(self._nsrts)],  # type: ignore[attr-defined]
-            set(self._derived_rules), _score)
+            set(self._derived_rules), _score,
+            CFG.neupi_selection_nodes_upper_bound)
         self._nsrts = set(nsrts)
         logging.info("NSRTs after pruning derived preconditions:")
         for nsrt in nsrts:

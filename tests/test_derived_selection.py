@@ -155,9 +155,10 @@ def test_derived_preconditions_only_about_parameter_types():
 
 
 def test_derived_preconditions_kept_if_the_score_changes_without():
-    """A derived precondition is dropped only if the score is the same
-    without it (within 1 percent either way): one whose removal makes
-    planning on the demonstrations cheaper rules plans out and is kept."""
+    """A derived precondition is dropped if the score is the same without
+    it (within 1 percent either way) or a demonstration can only be planned
+    without it; one whose removal makes planning on the demonstrations
+    cheaper otherwise rules plans out and is kept."""
     # pylint: disable=import-outside-toplevel
     from predicators.structs import NSRT, LiftedAtom, Type, Variable
     from predicators.utils import null_sampler
@@ -182,9 +183,38 @@ def test_derived_preconditions_kept_if_the_score_changes_without():
             {a.predicate.name for a in nsrts[0].preconditions}
         return 100 - sum(costs[name] for name in missing)
 
-    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score)
+    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score,
+                                            1e5)
     assert pruned.preconditions == {LiftedAtom(no_toy, [t]),
                                     LiftedAtom(given, [r])}
     costs["NoToyOn"] = 0.5
-    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score)
+    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free}, _score,
+                                            1e5)
     assert pruned.preconditions == {LiftedAtom(given, [r])}
+    # With HoldsNoToy a demonstration cannot be planned (its score is the
+    # bound, 1e5): it is dropped although the score changes.
+    costs["NoToyOn"] = 1.4
+
+    def _blocked(nsrts):
+        held = any(a.predicate == free for a in nsrts[0].preconditions)
+        return _score(nsrts) + (1e5 if held else 0)
+
+    pruned, = _prune_unneeded_preconditions([nsrt], {no_toy, free},
+                                            _blocked, 1e5)
+    assert pruned.preconditions == {LiftedAtom(no_toy, [t]),
+                                    LiftedAtom(given, [r])}
+
+
+def test_precondition_only_columns_are_no_effects(tmp_path):
+    """Two variants kept as preconditions only (no effects) about the same
+    argument index do not make the effect matrix inconsistent, as two equal
+    effect columns would."""
+    approach, _, _, _, _ = _setup(tmp_path)
+    rows = len(approach.ae_row_names)
+    matrix = torch.zeros((rows, 4, 2), dtype=torch.long)
+    for row in range(rows):  # two distinct effect columns, one per row
+        matrix[row, row % 2, row // 2 % 2] = 1
+    matrix[0, 1, 1] = 1
+    assert approach.check_matrix_consistency(matrix, [[0], [1], [0], [0]])
+    assert not BilevelLearningApproach.check_matrix_consistency(
+        approach, matrix, [[0], [1], [0], [0]])

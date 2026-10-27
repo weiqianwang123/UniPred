@@ -140,6 +140,27 @@ design. Each entry says what was chosen and why.
   score-based pruning. Seed 0, cached LLM replies: Table Clean Sim 50 of 50
   test tasks (46 without the rule, with 50 skeletons), with the default 8
   skeletons; the simulated robot's sessions with true boxes 9 of 10 (6).
+- **Negations of unary predicates** (fork hook
+  _negates_unary_predicates, `unipred_negate_unary`). IVNTR makes negated
+  and quantified variants of binary predicates only. PDDL completion for
+  Packing proposed "occupied" for regions, with (not (occupied ?r)) as
+  what placing and shifting need; IVNTR rejected the add-only predicate
+  (no option's precondition) and the LLM never proposed "free". With
+  derived-aware selection a unary predicate's negation is a variant, and
+  an add- or delete-only one is kept if its negation is a precondition.
+  On Table Clean Sim it changes nothing (31/50 with and without it, with
+  the same LLM replies, before the fixes below).
+- **Effect columns of different argument types are different.** IVNTR's
+  matrix constraints require columns "of the same grounding" to differ,
+  but compared only the argument indices: "the robot holds the toy" and
+  "the toy is not on the table", both added by picking a toy, counted as
+  the same, so the second could not be selected once the first was (fork
+  0cff420). Columns of no effects (variants kept as preconditions only)
+  are left out of the constraints.
+- **PDDL seeds are kept first.** When more proposals of a type pass than
+  it may keep, the PDDL seeds go first, then the lowest validation loss:
+  losses of passing proposals differ by noise (1e-4 against 2e-4), and
+  "picking a toy adds it" had beaten the seed "the robot holds the toy".
 - **Pruning drops only what makes no difference.** The score-based
   pruning dropped a derived precondition if the score did not rise by
   more than 1 percent without it, so also when it fell; but planning on
@@ -153,7 +174,11 @@ design. Each entry says what was chosen and why.
   (the operators before, after the earlier drops). The runs above make
   the same choices under both rules; on those recordings (seed 0, cached
   LLM replies) UniPred then solves 6 of 10 test tasks (3 before) and 10
-  of 10 in-domain (4).
+  of 10 in-domain (4). A precondition is also dropped if without it a
+  demonstration that could not be planned can (the score falls by half
+  the unsolved-demonstration score or more): the demonstration
+  contradicts it. With all four changes of this section, Table Clean Sim
+  with the new LLM replies solves 50 of 50 test tasks (31 before).
 - **Sampler inputs.** Learned samplers see every object feature but those
   `domain_sampler_data_filter` leaves out: Satellites' ids
   (object.id, calibration_obj_id, read_obj_id) are labels, and test tasks
