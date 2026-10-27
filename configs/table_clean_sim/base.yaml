@@ -11,3 +11,11 @@ timeout: 10
 # The atoms closure of the derived predicates needs A*.
 sesame_task_planner: astar
 execution_monitor: expected_atoms
+# Skeletons refined before giving up (the fork's default is 8; Satellites
+# has 50). Demonstrations always put the toys away before taking the wiper,
+# so they cannot tell whether "no toy is on the table" is a precondition of
+# taking the wiper or of wiping; a model that puts it on the former tries
+# wiping first in tasks that start with the wiper in hand, and refinement
+# rejects those skeletons. With 8, UniPred solved 34 of 50 test tasks, with
+# 50, 46 (seed 0; 22 without derived-aware selection).
+sesame_max_skeletons_optimized: 50

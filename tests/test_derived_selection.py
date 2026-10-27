@@ -35,9 +35,9 @@ class _RecordingScore:
         return self._scores.get(effects, 1e9)
 
 
-def test_derived_forms_enter_with_their_basic_predicate(tmp_path):
-    """The derived form of B is tried only after B is selected; it is never
-    an operator predicate, and its closure is used while scoring."""
+def _setup(tmp_path):
+    """An approach, and the selection info of a provided predicate, a basic
+    predicate with a derived form, and another candidate."""
     config = tmp_path / "pred.yaml"
     config.write_text("predicate_types: []\n")
     utils.reset_config({
@@ -67,6 +67,14 @@ def test_derived_forms_enter_with_their_basic_predicate(tmp_path):
         2: (derived, [1], False, (template, 0, 1)),
         3: (other, [0], False, (other, 0, 0)),
     }
+    return approach, info, block, base, derived
+
+
+def test_derived_forms_enter_with_their_basic_predicate(tmp_path):
+    """The derived form of B is tried only with B, or after B is selected;
+    it is never an operator predicate, and its closure is used while
+    scoring."""
+    approach, info, block, base, derived = _setup(tmp_path)
     score = _RecordingScore({
         frozenset({"Given", base.name}): 50,
         frozenset({"Given", "Other"}): 80,
@@ -76,10 +84,12 @@ def test_derived_forms_enter_with_their_basic_predicate(tmp_path):
     _, _, selected, _ = approach._select_predicates_by_score_search(  # pylint: disable=protected-access
         matrix, info, score)
     assert [p.name for p in selected] == ["Given", base.name, derived.name]
-    # The first level only tries the basic candidates.
-    first_level = {effects for effects, _, _ in score.calls[:2]}
+    # The first level tries the basic candidates, B also with its derived
+    # form, never the derived form alone.
+    first_level = {effects for effects, _, _ in score.calls[:3]}
     assert first_level == {
         frozenset({"Given", base.name}),
+        frozenset({"Given", base.name, derived.name}),
         frozenset({"Given", "Other"})
     }
     effects, operator_predicates, closure = score.calls[-1]
@@ -93,3 +103,23 @@ def test_derived_forms_enter_with_their_basic_predicate(tmp_path):
     rule = approach._derived_rules[derived]  # pylint: disable=protected-access
     assert (rule.base, rule.negated, rule.quantifier, rule.quantified) == \
         (base, True, "ForAll", (0, ))
+
+
+def test_basic_predicate_selected_for_its_derived_form(tmp_path):
+    """A basic predicate that does not help alone is selected with the
+    derived form that does; selection goes on below the threshold while the
+    score improves by the refinement fraction."""
+    approach, info, _, base, derived = _setup(tmp_path)
+    matrix = torch.zeros((len(approach.ae_row_names), 4, 2), dtype=torch.long)
+    score = _RecordingScore({
+        frozenset({"Given", "Other"}): 8,
+        frozenset({"Given", base.name}): 9,
+        frozenset({"Given", base.name, derived.name}): 7,
+        frozenset({"Given", base.name, derived.name, "Other"}): 6.99,
+    })
+    _, _, selected, _ = approach._select_predicates_by_score_search(  # pylint: disable=protected-access
+        matrix, info, score)
+    # Below the threshold (10) already, but the bundle lowers the score;
+    # Other then improves it by less than 1 percent.
+    assert [p.name for p in selected] == ["Given", base.name, derived.name]
+
