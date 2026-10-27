@@ -76,6 +76,26 @@ def test_shift_then_place_large(env):
     assert placed.get(robot, "gripper") == 0.0
 
 
+def test_shift_needs_the_regions_of_one_box(env):
+    """Shift moves the divider between two regions of one box, and nothing
+    for regions of two boxes (halfway between which is a third box)."""
+    state = env.get_test_tasks()[0].init
+    regions = {r.name: r for r in state.get_objects(env.region_type)}
+    robot = state.get_objects(env.robot_type)[0]
+    shift = get_gt_options("packing")
+    shift = next(o for o in shift if o.name == "Shift")
+    for names, moved in ((("box0_left", "box2_right"), None),
+                         (("box0_right", "box2_left"), None),
+                         (("box1_right", "box1_left"), 1)):
+        option = shift.ground([robot] + [regions[n] for n in names],
+                              np.array([0.3], dtype=np.float32))
+        after = env.simulate(state, option.policy(state))
+        dividers = after.simulator_state.dividers
+        assert {b for b, f in dividers.items() if f != 0.5} == (
+            set() if moved is None else {moved})
+    assert dividers[1] < 0.5  # box1_right became wide
+
+
 def test_oracle_solves_tasks(env):
     """The ground-truth operators solve a train and a test task."""
     options = get_gt_options("packing")

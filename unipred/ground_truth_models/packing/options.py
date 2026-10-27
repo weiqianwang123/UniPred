@@ -41,10 +41,14 @@ def _shift(state: State, memory: Dict, objects: Sequence[Object],
            params: Array) -> Action:
     """Shift the divider between the two regions (at the box center) so
     that objects[1] becomes wider by the fraction params[0] of the
-    maximum shift."""
+    maximum shift; nothing if they are not the two regions of one box
+    (halfway between regions of two boxes may be a third box)."""
     del memory  # unused
     _, region, other = objects
     x_region, x_other = state.get(region, "x"), state.get(other, "x")
+    if abs(abs(x_region - x_other) - PackingEnv.box_width / 2) > 1e-3 or \
+            abs(state.get(region, "y") - state.get(other, "y")) > 1e-3:
+        return _act(SHIFT, 0.0, 0.0)  # where there is no box
     toward_other = 1.0 if x_region < x_other else -1.0
     fraction = 0.5 + toward_other * PackingEnv.max_shift * float(params[0])
     return _act(SHIFT, (x_region + x_other) / 2, state.get(region, "y"),
