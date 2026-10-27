@@ -398,6 +398,16 @@ class BilevelLearningApproach(NSRTLearningApproach):
         assert sep, f"Not a predicate model path: {model_path}"
         return os.path.join(directory, f"{stem}_{artifact}{suffix}")
 
+    def _report_checks(self, pred: DummyPredicate,
+                       ae_vectors: List[torch.Tensor],
+                       outcomes: List[str]) -> None:
+        """Called after each iteration of the effect search of a predicate
+        type with the outcome of each trained vector: "kept", "effects"
+        (its classifier's values do not change as the vector says),
+        "loss" (validation loss too high), "precondition" (add- or
+        delete-only, and no option's precondition) or "not needed"
+        (passed, but max_num_vectors were kept). A hook for subclasses."""
+
     def _expand_candidate_pool(self, selected: List[Predicate],
                                pool: List[PredicateCandidate]) -> None:
         """Called by predicate selection after each predicate it adds.
@@ -1614,6 +1624,12 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 all_pass_mask_obj = all_iter_objective < pred_config["guidance_thresh"]
                 all_pass_mask_loss = all_iter_losses < pred_config["loss_thresh"]
                 all_pass_mask = all_pass_mask_obj & all_pass_mask_loss
+                # What became of each vector (see _report_checks).
+                outcomes = [
+                    "effects" if not all_pass_mask_obj[k] else
+                    "loss" if not all_pass_mask_loss[k] else "not needed"
+                    for k in range(len(iter_ae_vectors))
+                ]
                 i = 0
                 if all_pass_mask.any():
                     # find out their idxes and check if they pass the preconditions
@@ -1651,6 +1667,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         pred_config['gumbel_temp'], 0.5, predicate_neural_model, curr_pred, ent_idx, \
                             self.ae_row_names_dict, ae_vector.clone(), copy.deepcopy(self._node_feature_to_index), CFG.device, \
                             thresh=CFG.precond_thresh)
+                        outcomes[min_idx] = "kept" if precond_pass \
+                            else "precondition"
                         if precond_pass:
                             i += 1
                             logging.info(f"Precondition Passed for AE Vector {min_idx}! Add to the final list.")
@@ -1662,6 +1680,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                             self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[min_idx])
                 else:
                     logging.info(f"No low-objective ae vectors found for this iteration..")
+                self._report_checks(curr_pred, iter_ae_vectors, outcomes)
                 # save the neural feedback for symbolic training
                 # convert to categorical
                 for curr_ae_vector, learned_guidance in zip(iter_ae_vectors, iter_guidance_vecs):
