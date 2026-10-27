@@ -74,7 +74,7 @@ def run_closed_loop(deployment: Deployment, robot: RobotInterface,
     for _ in range(max_steps + 1):
         state, observation = deployment.observe(robot.capture(), objects,
                                                 previous)
-        previous = observation.boxes
+        previous = observation
         goal = deployment.goal(goal_atoms, state)
         if all(a.holds(state) for a in goal):
             logging.info("The goal holds.")

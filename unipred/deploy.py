@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import abc
 import sys
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple, \
+    Union
 
 import numpy as np
 import torch
@@ -95,12 +96,13 @@ class Deployment:
         self,
         image: np.ndarray,
         objects: Mapping[str, str],
-        previous: Optional[Mapping[str, Box]] = None,
+        previous: Optional[Union[SceneObservation, Mapping[str,
+                                                           Box]]] = None,
         image_file: str = ""
     ) -> Tuple[State, SceneObservation]:
         """The state of the objects (name -> type) in an RGB image, and what
-        perception found (its boxes are the previous ones for the next
-        image). The image file, if any, is kept in the state."""
+        perception found (the previous observation for the next image). The
+        image file, if any, is kept in the state."""
         observation = self.perceiver.perceive(image, objects, previous)
         state = self.env.scene_state(dict(objects), observation.features,
                                      image_file)

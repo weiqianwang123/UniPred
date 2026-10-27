@@ -3,33 +3,30 @@
 # planning from its images and the closed loop on it. As
 # configs/real_robot.yaml, with prompts for the simulator's objects.
 
+# "sam3" (a SAM3 server, CDG's; unipred/perception/sam3.py),
 # "groundingdino_sam2" (weights from scripts/install.sh) or "fake".
-detector: groundingdino_sam2
+detector: sam3
 # The crop encoder: "dinov3" (the paper's), "resnet18", "auto" (DINOv3 if
 # its weights are installed, else ResNet-18) or "fake".
 encoder: dinov3
 device: cuda
-# GroundingDINO thresholds on box and text scores.
+# Thresholds on box and text scores (SAM3 has scores only, and drops
+# those below 0.3).
 box_threshold: 0.3
 text_threshold: 0.25
 # A crop extends this fraction of the box's size beyond each side.
 crop_padding: 0.15
-# Black out the pixels outside the SAM2 mask in crops.
+# Black out the pixels outside the detected mask in crops.
 mask_crops: false
 cameras: [0]
-# The GroundingDINO text prompts of each object type: the Franka's gripper,
-# the scanned toys (several prompts, as they look different), the wooden
-# tray (the box), the sponge (the wiper) and the table. On 105 images (every
-# second keyframe of 30 recorded sessions), they found 101 of 105 grippers,
-# 189 of 215 toys and every tray, sponge and table (IoU >= 0.5 with the true
-# box).
+# The text prompts of each object type: the Franka (the whole arm, its
+# gripper and what it holds in the crop), the scanned toys, the wooden tray
+# (the box), the sponge (the wiper) and the table. A detection that
+# overlaps a better one of another type is dropped (SAM3 also takes the
+# arm, the tray and the sponge for toys).
 prompts:
-  robot: black robot gripper
-  toy: [toy, plastic toy, figurine, toy vehicle, stuffed animal]
+  robot: robot
+  toy: toy
   box: wooden tray
   wiper: purple sponge
   table: table
-# Drop detections larger than this fraction of the image, per type: boxes
-# around the arm that GroundingDINO takes for a toy.
-max_box_area:
-  toy: 0.05

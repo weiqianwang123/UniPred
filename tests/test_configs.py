@@ -28,7 +28,10 @@ _PREDICATE_CONFIGS = [
     p for p in _CONFIGS
     if os.path.basename(p) in ("predicates.yaml", "ivntr_predicates.yaml")
 ]
-_SPECIAL = {"configs/real_robot.yaml", "configs/table_clean_real/domain.yaml"}
+_SPECIAL = {
+    "configs/real_robot.yaml", "configs/sim_robot.yaml",
+    "configs/table_clean_real/domain.yaml"
+}
 _EXPERIMENT_CONFIGS = [
     p for p in _CONFIGS if p not in _PREDICATE_CONFIGS and p not in _SPECIAL
 ]
@@ -90,13 +93,16 @@ def test_predicate_config(path):
 
 
 def test_real_robot_configs():
-    """The robot config gives a prompt per object type of the domain spec,
-    whose predicates use its types."""
+    """The robot configs (the real robot's and the simulated one's) give a
+    prompt per object type of the domain spec, whose predicates use its
+    types."""
     os.chdir(REPO)
-    robot = load_robot_config("configs/real_robot.yaml")
     with open("configs/table_clean_real/domain.yaml", encoding="utf-8") as f:
         domain = yaml.safe_load(f)
-    assert set(domain["types"]) <= set(robot["prompts"])
+    for path in ("configs/real_robot.yaml", "configs/sim_robot.yaml"):
+        robot = load_robot_config(path)
+        assert set(domain["types"]) <= set(robot["prompts"])
+        assert set(robot["max_box_area"]) <= set(robot["prompts"])
     for types in domain["predicates"].values():
         assert set(types) <= set(domain["types"])
     assert set(domain["goal_predicates"]) <= set(domain["predicates"])

@@ -12,6 +12,12 @@ test scenes.
         --raw examples/real_robot/fixture/raw --out outputs/real/processed \\
         --domain configs/table_clean_real/domain.yaml \\
         --robot_config configs/real_robot.yaml --detector fake --encoder fake
+
+An object that the detector misses and that has no earlier box (say, a toy
+in the first keyframe) stops the processing, unless --fill_missing names a
+file of every session with boxes per keyframe (the format of boxes.json),
+from which such an object's box is then taken, as if annotated: e.g.
+gt_boxes.json of simulated recordings (collect_sim_demos.py).
 """
 
 from __future__ import annotations
@@ -29,7 +35,8 @@ import yaml
 from PIL import Image
 
 from predicators import utils
-from unipred.perception.scene import ScenePerceiver
+from unipred.perception.scene import PerceptionError, SceneObservation, \
+    ScenePerceiver
 
 
 def _read_json(path: str, default: Any = None) -> Any:
@@ -53,8 +60,11 @@ def _check_atoms(atoms: List, domain: Dict, objects: Dict[str, str],
     return [(name, tuple(args)) for name, args in atoms]
 
 
-def process_session(directory: str, out_dir: str, domain: Dict,
-                    perceiver: ScenePerceiver) -> Dict:
+def process_session(directory: str,
+                    out_dir: str,
+                    domain: Dict,
+                    perceiver: ScenePerceiver,
+                    fill_missing: Optional[str] = None) -> Dict:
     """Perceive and check one recorded session."""
     name = os.path.basename(os.path.normpath(directory))
     session = _read_json(os.path.join(directory, "session.json"))
@@ -70,6 +80,11 @@ def process_session(directory: str, out_dir: str, domain: Dict,
             raise ValueError(f"{name}: {step} uses unknown objects.")
     atoms = _read_json(os.path.join(directory, "atoms.json"))
     boxes = _read_json(os.path.join(directory, "boxes.json"))
+    fill = None
+    if fill_missing is not None:
+        fill = _read_json(os.path.join(directory, fill_missing))
+        if fill is None:
+            raise FileNotFoundError(f"{name} has no {fill_missing}.")
     num_keyframes = len(actions) + 1
     images = [os.path.join(directory, f"{i}.png") for i in range(num_keyframes)]
     missing = [p for p in images if not os.path.exists(p)]
@@ -82,12 +97,23 @@ def process_session(directory: str, out_dir: str, domain: Dict,
                          "first keyframe (atoms.json).")
     os.makedirs(os.path.join(out_dir, name), exist_ok=True)
     keyframes = []
-    previous: Optional[Dict] = None
+    previous: Optional[SceneObservation] = None
     for i, path in enumerate(images):
         image = np.asarray(Image.open(path).convert("RGB"))
-        given = boxes[i] if boxes is not None and i < len(boxes) else None
-        observation = perceiver.perceive(image, objects, previous, given)
-        previous = observation.boxes
+        given = dict(boxes[i]) if boxes is not None and i < len(boxes) else {}
+        while True:
+            try:
+                observation = perceiver.perceive(image, objects, previous,
+                                                 given)
+                break
+            except PerceptionError as error:
+                missed = error.object_name
+                if fill is None or missed is None or missed in given:
+                    raise
+                logging.info(f"{name} keyframe {i}: {missed} not detected; "
+                             f"its box from {fill_missing}.")
+                given[missed] = fill[i][missed]
+        previous = observation
         image_path = os.path.join(name, f"{i}.png")
         shutil.copyfile(path, os.path.join(out_dir, image_path))
         keyframe_atoms = None
@@ -125,6 +151,9 @@ def main() -> None:
     parser.add_argument("--encoder", help="override the config's encoder")
     parser.add_argument("--perception_weights_dir",
                         help="default: $UNIPRED_WEIGHTS_DIR")
+    parser.add_argument("--fill_missing",
+                        help="a file of each session (e.g. gt_boxes.json) "
+                        "with the boxes of objects the detector misses")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     settings = {}
@@ -141,7 +170,8 @@ def main() -> None:
         directory = os.path.join(args.raw, entry)
         if os.path.isdir(directory) and not entry.startswith("."):
             sessions.append(
-                process_session(directory, args.out, domain, perceiver))
+                process_session(directory, args.out, domain, perceiver,
+                                args.fill_missing))
             logging.info(f"Processed {entry} ({sessions[-1]['split']}, "
                          f"{len(sessions[-1]['keyframes'])} keyframes)")
     processed = {

@@ -6,7 +6,7 @@ import pytest
 
 from predicators import utils
 from unipred.perception.crops import crop_object
-from unipred.perception.detector import Detector, fake_colors
+from unipred.perception.detector import Detection, Detector, fake_colors
 from unipred.perception.features import CropEncoder, resolve_backend
 from unipred.perception.scene import PerceptionError, ScenePerceiver
 
@@ -146,3 +146,57 @@ def test_max_box_area_drops_large_detections():
                                                        ("toy", 10.0)]
     with pytest.raises(ValueError, match="cup"):
         Detector("fake", {"toy": "toy"}, max_box_area={"cup": 0.1})
+
+
+class _GivenDetections:
+    """A detector that finds the toys at the given boxes (masks: the
+    boxes)."""
+
+    def __init__(self) -> None:
+        self.boxes = []
+
+    def detect(self, image):
+        found = []
+        for box in self.boxes:
+            mask = np.zeros(image.shape[:2], dtype=bool)
+            mask[box[1]:box[3], box[0]:box[2]] = True
+            found.append(Detection("toy", tuple(map(float, box)), 1.0, mask))
+        return found
+
+
+def _painted(regions):
+    image = np.full((60, 80, 3), 128, dtype=np.uint8)
+    for (x0, y0, x1, y1), color in regions:
+        image[y0:y1, x0:x1] = color
+    return image
+
+
+def test_objects_are_matched_by_appearance():
+    """After the first image, an object takes the detection that looks like
+    it, not the nearest one; a detection that looks like none of them
+    leaves the objects where they were."""
+    detector = _GivenDetections()
+    perceiver = ScenePerceiver(detector, CropEncoder("fake"))
+    objects = {"toy0": "toy", "toy1": "toy"}
+    red, blue, green = (220, 20, 20), (20, 20, 220), (20, 200, 20)
+    detector.boxes = [(10, 10, 20, 20), (50, 10, 60, 20)]
+    first = perceiver.perceive(
+        _painted([((10, 10, 20, 20), red), ((50, 10, 60, 20), blue)]),
+        objects)
+    assert first.boxes["toy0"][0] == 10 and first.boxes["toy1"][0] == 50
+    # The blue toy moves next to where the red one was, the red one away.
+    detector.boxes = [(22, 10, 32, 20), (60, 30, 70, 40)]
+    second = perceiver.perceive(
+        _painted([((22, 10, 32, 20), blue), ((60, 30, 70, 40), red)]),
+        objects, first)
+    assert second.boxes["toy0"] == (60.0, 30.0, 70.0, 40.0)
+    assert second.boxes["toy1"] == (22.0, 10.0, 32.0, 20.0)
+    # By place only (boxes as the previous observation), they swap.
+    by_place = perceiver.perceive(
+        _painted([((22, 10, 32, 20), blue), ((60, 30, 70, 40), red)]),
+        objects, first.boxes)
+    assert by_place.boxes["toy0"] == (22.0, 10.0, 32.0, 20.0)
+    detector.boxes = [(30, 40, 40, 50)]
+    third = perceiver.perceive(_painted([((30, 40, 40, 50), green)]),
+                               objects, second)
+    assert third.boxes == second.boxes

@@ -1,10 +1,13 @@
-"""Object detection: boxes for the objects of each type from a text prompt
-per type (GroundingDINO), refined into masks (SAM2).
+"""Object detection: boxes and masks for the objects of each type from a
+text prompt per type.
 
 Backends:
 
-- "groundingdino_sam2": GroundingDINO and SAM2 through transformers, from
-  their installed weights (unipred/perception/weights.py);
+- "groundingdino_sam2": GroundingDINO boxes refined into SAM2 masks,
+  through transformers, from their installed weights
+  (unipred/perception/weights.py);
+- "sam3": SAM3's text-prompted instance segmentation, from a SAM3 server
+  (CDG's perception servers; unipred/perception/sam3.py);
 - "fake": no network weights, for tests and the synthetic fixture of
   examples/real_robot. The objects of each type are drawn as regions of the
   colour fake_colors() gives the type; the detector returns every connected
@@ -23,7 +26,7 @@ import torch
 from PIL import Image
 from scipy import ndimage
 
-from unipred.perception import weights
+from unipred.perception import sam3, weights
 
 Box = Tuple[float, float, float, float]  # x0, y0, x1, y1 in pixels
 FAKE_MIN_AREA = 9
@@ -69,9 +72,9 @@ class Detector:
                  text_threshold: float = 0.25,
                  device: str = "cpu",
                  max_box_area: Optional[Mapping[str, float]] = None) -> None:
-        if backend not in ("groundingdino_sam2", "fake"):
+        if backend not in ("groundingdino_sam2", "sam3", "fake"):
             raise ValueError(f"Unknown detector backend: {backend!r} (use "
-                             "groundingdino_sam2 or fake).")
+                             "groundingdino_sam2, sam3 or fake).")
         self.backend = backend
         self._prompts = {
             t: [p] if isinstance(p, str) else list(p)
@@ -93,7 +96,27 @@ class Detector:
         """The detections in an RGB image (H x W x 3, uint8)."""
         if self.backend == "fake":
             return self._detect_fake(image)
+        if self.backend == "sam3":
+            return self._detect_sam3(image)
         return self._detect_models(image)
+
+    def _detect_sam3(self, image: np.ndarray) -> List[Detection]:
+        """Every prompt of every type sent to SAM3; its scores are compared
+        with box_threshold."""
+        found, masks = [], {}
+        area = image.shape[0] * image.shape[1]
+        for object_type, prompts in self._prompts.items():
+            for prompt in prompts:
+                for box, score, mask in sam3.segment_text(image, prompt):
+                    if score >= self._box_threshold and self._small_enough(
+                            object_type, box, area):
+                        found.append((object_type, box, score))
+                        masks[(object_type, box, score)] = mask
+        return [
+            Detection(object_type, box, score, masks[(object_type, box,
+                                                      score)])
+            for object_type, box, score in _suppress_duplicates(found)
+        ]
 
     def _small_enough(self, object_type: str, box: Box,
                       image_area: float) -> bool:
@@ -183,15 +206,20 @@ def box_iou(a: Box, b: Box) -> float:
     return inter / (union - inter) if union > inter else 0.0
 
 
-def _suppress_duplicates(
-    found: List[Tuple[str, Box, float]],
-    max_iou: float = 0.5) -> List[Tuple[str, Box, float]]:
-    """Of detections of one type that overlap more than max_iou (e.g. one
-    toy matched by two of the type's prompts), keep the best scored."""
+def _suppress_duplicates(found: List[Tuple[str, Box, float]],
+                         max_iou: float = 0.5,
+                         max_iou_other: float = 0.7
+                        ) -> List[Tuple[str, Box, float]]:
+    """Keep the best scored of detections of one type that overlap more than
+    max_iou (one toy matched by two of the type's prompts), and of
+    detections of different types that overlap more than max_iou_other (the
+    tray, found by its own prompt and taken for a toy)."""
     kept: List[Tuple[str, Box, float]] = []
     for detection in sorted(found, key=lambda d: -d[2]):
-        if all(d[0] != detection[0] or box_iou(d[1], detection[1]) <= max_iou
-               for d in kept):
+        if all(
+                box_iou(d[1], detection[1]) <= (
+                    max_iou if d[0] == detection[0] else max_iou_other)
+                for d in kept):
             kept.append(detection)
     return kept
 

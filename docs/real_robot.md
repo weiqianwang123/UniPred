@@ -15,12 +15,22 @@ format in the examples README). `examples/real_robot/process_demos.py`
 perceives every keyframe with `unipred/perception/scene.py`:
 
 1. **Detection** (`detector.py`): GroundingDINO finds boxes for the text
-   prompt of each object type (`prompts` in `configs/real_robot.yaml`), and
-   SAM2 refines them into masks.
+   prompt of each object type (`prompts` in `configs/real_robot.yaml`; a
+   list of prompts for a type whose objects look different), and SAM2
+   refines them into masks; or (`detector: sam3`) SAM3 segments the
+   instances of each prompt, from a SAM3 server (CDG's perception servers,
+   `$UNIPRED_SAM3_URL`). Overlapping detections of one type keep the best
+   scored, and so do detections of different types that overlap almost
+   entirely (the tray found as a tray and taken for a toy);
+   `max_box_area` drops a type's detections larger than a fraction of the
+   image.
 2. **Identity**: detections are matched to the session's object names, left
    to right in the first keyframe, then by proximity to the previous box;
    an undetected object keeps its previous box, and boxes in the recording
    override detection (for objects the detector misses).
+   `process_demos.py --fill_missing FILE` takes the box of an object that
+   is missed and has no earlier box from a file of each session (the
+   simulator's `gt_boxes.json`), as if it had been annotated.
 3. **Crops** (`crops.py`): a padded square around each box, keeping the
    surroundings that relational predicates depend on (optionally masked).
 4. **Features** (`features.py`): the class token of DINOv3 for each crop.
@@ -122,5 +132,5 @@ objects end up where the atoms do not say, is simulated again with another
 seed. Its `session.json` describes the scene, so that
 `closed_loop_example.py --robot sim` starts the loop from it: the skills of
 the plan run on the simulated Franka, and the end says whether the goal
-holds in the simulator. `configs/sim_robot.yaml` has the detector prompts
-for the simulator's objects.
+holds in the simulator. `configs/sim_robot.yaml` has the perception for
+the simulator's images: SAM3 with a prompt per type.
