@@ -26,7 +26,7 @@ Picks take their grasps from GraspGenX (CDG's perception server, see
 unipred/robot_sim/graspgenx.py), or with --grasps top_down straight from
 above. A session whose skill cannot be carried out (no grasp closes, say)
 or ends with the objects not where the atoms say is simulated again with
-another seed, up to three times.
+another seed, up to five times.
 
     python -m unipred.robot_sim.assets   # once: the robot and the objects
     python examples/real_robot/collect_sim_demos.py \\
@@ -53,7 +53,7 @@ from unipred.robot_sim.cluttered_retrieval_mujoco import \
 from unipred.robot_sim.franka_scene import FrankaTableScene, SimulationError
 from unipred.robot_sim.table_clean_mujoco import TableCleanMujoco
 
-_ATTEMPTS = 3
+_ATTEMPTS = 5
 # Domain -> its simulated counterpart and its scene.
 _DOMAINS = {
     "table_clean": ("table_clean_sim", TableCleanMujoco),
