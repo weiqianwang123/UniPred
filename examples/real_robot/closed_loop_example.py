@@ -152,9 +152,17 @@ def main() -> None:
     if args.video:
         predicates = deployment.predicates()
         invented = [p for p in predicates if p not in deployment.env.predicates]
+        domain = {
+            "table_clean": "Table Clean",
+            "cluttered_retrieval": "Cluttered Retrieval"
+        }[session.get("domain", "table_clean")]
+        robot_kind = "simulated robot" if args.robot == "sim" else "replay"
+        scene = os.path.basename(os.path.normpath(args.session))
+        approach = {"unipred": "UniPred"}.get(deployment.approach.get_name(),
+                                             deployment.approach.get_name())
         video = LoopVideo(
-            f"{os.path.basename(os.path.normpath(args.session))}: "
-            f"{deployment.approach.get_name()} in the closed loop",
+            f"{domain} ({robot_kind}): {scene.replace('_', ' scene ')}, "
+            f"{approach} in the closed loop",
             predicates,
             predicate_labels(invented, sorted(deployment.env.predicates),
                              deployment.env.annotated_states()))

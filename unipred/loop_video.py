@@ -5,11 +5,13 @@ what it does.
 Each keyframe shows the camera image with the box and name of every object
 that perception found, beside a panel with the plan (the skills done, the
 one about to run, the rest) and the atoms true in the perceived state.
-An invented predicate is named after the hidden ground-truth predicate it
-agrees with most on the annotated keyframes of the training sessions (with
-the agreement: green from 90 percent), so that what UniPred discovered can
-be read; given predicates keep their names. The frames recorded while a skill runs follow
-its keyframe, with the skill highlighted in the plan.
+An invented predicate is named after the hidden ground-truth predicate,
+or its negation, that it agrees with most on the annotated keyframes of the
+training sessions (with the agreement: green from 90 percent), so that what
+UniPred discovered can be read; one that matches none on at least 60
+percent is left out. Given predicates keep their names. The frames
+recorded while a skill runs follow its keyframe, with the skill
+highlighted in the plan.
 """
 
 from __future__ import annotations
@@ -30,7 +32,8 @@ _PANEL_WIDTH = 520
 _HEADER = 40
 _COLORS = [(230, 60, 60), (40, 120, 230), (40, 170, 80), (230, 150, 20),
            (150, 60, 200), (20, 170, 180), (200, 80, 150), (120, 120, 120)]
-_MIN_AGREEMENT = 0.9
+_MIN_AGREEMENT = 0.9  # shown in green from here
+_MIN_SHOWN = 0.6  # not shown below
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
@@ -43,9 +46,9 @@ def predicate_labels(
         invented: Sequence[Predicate], ground_truth: Sequence[Predicate],
         states: Sequence[State]) -> Dict[Predicate, Tuple[str, float]]:
     """For each invented predicate, the ground-truth predicate of the same
-    argument types that it agrees with most on the groundings of the
-    annotated states (whose simulator states keep the true atoms), and the
-    agreement."""
+    argument types, or its negation ("¬Name"), that it agrees with most on
+    the groundings of the annotated states (whose simulator states keep the
+    true atoms), and the agreement."""
     agree: Dict[Tuple[Predicate, Predicate], List[int]] = {}
     for state in states:
         truth = state.simulator_state.atoms
@@ -66,8 +69,11 @@ def predicate_labels(
     for pred in invented:
         scored = [(c[0] / c[1], gt.name)
                   for (p, gt), c in agree.items() if p == pred and c[1]]
+        scored += [(1 - score, f"¬{name}") for score, name in scored]
         if scored:
-            score, name = max(scored)
+            # On a tie, a predicate rather than a negation.
+            score, name = max(scored,
+                              key=lambda s: (s[0], not s[1].startswith("¬")))
             labels[pred] = (name, score)
     return labels
 
@@ -149,10 +155,15 @@ class LoopVideo:
             args = ", ".join(o.name for o in atom.objects)
             if atom.predicate in self._labels:
                 name, score = self._labels[atom.predicate]
+                if score < _MIN_SHOWN:
+                    continue
                 color = (20, 120, 60) if score >= _MIN_AGREEMENT else \
                     (200, 120, 20)
                 lines.append(
                     (f"≈{name}({args})  invented, {score:.0%}", color))
+            elif atom.predicate.name.startswith(("neural_", "forall_",
+                                                 "exists_")):
+                continue  # invented, but like no ground-truth predicate
             else:
                 lines.append((f"{atom.predicate.name}({args})", (40, 40, 40)))
         return lines

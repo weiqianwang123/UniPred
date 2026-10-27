@@ -27,8 +27,17 @@ Root (refactor/paper-release), oldest first:
 - 534e168 Dependencies match the imports.
 - install.sh; docs (architecture, domains, adding a domain, real robot),
   THIRD_PARTY_NOTICES, README codebase sections.
+- 60db615 derived-aware selection; 9dfb04b derived preconditions only on
+  operators about their types; 8e952e3 Packing selection with the
+  visited-state set; fa4361c Packing's Shift on one box only.
+- Simulated robot: 61adfc8, 13d2906 (scene, stains, names), 199ec04 SAM3
+  and identity by appearance, cefa196 robot prompt, c4783c3 SAM3 video
+  tracker between keyframes, 738a2ff Franka base class of the scenes.
+- 06d7598 Cluttered Retrieval (Sim, Real, MuJoCo scene); 7090656 image
+  boxes as features (optional); 408360d annotated closed-loop video.
 
-Fork (third_party/IVNTR, unipred), after a406fa2:
+Fork (third_party/IVNTR, unipred), after a406fa2 (later: fdad623
+derived-aware hooks, 6bed62c, 8ab1712 Satellites samplers, 0eef079):
 
 - c5ab702 No unseeded global random numbers.
 - d20f00b Hooks: BaseEnv.get_recorded_dataset, BaseEnv.evaluate_offline.
@@ -75,13 +84,34 @@ All with `scripts/run.sh` unless noted.
   table_clean_sim unipred OOD 34/50 with 8 skeletons, 46/50 with 50 (now
   the setting), in-domain 50/50; the same replies without the fixes 22/50
   with 50 skeletons (the paper: 93.4%).
-- Simulated robot (unipred/robot_sim): 24/24 full demonstrations with
-  GraspGenX grasps; 60 sessions collected (50 demonstrations, 10 test
-  scenes), processed with SAM3 and ResNet-18; UniPred on them pending.
+- IVNTR on Satellites after the sampler fix (snapshot satfix): OOD 47/50,
+  in-domain 50/50 (20/50 before).
+- Simulated robot, Table Clean (unipred/robot_sim): 60 sessions with
+  skill videos (50 demonstrations, 10 test scenes), processed with SAM3,
+  ResNet-18 and the tracker. Tracking (per keyframe, a toy's box right):
+  held 100/103 (84 without the tracker), in the tray 694/709 (680), on
+  the table 212/218. UniPred (codex, cached replies), 20 demonstrations:
+  OOD 5/10, in-domain 10/10 (with true boxes 9/10; with the earlier
+  perception 1/10); the failures plan wiping first, as the toy-table
+  predicate is not invented. Closed loop with the annotated video on
+  test_01: the goal holds in the simulator.
+- Simulated robot, Cluttered Retrieval: 60 sessions collected (10 min),
+  every GraspGenX demonstration reaching the goal; processing pending.
+- Cluttered Retrieval Sim: oracle 50/50 OOD and in-domain, random options
+  50/50 and 48/50 (no dead ends). UniPred (codex): 0/50 OOD, 18/50
+  in-domain; Blocks fails the consistency check on the options without an
+  obstacle (Pick, Place). A 500-demonstration run is going.
+- Packing: random options OOD 3/50, in-domain 24/50 (the paper: 1.6% and
+  12.4%; tighter train tasks give 1-2%). UniPred (codex): OOD 0/50; "item
+  in region" (proposed by the LLM) fails the consistency check on Pick
+  (0.28; threshold 0.05), so Free is never derived and placing has no
+  region precondition. Removing the items' held flag (a suspected
+  shortcut) left the same 0.28 and 0/50, and was reverted. A
+  500-demonstration run is going.
 - Fork README commands: oracle satellites 5/5, blocks_onclear 5/5; GNN on
   satellites with 50 demos 0/50 OOD.
 
-Tests: root `pytest tests` (151) and fork `pytest tests` (41) pass;
+Tests: root `pytest tests` (187) and fork `pytest tests` (41) pass;
 earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
 (311 s).
 
@@ -124,12 +154,22 @@ earlier (141 and 40) also in a fresh clone installed by scripts/install.sh
 - The planning-effort score skipped the last demonstration (fork
   6bed62c, inherited).
 
+- Packing's Shift on regions of two boxes moved the divider of the box
+  halfway between them (fa4361c).
+- Identity in the simulated robot's recordings: toys swapped behind the
+  arm or in the gripper (c4783c3: SAM3 video tracker); the arm's prompt
+  "robot" matched toys that are robot figures (cefa196).
+
 ## Remaining
 
-- IVNTR on Satellites retrained with the sampler fix (running), and the
-  Table III methods on the simulated robot's sessions.
-- Packing: review of the environment's tasks (the owner suspects problems
-  in how they are written).
+- The Table III methods on the simulated robots' sessions.
+- Packing: UniPred 0/50 (the paper: 100%); the binary predicate In is not
+  consistent enough to be selected (see Results). The task matches the
+  paper's description; its exact distributions are not in the paper.
+- Cluttered Retrieval: UniPred on the processed recordings (with image
+  boxes as features), closed-loop videos.
+- Table Clean on the simulated robot: 50 demonstrations, image boxes as
+  features (the toy-table predicate), more closed-loop videos.
 - The real-robot fixture cannot express where the box is (the fake
   encoder sees the same crop near and far), so UniPred cannot solve its
   test scenes; it is a smoke test. The simulated robot's sessions are the
