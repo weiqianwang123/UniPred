@@ -54,6 +54,12 @@ design. Each entry says what was chosen and why.
   images show is kept in State.simulator_state for the ground-truth
   predicates, so `allow_state_allclose_comparison_despite_simulator_state`
   is set.
+- **Thresholds.** Items and regions are image crops, so their predicates
+  are checked with the paper's image thresholds (guidance 0.1, loss
+  0.06), as in the real domains.
+- **Three region predicates may be kept** (free, wide, centered:
+  placing, placing a large item and shifting need them); with one,
+  "shifting adds it" was kept and placing had no region precondition.
 - **Encoder.** DINOv3 (the paper's) when its weights are installed, else
   ResNet-18 with ImageNet weights (`--perception_encoder auto`); either can
   be forced. A "fake" encoder (mean colors of a 4 x 4 grid) exists only for

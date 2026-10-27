@@ -5,3 +5,5 @@
 include: predicates.yaml
 defaults: {num_iter: 70, batch_vect_num: 4, matrix_vec_try: 100,
            search_tree_max_level: 3, max_num_vectors: null}
+predicate_types:
+  - {name: neural_u_region, max_num_vectors: null}

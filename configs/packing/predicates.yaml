@@ -27,8 +27,10 @@ defaults:
   epochs: 100
   gumbel_temp: 0.7
   val_freq: 10
-  guidance_thresh: 0.05
-  loss_thresh: 0.005
+  # Items and regions are image crops: the thresholds of the paper's image
+  # predicates (as configs/table_clean_real/predicates.yaml).
+  guidance_thresh: 0.1
+  loss_thresh: 0.06
   num_iter: 10
   batch_vect_num: 4
   matrix_vec_try: 20
@@ -37,6 +39,8 @@ defaults:
 predicate_types:
   - {name: neural_u_robot, types: [robot], ent_idx: [0]}
   - {name: neural_u_item, types: [item], ent_idx: [0]}
-  - {name: neural_u_region, types: [region], ent_idx: [0]}
+  # A region is free (placing needs it), wide (placing a large item needs
+  # it) and centered (shifting needs it): three effect vectors.
+  - {name: neural_u_region, types: [region], ent_idx: [0], max_num_vectors: 3}
   - {name: neural_b_robot_item, types: [robot, item], ent_idx: [0, 0]}
   - {name: neural_b_item_region, types: [item, region], ent_idx: [0, 0]}
