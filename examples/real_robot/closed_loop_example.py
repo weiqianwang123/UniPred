@@ -15,8 +15,9 @@ pick or a learned policy) on the named objects. Two come with the example:
   skill), so the example runs offline;
 - sim (unipred/robot_sim, MujocoRobot) runs the skills on the simulated
   Franka, from the scene a session of collect_sim_demos.py was recorded
-  in; the loop's camera images go to --frames_dir, and the end tells
-  whether the goal holds in the simulator.
+  in, its camera recording each skill for the tracker; the loop's camera
+  images go to --frames_dir, and the end tells whether the goal holds in
+  the simulator.
 
     python examples/real_robot/closed_loop_example.py \\
         --session examples/real_robot/fixture/raw/train_00 \\
@@ -72,8 +73,11 @@ def run_closed_loop(deployment: Deployment, robot: RobotInterface,
     executed: Optional[_GroundNSRT] = None
     previous = None
     for _ in range(max_steps + 1):
-        state, observation = deployment.observe(robot.capture(), objects,
-                                                previous)
+        frames = robot.video() if executed is not None else None
+        state, observation = deployment.observe(robot.capture(),
+                                                objects,
+                                                previous,
+                                                frames=frames)
         previous = observation
         goal = deployment.goal(goal_atoms, state)
         if all(a.holds(state) for a in goal):

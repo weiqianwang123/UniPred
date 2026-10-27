@@ -202,9 +202,29 @@ design. Each entry says what was chosen and why.
   not have.
 - **Object identity.** In the first keyframe, the detections of a type
   are assigned to the session's objects of that type from left to right;
-  afterwards each object takes the nearest detection (Hungarian matching
-  on box centres). An undetected object keeps its previous box (a toy in
-  the gripper); boxes in the raw data override detection.
+  afterwards by appearance and place (Hungarian matching: one minus the
+  cosine of the masked crops' encodings, the better of the object's first
+  and last, plus half the centre distance over the image diagonal; a
+  detection less similar than 0.7 is not the object). Nearest-box matching
+  alone swapped toys that passed each other. With recorded frames between
+  the keyframes, a tracker (SAM3's video tracker) follows each object's
+  mask from one keyframe to the next, and the detection overlapping the
+  followed mask (IoU 0.3) is the object, or the followed mask itself; this
+  comes first, as a toy's look changes in the gripper and a keyframe apart
+  it may be anywhere. An object out of view (behind the arm) stays
+  followed, since SAM3's tracker finds it again: ending its track there
+  lost a toy every time the arm passed over it. The tracks restart from
+  each keyframe's masks; an object without a mask there keeps its track.
+  The simulator's config follows only the toys
+  (a track costs about 0.1 s per object and frame; every other type has
+  one object), from 5 frames per simulated second. On the 60 recollected
+  sessions of the simulated robot (SAM3, ResNet-18), a toy's processed box
+  is right in 100 of 103 keyframes with it in the gripper (84 without the
+  tracker), 694 of 709 in the tray (680) and 212 of 218 on the table
+  (212); a toy's box is on another object 24 times (34), mostly in first
+  keyframes, before any tracking. Processing takes 58 minutes instead of
+  7. An undetected object keeps its previous box (a toy in the gripper);
+  boxes in the raw data override detection.
 - **Crops** keep the object's surroundings (padding 0.15 of the box) so
   that relational predicates can be learned; masking with SAM2 is an
   option.

@@ -2,7 +2,10 @@
 
 Every keyframe image of every session (see README.md for the raw format) is
 perceived: the objects are detected, matched to the session's object names,
-cropped and encoded (unipred/perception/scene.py). The output directory
+cropped and encoded (unipred/perception/scene.py). With a tracker (tracker
+in the robot config) and the frames recorded during the actions of a
+session (frames/<k>/), the objects are also followed from keyframe to
+keyframe through the frames, keeping their names. The output directory
 receives a copy of the images and processed.pkl, from which the domain's
 environment (e.g. table_clean_real, with --table_clean_real_data_dir set to
 the output directory) builds its train tasks, recorded demonstrations and
@@ -23,12 +26,13 @@ gt_boxes.json of simulated recordings (collect_sim_demos.py).
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import logging
 import os
 import pickle
 import shutil
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import numpy as np
 import yaml
@@ -44,6 +48,22 @@ def _read_json(path: str, default: Any = None) -> Any:
         return default
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_image(path: str) -> np.ndarray:
+    return np.asarray(Image.open(path).convert("RGB"))
+
+
+def _frames(directory: str, action: int) -> Optional[Iterator[np.ndarray]]:
+    """The frames recorded during an action of a session (frames/<k>/, in
+    the order of their numbers), or None if there is no such folder."""
+    folder = os.path.join(directory, "frames", str(action))
+    if not os.path.isdir(folder):
+        return None
+    numbered = sorted((int(os.path.splitext(f)[0]), f)
+                      for f in os.listdir(folder)
+                      if os.path.splitext(f)[0].isdigit())
+    return (_load_image(os.path.join(folder, f)) for _, f in numbered)
 
 
 def _check_atoms(atoms: List, domain: Dict, objects: Dict[str, str],
@@ -99,12 +119,17 @@ def process_session(directory: str,
     keyframes = []
     previous: Optional[SceneObservation] = None
     for i, path in enumerate(images):
-        image = np.asarray(Image.open(path).convert("RGB"))
+        image = _load_image(path)
         given = dict(boxes[i]) if boxes is not None and i < len(boxes) else {}
+        frames = _frames(directory, i - 1) if i > 0 else None
+        followed = None
+        if frames is not None:
+            followed = perceiver.follow(previous,
+                                        itertools.chain(frames, [image]))
         while True:
             try:
                 observation = perceiver.perceive(image, objects, previous,
-                                                 given)
+                                                 given, followed)
                 break
             except PerceptionError as error:
                 missed = error.object_name
@@ -149,6 +174,9 @@ def main() -> None:
     parser.add_argument("--robot_config", default="configs/real_robot.yaml")
     parser.add_argument("--detector", help="override the config's detector")
     parser.add_argument("--encoder", help="override the config's encoder")
+    parser.add_argument("--tracker",
+                        choices=["none", "sam3", "fake"],
+                        help="override the config's tracker")
     parser.add_argument("--perception_weights_dir",
                         help="default: $UNIPRED_WEIGHTS_DIR")
     parser.add_argument("--fill_missing",
@@ -163,17 +191,21 @@ def main() -> None:
     with open(args.domain, "r", encoding="utf-8") as f:
         domain = yaml.safe_load(f)
     perceiver = ScenePerceiver.from_config(args.robot_config, args.detector,
-                                           args.encoder)
+                                           args.encoder, args.tracker)
     os.makedirs(args.out, exist_ok=True)
     sessions = []
-    for entry in sorted(os.listdir(args.raw)):
-        directory = os.path.join(args.raw, entry)
-        if os.path.isdir(directory) and not entry.startswith("."):
-            sessions.append(
-                process_session(directory, args.out, domain, perceiver,
-                                args.fill_missing))
-            logging.info(f"Processed {entry} ({sessions[-1]['split']}, "
-                         f"{len(sessions[-1]['keyframes'])} keyframes)")
+    try:
+        for entry in sorted(os.listdir(args.raw)):
+            directory = os.path.join(args.raw, entry)
+            if os.path.isdir(directory) and not entry.startswith("."):
+                sessions.append(
+                    process_session(directory, args.out, domain, perceiver,
+                                    args.fill_missing))
+                logging.info(f"Processed {entry} ({sessions[-1]['split']}, "
+                             f"{len(sessions[-1]['keyframes'])} keyframes)")
+    finally:
+        if perceiver.tracker is not None:
+            perceiver.tracker.stop()
     processed = {
         "domain": domain,
         "encoder": perceiver.encoder.backend,

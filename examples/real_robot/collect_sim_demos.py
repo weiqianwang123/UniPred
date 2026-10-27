@@ -13,7 +13,9 @@ keyframe records the ground-truth atoms (atoms.json) and the objects' image
 boxes (gt_boxes.json, for evaluating detection, or for the boxes of objects
 the detector misses: process_demos.py --fill_missing gt_boxes.json). With
 --give_boxes, the boxes are also written as boxes.json, which replaces
-detection.
+detection. The camera records every skill, --video_hz frames per simulated
+second (frames/<k>/<j>.jpg during skill k), for the tracker to follow the
+objects from keyframe to keyframe.
 
 Picks take their grasps from GraspGenX (CDG's perception server, see
 unipred/robot_sim/graspgenx.py), or with --grasps top_down straight from
@@ -27,6 +29,7 @@ another seed, up to three times.
 """
 
 import argparse
+import io
 import json
 import logging
 import os
@@ -56,11 +59,17 @@ def _dumps(content: object) -> str:
     return json.dumps(content)
 
 
+def _jpeg(frame) -> bytes:
+    with io.BytesIO() as f:
+        Image.fromarray(frame).save(f, "JPEG", quality=90)
+        return f.getvalue()
+
+
 def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
-           steps: List, give_boxes: bool) -> None:
+           steps: List, give_boxes: bool, video_hz: float) -> None:
     """Execute the steps in the scene and write the session (nothing if a
     step fails)."""
-    images, atoms, boxes = [], [], []
+    images, atoms, boxes, videos = [], [], [], []
 
     def _keyframe() -> None:
         images.append(Image.fromarray(sim.render()))
@@ -70,10 +79,15 @@ def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
              for n, box in sim.boxes().items()})
 
     _keyframe()
+    if video_hz > 0:
+        sim.video_period = 1.0 / video_hz
     for option_name, objects in steps:
+        sim.video = [] if video_hz > 0 else None
         if not sim.execute(option_name, objects):
             raise RuntimeError(f"{option_name}{tuple(objects)} does not apply "
                                f"in {directory}.")
+        videos.append([_jpeg(frame) for frame in sim.video or []])
+        sim.video = None
         problems = sim.problems()
         if problems:
             raise SimulationError(f"After {option_name}{tuple(objects)}: "
@@ -126,6 +140,12 @@ def _write(directory: str, sim: TableCleanMujoco, split: str, goal: List,
     os.makedirs(directory, exist_ok=True)
     for index, image in enumerate(images):
         image.save(os.path.join(directory, f"{index}.png"))
+    for index, video in enumerate(videos if video_hz > 0 else []):
+        os.makedirs(os.path.join(directory, "frames", str(index)))
+        for j, frame in enumerate(video):
+            with open(os.path.join(directory, "frames", str(index),
+                                   f"{j}.jpg"), "wb") as f:
+                f.write(frame)
     for name, content in files.items():
         with open(os.path.join(directory, name), "w", encoding="utf-8") as f:
             f.write(_dumps(content) + "\n")
@@ -144,6 +164,11 @@ def main() -> None:
     parser.add_argument("--grasps",
                         choices=["graspgenx", "top_down"],
                         default="graspgenx")
+    parser.add_argument("--video_hz",
+                        type=float,
+                        default=5.0,
+                        help="frames per simulated second recorded during "
+                        "the skills (0: none)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     utils.reset_config({
@@ -180,7 +205,7 @@ def main() -> None:
                                                   grasps=args.grasps)
             try:
                 _write(os.path.join(args.out, name), sim, split, goal, steps,
-                       args.give_boxes)
+                       args.give_boxes, args.video_hz)
                 break
             except SimulationError as e:
                 logging.warning(f"{name}, attempt {attempt + 1}: {e}")

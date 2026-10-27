@@ -9,6 +9,7 @@ from unipred.perception.crops import crop_object
 from unipred.perception.detector import Detection, Detector, fake_colors
 from unipred.perception.features import CropEncoder, resolve_backend
 from unipred.perception.scene import PerceptionError, ScenePerceiver
+from unipred.perception.tracker import Tracker
 
 
 def test_fake_encoder_is_deterministic_and_cached():
@@ -200,3 +201,102 @@ def test_objects_are_matched_by_appearance():
     third = perceiver.perceive(_painted([((30, 40, 40, 50), green)]),
                                objects, second)
     assert third.boxes == second.boxes
+
+
+def test_fake_tracker_follows_a_region_out_of_view_and_back():
+    """The fake tracker follows an object's region as it moves; out of view
+    it has no mask but is still followed, and found again where it was
+    last seen."""
+    tracker = Tracker("fake")
+    image = _scene_image([("toy", (10, 10, 20, 20))])
+    tracker.start(image, {"toy0": np.all(image == fake_colors(["robot", "toy"])
+                                         ["toy"], axis=-1)})
+    followed = tracker.follow(_scene_image([("toy", (14, 12, 24, 22))]))
+    ys, xs = np.nonzero(followed["toy0"])
+    assert (xs.min(), ys.min(), xs.max(), ys.max()) == (14, 12, 23, 21)
+    assert tracker.follow(_scene_image([])) == {}
+    assert tracker.followed == {"toy0"}
+    assert "toy0" in tracker.follow(_scene_image([("toy", (16, 12, 26, 22))]))
+    tracker.stop()
+    assert not tracker.followed
+
+
+def test_tracker_keeps_names_through_frames():
+    """Two toys alike swap sides, each in a row of its own: matched by
+    place they swap names; followed through the frames between, they keep
+    them."""
+    objects = {"toy0": "toy", "toy1": "toy"}
+
+    def _image(x0, x1):
+        return _scene_image([("toy", (x0, 5, x0 + 8, 13)),
+                             ("toy", (x1, 45, x1 + 8, 53))])
+
+    def _perceiver():
+        return ScenePerceiver(Detector("fake", {
+            "robot": "robot gripper",
+            "toy": "toy"
+        }),
+                              CropEncoder("fake"),
+                              tracker=Tracker("fake"))
+
+    perceiver = _perceiver()
+    first = perceiver.perceive(_image(4, 68), objects)
+    assert first.boxes["toy0"][0] == 4 and first.boxes["toy1"][0] == 68
+    last = _image(68, 4)
+    by_place = _perceiver()
+    by_place.perceive(_image(4, 68), objects)
+    assert by_place.perceive(last, objects, first).boxes["toy0"][0] == 4
+    frames = [_image(x, 72 - x) for x in range(8, 68, 4)]
+    followed = perceiver.follow(first, frames + [last])
+    assert set(followed) == {"toy0", "toy1"}
+    second = perceiver.perceive(last, objects, first, followed=followed)
+    assert second.boxes["toy0"] == (68.0, 5.0, 76.0, 13.0)
+    assert second.boxes["toy1"] == (4.0, 45.0, 12.0, 53.0)
+    # Only from the observation perceived last.
+    assert perceiver.follow(first, [last]) is None
+
+
+def test_followed_mask_stands_in_for_a_missed_detection():
+    """A followed object that no detection overlaps is where its followed
+    mask is; the detections go to the other objects."""
+    detector = _GivenDetections()
+    perceiver = ScenePerceiver(detector, CropEncoder("fake"))
+    objects = {"toy0": "toy", "toy1": "toy"}
+    image = _painted([((10, 10, 20, 20), (220, 20, 20)),
+                      ((50, 10, 60, 20), (20, 20, 220))])
+    detector.boxes = [(10, 10, 20, 20), (50, 10, 60, 20)]
+    first = perceiver.perceive(image, objects)
+    held = np.zeros(image.shape[:2], dtype=bool)
+    held[30:36, 30:38] = True
+    detector.boxes = [(50, 10, 60, 20)]
+    second = perceiver.perceive(image, objects, first,
+                                followed={"toy0": held})
+    assert second.boxes["toy0"] == (30.0, 30.0, 38.0, 36.0)
+    assert second.masks["toy0"] is held
+    assert second.boxes["toy1"] == (50.0, 10.0, 60.0, 20.0)
+
+
+def test_object_out_of_view_at_a_keyframe_stays_followed():
+    """A toy hidden at a keyframe keeps its track there and is followed
+    again once back in view; without frames to the keyframe, the tracks
+    start afresh."""
+    objects = {"toy0": "toy", "toy1": "toy"}
+    toy0, toy1 = ("toy", (4, 5, 12, 13)), ("toy", (68, 45, 76, 53))
+    perceiver = ScenePerceiver(
+        Detector("fake", {
+            "robot": "robot gripper",
+            "toy": "toy"
+        }), CropEncoder("fake"), tracker=Tracker("fake"))
+    first = perceiver.perceive(_scene_image([toy0, toy1]), objects)
+    hidden = _scene_image([toy1])
+    followed = perceiver.follow(first, [hidden])
+    assert set(followed) == {"toy1"}
+    second = perceiver.perceive(hidden, objects, first, followed=followed)
+    assert second.masks["toy0"] is None
+    assert perceiver.tracker.followed == {"toy0", "toy1"}
+    back = _scene_image([("toy", (6, 5, 14, 13)), toy1])
+    assert set(perceiver.follow(second, [back])) == {"toy0", "toy1"}
+    perceiver.perceive(back, objects, second)
+    assert perceiver.tracker.followed == {"toy0", "toy1"}
+    perceiver.perceive(hidden, objects, second)
+    assert perceiver.tracker.followed == {"toy1"}

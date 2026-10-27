@@ -74,12 +74,18 @@ def test_description_rebuilds_the_scene(sim):
 
 
 def test_robot_interface_records_frames(sim):
-    """MujocoRobot captures the camera and runs skills."""
-    robot = MujocoRobot(sim)
+    """MujocoRobot captures the camera, runs skills and records them."""
+    robot = MujocoRobot(sim, video_period=0.5)
+    assert robot.video() is None
     robot.capture()
+    start = sim.data.time
     robot.execute("PushBoxOut", ["robot", "box"])
     assert ("BoxFar", ("box", )) in sim.atoms()
     assert len(robot.frames) == 1
+    video = robot.video()
+    assert len(video) >= int((sim.data.time - start) / 0.5)
+    assert all(frame.shape == (120, 160, 3) for frame in video)
+    assert sim.video is None
     assert not sim.problems()
 
 
@@ -109,3 +115,9 @@ def test_collected_sessions_name_toys_left_to_right(tmp_path):
     atoms = json.loads((tmp_path / "train_00" / "atoms.json").read_text())
     assert len(atoms) == len(actions) + 1
     assert (tmp_path / "train_00" / f"{len(actions)}.png").exists()
+    # The video of every skill; a test scene has none.
+    for k in range(len(actions)):
+        assert list((tmp_path / "train_00" / "frames" / str(k)).glob("*.jpg"))
+    assert not (tmp_path / "train_00" / "frames" /
+                str(len(actions))).exists()
+    assert not (tmp_path / "test_00" / "frames").exists()

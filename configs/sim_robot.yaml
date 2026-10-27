@@ -33,3 +33,12 @@ prompts:
   box: wooden tray
   wiper: purple sponge
   table: table
+# The toys are followed from keyframe to keyframe through the frames
+# recorded during the skills, with SAM3's video tracker (on the SAM3
+# server): in the next keyframe, a toy is the detection whose mask overlaps
+# its followed mask by at least track_min_iou (IoU), or the followed mask.
+# A held toy's box is then right in 100 of 103 keyframes, against 84
+# without tracking (docs/dev/decisions.md).
+tracker: sam3
+track_types: [toy]
+track_min_iou: 0.3

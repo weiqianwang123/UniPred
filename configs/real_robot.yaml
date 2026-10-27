@@ -29,3 +29,9 @@ prompts:
   box: box
   wiper: towel
   table: table
+# With recorded frames between the keyframes (frames/<k>/ of a session; in
+# the closed loop, RobotInterface.video()), objects can be followed from
+# keyframe to keyframe so that they keep their names: tracker "sam3"
+# (SAM3's video tracker on a SAM3 server), "fake" or "none"; track_types
+# (default: all) and track_min_iou as in configs/sim_robot.yaml.
+tracker: none

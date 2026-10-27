@@ -267,6 +267,11 @@ class TableCleanMujoco:
         self.held: Optional[str] = None
         self._slots: Dict[str, float] = {}
         self._dirt = [m.geom("dirt").id]
+        # If a list, the main camera's frames while the simulation runs go
+        # to it, one every video_period seconds.
+        self.video: Optional[List[np.ndarray]] = None
+        self.video_period = 0.2
+        self._next_frame = 0.0
         self._q_cmd = np.array(_DROID_HOME)
         self._q_home = self._ik(
             _pose(_HOME_TCP, _top_down(self._home_angle(_DROID_HOME))),
@@ -747,7 +752,18 @@ class TableCleanMujoco:
         self._step(300)
 
     def _step(self, n: int) -> None:
-        mujoco.mj_step(self.model, self.data, nstep=n)
+        """Simulate n steps, recording the video (if one) on the way."""
+        while n > 0:
+            k = n
+            if self.video is not None:
+                k = min(n, max(1, int(np.ceil(
+                    (self._next_frame - self.data.time) / _TIMESTEP))))
+            mujoco.mj_step(self.model, self.data, nstep=k)
+            n -= k
+            if self.video is not None and (self.data.time >=
+                                           self._next_frame - 1e-9):
+                self.video.append(self.render())
+                self._next_frame = self.data.time + self.video_period
 
     # Grasps.
 
@@ -1399,11 +1415,14 @@ class TableCleanMujoco:
 
 class MujocoRobot(RobotInterface):
     """The closed loop's robot in the simulated scene: a skill that cannot
-    be carried out is logged, the arm going home, for the loop to notice."""
+    be carried out is logged, the arm going home, for the loop to notice.
+    Its camera records each skill, a frame every video_period seconds."""
 
-    def __init__(self, sim: TableCleanMujoco) -> None:
+    def __init__(self, sim: TableCleanMujoco, video_period: float = 0.2) -> None:
         self.sim = sim
         self.frames: List[np.ndarray] = []
+        self._video: Optional[List[np.ndarray]] = None
+        sim.video_period = video_period
 
     def capture(self) -> np.ndarray:
         image = self.sim.render()
@@ -1411,6 +1430,7 @@ class MujocoRobot(RobotInterface):
         return image
 
     def execute(self, option_name: str, objects: Sequence[str]) -> None:
+        self.sim.video = []
         try:
             if not self.sim.execute(option_name, objects):
                 logging.warning(f"{option_name}{tuple(objects)}: its "
@@ -1418,3 +1438,8 @@ class MujocoRobot(RobotInterface):
         except SimulationError as e:
             logging.warning(f"{option_name}{tuple(objects)} failed: {e}")
             self.sim.recover()
+        finally:
+            self._video, self.sim.video = self.sim.video, None
+
+    def video(self) -> Optional[List[np.ndarray]]:
+        return self._video

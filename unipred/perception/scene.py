@@ -15,8 +15,16 @@ whose appearance is less similar than min_similarity is not the object
 (toys that look alike match by place). An object that is not detected
 keeps its previous box and appearance (for example a toy hidden in the
 gripper); boxes given explicitly (e.g. annotated for a hard object) replace
-detection. The crop around each box
-is encoded into the object's features.
+detection. The crop around each box is encoded into the object's features.
+
+With a tracker (unipred/perception/tracker.py), the objects also keep their
+names through the frames recorded between two images: each object of
+track_types is followed from its mask in one image through the frames
+after it, and in the next image the detection of its type whose mask
+overlaps the followed mask most (an IoU of at least track_min_iou) is the
+object; when none does, the followed mask itself is (a toy in the gripper
+that the detector misses). The objects not in view to the tracker are
+matched by appearance and place as above.
 
 The settings come from a real-robot config (configs/real_robot.yaml).
 """
@@ -24,7 +32,8 @@ The settings come from a real-robot config (configs/real_robot.yaml).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, \
+    Tuple, Union
 
 import numpy as np
 import yaml
@@ -33,6 +42,7 @@ from scipy.optimize import linear_sum_assignment
 from unipred.perception.crops import crop_object
 from unipred.perception.detector import Box, Detection, Detector
 from unipred.perception.features import CropEncoder
+from unipred.perception.tracker import Tracker
 
 
 class PerceptionError(Exception):
@@ -45,9 +55,10 @@ class PerceptionError(Exception):
 
 @dataclass(frozen=True)
 class SceneObservation:
-    """The box, mask (None if not detected in this image), features and
-    appearance (for matching: unit vectors, of where it was first seen and
-    of this image) of every object of a scene in one image."""
+    """The box, mask (None if neither detected nor followed in this image),
+    features and appearance (for matching: unit vectors, of where it was
+    first seen and of this image) of every object of a scene in one
+    image."""
     boxes: Dict[str, Box]
     masks: Dict[str, Optional[np.ndarray]]
     features: Dict[str, np.ndarray]
@@ -63,21 +74,31 @@ class ScenePerceiver:
                  crop_padding: float = 0.15,
                  mask_crops: bool = False,
                  min_similarity: float = 0.7,
-                 position_weight: float = 0.5) -> None:
+                 position_weight: float = 0.5,
+                 tracker: Optional[Tracker] = None,
+                 track_types: Optional[Sequence[str]] = None,
+                 track_min_iou: float = 0.3) -> None:
         self.detector = detector
         self.encoder = encoder
+        self.tracker = tracker
         self._crop_padding = crop_padding
         self._mask_crops = mask_crops
         self._min_similarity = min_similarity
         self._position_weight = position_weight
+        self._track_types = None if track_types is None else set(track_types)
+        self._track_min_iou = track_min_iou
+        # The observation whose masks the tracker follows the objects from.
+        self._last: Optional[SceneObservation] = None
 
     @classmethod
     def from_config(cls,
                     path: str,
                     detector_backend: Optional[str] = None,
-                    encoder_backend: Optional[str] = None) -> ScenePerceiver:
+                    encoder_backend: Optional[str] = None,
+                    tracker_backend: Optional[str] = None) -> ScenePerceiver:
         """A perceiver with the settings of a real-robot config; the
-        backends can be overridden (e.g. with "fake" for tests)."""
+        backends can be overridden (e.g. with "fake" for tests; the
+        tracker's with "none" for no tracker)."""
         config = load_robot_config(path)
         detector = Detector(detector_backend or config["detector"],
                             config["prompts"],
@@ -87,9 +108,28 @@ class ScenePerceiver:
                             max_box_area=config["max_box_area"])
         encoder = CropEncoder(encoder_backend or config["encoder"],
                               device=config["device"])
+        tracker = tracker_backend or config["tracker"]
         return cls(detector, encoder, config["crop_padding"],
                    config["mask_crops"], config["match_min_similarity"],
-                   config["match_position_weight"])
+                   config["match_position_weight"],
+                   None if tracker == "none" else Tracker(tracker),
+                   config["track_types"], config["track_min_iou"])
+
+    def follow(self, previous: Optional[SceneObservation],
+               frames: Iterable[np.ndarray]) -> Optional[Dict[str,
+                                                             np.ndarray]]:
+        """The masks in the last frame of the objects that the tracker
+        follows from previous (the observation perceived last) through the
+        frames recorded after its image, oldest first, the last of them the
+        image to perceive next (the objects in view there); None without a
+        tracker, or if previous is not the observation perceived last."""
+        if self.tracker is None or previous is None or previous is not \
+                self._last:
+            return None
+        followed: Dict[str, np.ndarray] = {}
+        for frame in frames:
+            followed = self.tracker.follow(frame)
+        return followed
 
     def perceive(
         self,
@@ -97,11 +137,16 @@ class ScenePerceiver:
         objects: Mapping[str, str],
         previous: Optional[Union[SceneObservation, Mapping[str, Box]]] = None,
         given: Optional[Mapping[str, Box]] = None,
+        followed: Optional[Mapping[str, np.ndarray]] = None,
     ) -> SceneObservation:
         """The observation of the objects (name -> type) in an RGB image;
         previous is the observation of the image before (or its boxes
-        only, for matching by place)."""
+        only, for matching by place), followed the masks in this image of
+        the objects that the tracker followed from it (follow(); None if
+        it was not, and the tracks start afresh from this image)."""
         given = dict(given or {})
+        tracks_go_on = followed is not None
+        followed = dict(followed or {})
         if isinstance(previous, SceneObservation):
             previous_boxes: Dict[str, Box] = dict(previous.boxes)
             previous_looks = dict(previous.appearance)
@@ -120,9 +165,15 @@ class ScenePerceiver:
             found = detections.get(object_type, [])
             found_looks = self._appearance(image, [(d.box, d.mask)
                                                    for d in found])
-            matched = _match(names, found, found_looks, previous_boxes,
+            matched = _match_followed([n for n in names if n in followed],
+                                      found, followed, self._track_min_iou)
+            rest = [j for j in range(len(found)) if j not in matched.values()]
+            by_look = _match([n for n in names if n not in followed],
+                             [found[j] for j in rest],
+                             [found_looks[j] for j in rest], previous_boxes,
                              previous_looks, diagonal, self._min_similarity,
                              self._position_weight)
+            matched.update((n, rest[j]) for n, j in by_look.items())
             for name in names:
                 if name in matched:
                     index = matched[name]
@@ -131,6 +182,11 @@ class ScenePerceiver:
                     first = np.atleast_2d(previous_looks.get(
                         name, found_looks[index]))[0]
                     looks[name] = np.stack([first, found_looks[index]])
+                elif name in followed:
+                    boxes[name] = _mask_box(followed[name])
+                    masks[name] = followed[name]
+                    if name in previous_looks:
+                        looks[name] = previous_looks[name]
                 elif name in previous_boxes:
                     boxes[name] = previous_boxes[name]
                     masks[name] = None
@@ -159,7 +215,21 @@ class ScenePerceiver:
                 raise PerceptionError(
                     f"The features of {name} (box {boxes[name]}) are not "
                     "finite.", name)
-        return SceneObservation(boxes, masks, features, looks)
+        observation = SceneObservation(boxes, masks, features, looks)
+        if self.tracker is not None:
+            # An object without a mask here (out of view) stays followed if
+            # the tracks went on to this image.
+            if not tracks_go_on:
+                self.tracker.stop()
+            self.tracker.start(
+                image, {
+                    n: m
+                    for n, m in masks.items() if m is not None and (
+                        self._track_types is None
+                        or objects[n] in self._track_types)
+                })
+            self._last = observation
+        return observation
 
     def _appearance(
             self, image: np.ndarray,
@@ -178,6 +248,33 @@ class ScenePerceiver:
 
 def _center(box: Box) -> np.ndarray:
     return np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
+
+
+def _mask_box(mask: np.ndarray) -> Box:
+    ys, xs = np.nonzero(mask)
+    return (float(xs.min()), float(ys.min()), float(xs.max() + 1),
+            float(ys.max() + 1))
+
+
+def _match_followed(names: List[str], detections: List[Detection],
+                    followed: Mapping[str, np.ndarray],
+                    min_iou: float) -> Dict[str, int]:
+    """Assign detections (by index) of one type to the followed objects of
+    that type, by the IoU of their masks (at least min_iou)."""
+    if not names or not detections:
+        return {}
+    overlap = np.zeros((len(names), len(detections)))
+    for i, name in enumerate(names):
+        for j, detection in enumerate(detections):
+            union = np.logical_or(followed[name], detection.mask).sum()
+            overlap[i, j] = np.logical_and(followed[name],
+                                           detection.mask).sum() / max(
+                                               union, 1)
+    rows, cols = linear_sum_assignment(-overlap)
+    return {
+        names[r]: int(c)
+        for r, c in zip(rows, cols) if overlap[r, c] >= min_iou
+    }
 
 
 def _match(names: List[str], detections: List[Detection],
@@ -231,6 +328,9 @@ _ROBOT_CONFIG_DEFAULTS = {
     "max_box_area": {},
     "match_min_similarity": 0.7,
     "match_position_weight": 0.5,
+    "tracker": "none",
+    "track_types": None,
+    "track_min_iou": 0.3,
 }
 
 

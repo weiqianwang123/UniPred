@@ -36,6 +36,9 @@ raw/
                    [[["HandEmpty", ["robot"]], ...], ...]
     boxes.json     optional: per keyframe, boxes that replace detection,
                    [{"toy0": [x0, y0, x1, y1]}, ...]
+    frames/        optional: frames/<k>/0.jpg 1.jpg … the camera's frames
+                   during action k (any image format, in the order of their
+                   numbers), through which a tracker follows the objects
   test_00/
     session.json   {"split": "test", ...}
     0.png          the scene
@@ -55,7 +58,9 @@ raw/
   computed and need no annotation. On new images, the given predicates are
   evaluated by classifiers trained on the annotations.
 - Objects are matched to detections left to right in the first keyframe
-  and by proximity afterwards; an undetected object keeps its last box.
+  and by appearance and place afterwards; with a tracker (`tracker` in the
+  robot config) and `frames/`, they are followed from keyframe to keyframe
+  through the frames. An undetected object keeps its last box.
 
 `fixture/make_fixture.py` regenerates the fixture from Table Clean Sim.
 
@@ -96,5 +101,7 @@ the same model.
 
 Implement `RobotInterface` (`closed_loop_example.py`): `capture()` returns
 an RGB image from your camera, `execute(option_name, objects)` runs your
-skill for that option on the named objects. Set the detector prompts per
-object type and the thresholds in `configs/real_robot.yaml`.
+skill for that option on the named objects, and optionally `video()`
+returns the camera's frames during the last skill, for the tracker. Set
+the detector prompts per object type, the thresholds and the tracker in
+`configs/real_robot.yaml`.

@@ -25,9 +25,17 @@ perceives every keyframe with `unipred/perception/scene.py`:
    `max_box_area` drops a type's detections larger than a fraction of the
    image.
 2. **Identity**: detections are matched to the session's object names, left
-   to right in the first keyframe, then by proximity to the previous box;
-   an undetected object keeps its previous box, and boxes in the recording
-   override detection (for objects the detector misses).
+   to right in the first keyframe, then by appearance (the encoding of the
+   masked crop, as first and as last seen) and place (Hungarian matching).
+   With a tracker (`tracker: sam3`, SAM3's video tracker on the SAM3
+   server) and the frames recorded during the skills (`frames/<k>/`), the
+   objects are also followed from keyframe to keyframe: in the next
+   keyframe the detection that overlaps an object's followed mask is the
+   object, or the followed mask itself when none does (a toy in the
+   gripper that the detector misses); the objects the tracker loses are
+   matched by appearance and place. An undetected object keeps its
+   previous box, and boxes in the recording override detection (for
+   objects the detector misses).
    `process_demos.py --fill_missing FILE` takes the box of an object that
    is missed and has no earlier box from a file of each session (the
    simulator's `gt_boxes.json`), as if it had been annotated.
@@ -127,10 +135,13 @@ record demonstrations, train and run the closed loop without hardware:
 format: train sessions are Table Clean Sim's oracle demonstrations executed
 skill by skill, test scenes the initial scenes of its out-of-distribution
 tasks; each keyframe also gets its true atoms and the objects' image boxes
-(`gt_boxes.json`, to score detection). A session whose skill fails, or whose
+(`gt_boxes.json`, to score detection), and the camera records every skill
+(`frames/<k>/`, `--video_hz` frames per simulated second, 5 by default).
+A session whose skill fails, or whose
 objects end up where the atoms do not say, is simulated again with another
 seed. Its `session.json` describes the scene, so that
 `closed_loop_example.py --robot sim` starts the loop from it: the skills of
 the plan run on the simulated Franka, and the end says whether the goal
 holds in the simulator. `configs/sim_robot.yaml` has the perception for
-the simulator's images: SAM3 with a prompt per type.
+the simulator's images: SAM3 with a prompt per type, and its video tracker
+for the toys.

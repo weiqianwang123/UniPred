@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import abc
 import sys
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple, \
-    Union
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, \
+    Set, Tuple, Union
 
 import numpy as np
 import torch
@@ -49,6 +49,12 @@ class RobotInterface(abc.ABC):
     @abc.abstractmethod
     def execute(self, option_name: str, objects: Sequence[str]) -> None:
         """Run a skill on the named objects until it finishes."""
+
+    def video(self) -> Optional[List[np.ndarray]]:
+        """The camera's RGB frames while the last skill ran, oldest first,
+        through which the tracker follows the objects (tracker in
+        configs/real_robot.yaml); None if not recorded."""
+        return None
 
 
 class Deployment:
@@ -98,12 +104,19 @@ class Deployment:
         objects: Mapping[str, str],
         previous: Optional[Union[SceneObservation, Mapping[str,
                                                            Box]]] = None,
-        image_file: str = ""
+        image_file: str = "",
+        frames: Optional[Iterable[np.ndarray]] = None
     ) -> Tuple[State, SceneObservation]:
         """The state of the objects (name -> type) in an RGB image, and what
         perception found (the previous observation for the next image). The
-        image file, if any, is kept in the state."""
-        observation = self.perceiver.perceive(image, objects, previous)
+        image file, if any, is kept in the state. Frames recorded between
+        the previous observation's image and this one (oldest first) are
+        for the tracker."""
+        followed = None
+        if frames is not None and isinstance(previous, SceneObservation):
+            followed = self.perceiver.follow(previous, [*frames, image])
+        observation = self.perceiver.perceive(image, objects, previous,
+                                              followed=followed)
         state = self.env.scene_state(dict(objects), observation.features,
                                      image_file)
         return state, observation
