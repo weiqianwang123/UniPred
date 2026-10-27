@@ -17,7 +17,7 @@ closes on the object and a weld then holds it, so that a grasp never slips;
 a released object falls and settles. To push or pull the tray, the gripper
 presses on its near wall and drags it: the tray slides along x, a drive
 keeping it with the gripper. Wiping moves the sponge over the table, and
-the dirt it passes over goes.
+the dirt goes.
 
 A skill whose conditions do not hold leaves the scene unchanged, with the
 rules of Table Clean Sim (unipred/envs/table_clean_sim.py): the robot holds
@@ -61,6 +61,8 @@ Pose = np.ndarray  # 4 x 4
 # is z = 0.
 _TABLE_X, _TABLE_Y, _TABLE_HEIGHT = (-0.3, 0.85), (-0.65, 0.65), 0.76
 _TABLE_RGB = (0.86, 0.85, 0.82)
+_TABLE_TEXELS = 1024  # of the table's texture, over its whole top
+_DIRT_THICKNESS = 0.0003  # half of the stain layer's, over the table top
 _TOY_AREA = ((0.38, 0.62), (0.05, 0.30))  # where toys stand (x, y)
 _TOY_GAP = 0.13  # between the centres of toys
 _DIRT_AREA = ((0.36, 0.64), (0.03, 0.31))
@@ -80,7 +82,7 @@ _GRASP_PLANS, _GRASP_TRIES = 3, 6  # GraspGenX plans, grasps tried of each
 TOY_MODELS = (
     ("Android_Figure_Orange", 1.0),
     ("Android_Figure_Panda", 1.0),
-    ("BABY_CAR", 0.75),
+    ("Great_Dinos_Triceratops_Toy", 1.0),  # a green Android figure
     ("Dino_4", 0.8),
     ("FIRE_TRUCK", 0.85),
     ("SCHOOL_BUS", 1.0),
@@ -118,6 +120,16 @@ _CAMERA = ((0.92, 0.30, 0.68), (0.45, -0.06, 0.05), 50.0)  # pos, target, fovy
 _CLOUD_CAMERAS = ("main", "above")
 _CLOUD_SIZE = (240, 320)
 _CLOUD_POINTS = 20000  # of the scene around the object
+
+
+@functools.lru_cache(maxsize=1)
+def _table_texels() -> np.ndarray:
+    """The table top's texture: its colour with faint speckles (the same in
+    every scene)."""
+    rng = np.random.default_rng(0)
+    texels = np.ones((_TABLE_TEXELS, _TABLE_TEXELS, 3)) * _TABLE_RGB
+    texels *= rng.uniform(0.97, 1.0, size=(_TABLE_TEXELS, _TABLE_TEXELS, 1))
+    return np.clip(texels * 255, 0, 255).astype(np.uint8)
 
 
 class SimulationError(Exception):
@@ -254,9 +266,7 @@ class TableCleanMujoco:
         self.clean = layout.clean
         self.held: Optional[str] = None
         self._slots: Dict[str, float] = {}
-        self._dirt = [
-            g for g in range(m.ngeom) if m.geom(g).name.startswith("dirt")
-        ]
+        self._dirt = [m.geom("dirt").id]
         self._q_cmd = np.array(_DROID_HOME)
         self._q_home = self._ik(
             _pose(_HOME_TCP, _top_down(self._home_angle(_DROID_HOME))),
@@ -517,7 +527,7 @@ class TableCleanMujoco:
         self._move(target)
         for x, y in path:
             target[:3, 3] = (x - centre[0], y - centre[1], z)
-            self._move(target, wiping=True)
+            self._move(target)
         for g in self._dirt:
             self.model.geom_rgba[g, 3] = 0.0
         self.clean = True
@@ -670,7 +680,6 @@ class TableCleanMujoco:
     def _move(self,
               target: Pose,
               drag: bool = False,
-              wiping: bool = False,
               required: bool = True) -> bool:
         """Move the gripper (GraspGenX's frame, the "gripper" site) in a
         straight line to a pose, turning on the way; return whether it got
@@ -696,8 +705,6 @@ class TableCleanMujoco:
                                                   self._tray_follow -
                                                   _TRAY_X[0])
             self._step(_CONTROL_STEPS)
-            if wiping:
-                self._wipe_dirt()
         self._settle()
         reached = self._site_pose()
         if np.linalg.norm(reached[:3, 3] - target[:3, 3]) <= 0.01:
@@ -900,17 +907,6 @@ class TableCleanMujoco:
 
     def _held_bottom(self) -> float:
         return float(self._held_points()[:, 2].min())
-
-    def _wipe_dirt(self) -> None:
-        pose = self._body_pose("wiper")
-        shape = self._shapes["wiper"]
-        for g in self._dirt:
-            if self.model.geom_rgba[g, 3] == 0:
-                continue
-            local = pose[:3, :3].T @ (self.data.geom_xpos[g] - pose[:3, 3])
-            if np.all(local[:2] > shape.lo[:2] - 0.01) and np.all(
-                    local[:2] < shape.hi[:2] + 0.01):
-                self.model.geom_rgba[g, 3] = 0.0
 
     # Kinematics.
 
@@ -1142,8 +1138,6 @@ class TableCleanMujoco:
         textures = [
             ("floor", mujoco.mjtBuiltin.mjBUILTIN_CHECKER, [0.46, 0.44, 0.42],
              [0.41, 0.39, 0.37], 0.0),
-            ("table", mujoco.mjtBuiltin.mjBUILTIN_FLAT, list(_TABLE_RGB),
-             [0.8, 0.79, 0.76], 0.05),
             ("wall", mujoco.mjtBuiltin.mjBUILTIN_FLAT, [0.78, 0.8, 0.82],
              [0.74, 0.76, 0.78], 0.02),
         ]
@@ -1164,6 +1158,17 @@ class TableCleanMujoco:
                 specular=0.15 if name == "table" else 0.05,
                 shininess=0.3)
             material.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = name
+        texture = spec.add_texture(name="table",
+                                   type=mujoco.mjtTexture.mjTEXTURE_2D,
+                                   width=_TABLE_TEXELS,
+                                   height=_TABLE_TEXELS,
+                                   nchannel=3)
+        texture.data = _table_texels().tobytes()
+        material = spec.add_material(name="table",
+                                     texrepeat=[1, 1],
+                                     specular=0.15,
+                                     shininess=0.3)
+        material.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "table"
         world = spec.worldbody
         world.add_light(name="key",
                         pos=[0.6, 0.6, 2.2],
@@ -1317,49 +1322,63 @@ class TableCleanMujoco:
         drive.set_to_position(kp=3000.0, kv=150.0)
 
     def _add_dirt(self, spec: mujoco.MjSpec) -> None:
-        """Stains on the table: a few smears, each of flat blots stacked from
-        large and pale (nearly the table's colour) to small and dark, so
-        that they fade at the edges. (Translucent blots would do it too, but
-        MuJoCo draws their shadows stippled.)"""
+        """Stains on the table: a layer just over the table top whose texture
+        is the table's with soft, irregular brown smears painted on (so it
+        is seen as stains on the table, not as objects); hidden once the
+        table is wiped."""
+        texels = _table_texels().astype(np.float32) / 255.0
+        size = _TABLE_TEXELS
+        rows, cols = np.mgrid[0:size, 0:size]
+        # Texel (row, col) -> table (x, y): rows run along y (top row at the
+        # largest y), columns along x.
+        xs = _TABLE_X[0] + (cols + 0.5) / size * np.ptp(_TABLE_X)
+        ys = _TABLE_Y[1] - (rows + 0.5) / size * np.ptp(_TABLE_Y)
+        alpha = np.zeros((size, size), dtype=np.float32)
         (x0, x1), (y0, y1) = _DIRT_AREA
-        table = np.array(_TABLE_RGB)
-        spec.add_material(name="dirt", specular=0.0, shininess=0.0)
-        k = 0
         for _ in range(4):
             cx = self._rng.uniform(x0 + 0.04, x1 - 0.04)
             cy = self._rng.uniform(y0 + 0.04, y1 - 0.04)
-            stretch = self._rng.uniform(1.0, 2.0)
-            angle = self._rng.uniform(0, np.pi)
-            dark = np.array([0.42, 0.31, 0.2]) * self._rng.uniform(0.85, 1.1)
-            layers = 12
-            for blob in range(3):
-                along, across = self._rng.normal(0, 0.015, size=2)
-                scale = self._rng.uniform(0.6, 1.0)
-                for layer, t in enumerate(np.linspace(0.08, 0.7, layers)):
-                    size = (1.0 - t) * 0.045 * scale
-                    rgb = table + t * (dark - table)
-                    jitter = self._rng.normal(0, 0.25 * size, size=2)
-                    a = along * stretch + jitter[0]
-                    b = across + jitter[1]
-                    c, s_ = np.cos(angle), np.sin(angle)
-                    spec.worldbody.add_geom(
-                        name=f"dirt{k}",
-                        type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
-                        size=[
-                            size * stretch * self._rng.uniform(0.8, 1.2),
-                            size * self._rng.uniform(0.8, 1.2), 0.0002
-                        ],
-                        pos=[
-                            cx + c * a - s_ * b, cy + s_ * a + c * b,
-                            0.0002 + 0.00008 * (layers * blob + layer)
-                        ],
-                        quat=_yaw_quat(angle + self._rng.normal(0, 0.4)),
-                        rgba=[*rgb, 1.0],
-                        material="dirt",
-                        contype=0,
-                        conaffinity=0,
-                        group=1)
-                    k += 1
+            strength = self._rng.uniform(0.55, 0.8)
+            for _ in range(self._rng.integers(3, 7)):
+                bx, by = np.array([cx, cy]) + self._rng.normal(0, 0.015, size=2)
+                angle = self._rng.uniform(0, np.pi)
+                a, b = self._rng.uniform(0.008, 0.028, size=2)
+                c, s_ = np.cos(angle), np.sin(angle)
+                u = (xs - bx) * c + (ys - by) * s_
+                v = -(xs - bx) * s_ + (ys - by) * c
+                blob = np.exp(-0.5 * ((u / a)**2 + (v / b)**2))
+                alpha = np.maximum(alpha, strength * blob)
+        # A grainy, uneven tint, as dried dirt.
+        grain = self._rng.uniform(0.75, 1.0, size=(size, size))
+        alpha = (alpha * grain)[..., None]
+        stain = np.array([0.45, 0.33, 0.22]) * self._rng.uniform(0.85, 1.1)
+        dirty = (texels * (1 - alpha) + stain * alpha) * 255
+        texture = spec.add_texture(name="dirt",
+                                   type=mujoco.mjtTexture.mjTEXTURE_2D,
+                                   width=size,
+                                   height=size,
+                                   nchannel=3)
+        texture.data = np.clip(dirty, 0, 255).astype(np.uint8).tobytes()
+        material = spec.add_material(name="dirt",
+                                     texrepeat=[1, 1],
+                                     specular=0.15,
+                                     shininess=0.3)
+        material.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "dirt"
+        spec.worldbody.add_geom(name="dirt",
+                                type=mujoco.mjtGeom.mjGEOM_BOX,
+                                size=[
+                                    np.ptp(_TABLE_X) / 2,
+                                    np.ptp(_TABLE_Y) / 2, _DIRT_THICKNESS
+                                ],
+                                pos=[
+                                    np.mean(_TABLE_X),
+                                    np.mean(_TABLE_Y), _DIRT_THICKNESS
+                                ],
+                                material="dirt",
+                                rgba=[1, 1, 1, 0 if self._layout.clean else 1],
+                                contype=0,
+                                conaffinity=0,
+                                group=1)
 
     @staticmethod
     def _add_camera(spec: mujoco.MjSpec, name: str, position: Sequence[float],

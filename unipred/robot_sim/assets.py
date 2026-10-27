@@ -32,11 +32,11 @@ _SOURCES: Dict[str, Tuple[str, str, List[str]]] = {
          f"models/{name}" for name in [
              "Android_Figure_Orange",
              "Android_Figure_Panda",
-             "BABY_CAR",
              "Dino_4",
              "FIRE_TRUCK",
-             "SCHOOL_BUS",
+             "Great_Dinos_Triceratops_Toy",
              "Schleich_Lion_Action_Figure",
+             "SCHOOL_BUS",
              "Toysmith_Windem_Up_Flippin_Animals_Dog",
              "Design_Ideas_Drawer_Store_Organizer",
              "Big_O_Sponges_Assorted_Cellulose_12_pack",
