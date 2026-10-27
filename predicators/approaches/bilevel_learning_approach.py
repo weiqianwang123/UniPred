@@ -465,7 +465,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         # Ensure any two pairs of columns are different in at least one row and one channel
         for col1 in range(width):
             for col2 in range(col1 + 1, width):
-                if not torch.equal(torch.tensor(col_ent[col1]), torch.tensor(col_ent[col2])):
+                if list(col_ent[col1]) != list(col_ent[col2]):
                     # the column pair has different grounding types, skip them
                     continue
                 diff_constraints = []
@@ -2118,6 +2118,14 @@ class BilevelLearningApproach(NSRTLearningApproach):
             f"{len(provided)}, candidates {len(pool)}, precondition only "
             f"{len(precondition_predicates)}")
 
+        def _groundings(candidates: List[PredicateCandidate]) -> List[List]:
+            # The argument types and option argument indices of each
+            # column: the matrix constraints compare columns only of the
+            # same grounding (comparing indices alone made "robot holds
+            # toy" and "toy is not on the table" the same column).
+            return [[t.name for t in c.predicate.types] + list(c.ent_idx)
+                    for c in candidates]
+
         def _stack(candidates: List[PredicateCandidate]) -> torch.Tensor:
             if not candidates:
                 num_rows, _, num_channels = huge_ae_matrixe.shape
@@ -2137,7 +2145,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
             selected_predicates = [c.predicate for c in selected]
             selected_ent_idx = [c.ent_idx for c in selected]
             selected_consistent = self.check_matrix_consistency(
-                _stack(selected), selected_ent_idx)
+                _stack(selected), _groundings(selected))
             best_bundle: List[PredicateCandidate] = []
             refine = self._refine_below_threshold()
             # Below the threshold, a candidate must lower the score by the
@@ -2157,7 +2165,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     ]
                     if selected_consistent and \
                             not self.check_matrix_consistency(
-                                try_matrix, try_ent_idx):
+                                try_matrix, _groundings(selected + bundle)):
                         logging.info("Matrix is not consistent, skip...")
                         continue
                     start_time = time.time()
