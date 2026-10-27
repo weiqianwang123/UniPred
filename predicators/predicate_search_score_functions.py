@@ -278,7 +278,9 @@ class _OperatorBeliefScoreFunction(abc.ABC):
             else:
                 max_skeletons = CFG.grammar_search_expected_nodes_max_skeletons
             assert max_skeletons <= CFG.sesame_max_skeletons_optimized
-            assert not CFG.sesame_use_visited_state_set
+            # Skeletons are enumerated without the visited-state set (it would
+            # cut off the alternative skeletons the score counts), whatever
+            # test-time planning uses.
             generator = task_plan(init_atoms,
                                   goal,
                                   ground_nsrts,
@@ -573,7 +575,9 @@ class _ExpectedNodesScoreFunction(_OperatorLearningBasedScoreFunction):
             else:
                 max_skeletons = CFG.grammar_search_expected_nodes_max_skeletons
             assert max_skeletons <= CFG.sesame_max_skeletons_optimized
-            assert not CFG.sesame_use_visited_state_set
+            # Skeletons are enumerated without the visited-state set (it would
+            # cut off the alternative skeletons the score counts), whatever
+            # test-time planning uses.
             generator = task_plan(init_atoms,
                                   goal,
                                   ground_nsrts,
