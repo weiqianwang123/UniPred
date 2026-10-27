@@ -130,13 +130,16 @@ class CropEncoder:
 
 
 def _grid_means(crop: np.ndarray) -> np.ndarray:
-    """Mean color of each cell of a 4 x 4 grid over the crop, in [0, 1]. The
-    crop is first resized to 16 x 16 pixels, so that every cell has
-    pixels however small the crop is."""
-    side = 4 * _FAKE_GRID
-    resized = np.asarray(
-        Image.fromarray(crop.astype(np.uint8)).convert("RGB").resize(
-            (side, side), Image.Resampling.NEAREST))
+    """Mean color of each cell of a 4 x 4 grid over the crop, in [0, 1]. A
+    crop narrower or shorter than the grid is first enlarged to it, so that
+    every cell has pixels."""
+    height, width = crop.shape[:2]
+    resized = crop
+    if height < _FAKE_GRID or width < _FAKE_GRID:
+        resized = np.asarray(
+            Image.fromarray(crop.astype(np.uint8)).convert("RGB").resize(
+                (max(width, _FAKE_GRID), max(height, _FAKE_GRID)),
+                Image.Resampling.NEAREST))
     rows = np.array_split(resized.astype(np.float32) / 255.0,
                           _FAKE_GRID,
                           axis=0)
