@@ -55,9 +55,10 @@ _DIRT_THICKNESS = 0.0003  # half of the stain layer's, over the table top
 _TRAY_X = (0.42, 0.72)  # the tray's centre, near and pushed out
 _TRAY_Y = -0.30
 # Along the tray (x, from its centre), the objects' long sides across it:
-# the sponge at the far end (x 0.56 near, 0.86 pushed out: beyond reach)
-# and the toys at the near end (at most x 0.68 pushed out: within reach).
-_SPONGE_SLOT = 0.14
+# the sponge at the far end, with room for the open fingers before the end
+# wall (x 0.54 near, 0.84 pushed out: beyond reach), and the toys at the
+# near end (at most x 0.68 pushed out: within reach).
+_SPONGE_SLOT = 0.12
 _TOY_SLOTS = (-0.19, -0.115, -0.04)
 # The dirt: under part of the near tray (y below -0.19) and the toys, short
 # of the pushed-out tray (from x 0.50); toys stand on it, clear of the

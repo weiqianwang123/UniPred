@@ -310,7 +310,7 @@ design. Each entry says what was chosen and why.
 - **Table Clean's constraints are the scene's physics** (the owner's
   requirement: each skill must be needed for a reason the scene shows).
   The tray lies lengthwise and slides along x; the sponge sits at its far
-  end, which, pushed out, is 11 cm beyond the arm's straight-down reach,
+  end, which, pushed out, is 9 cm beyond the arm's straight-down reach,
   so the sponge leaves and enters the tray only with the tray pulled in;
   the toys go to the near end, within reach either way. The near tray
   stands on part of the dirt and the toys stand on it, so a wipe stops

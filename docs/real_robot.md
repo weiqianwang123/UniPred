@@ -142,7 +142,7 @@ scripted motions, grasping, the video). Table Clean:
 - **Constraints are physical.** Table Clean Sim's rules come from the
   scene, not from checks. Pushed out, the tray's far end with the sponge
   is beyond the arm's reach (straight down, it reaches x = 0.75 m on that
-  side; the sponge is at 0.86), so the sponge can be taken out or put back
+  side; the sponge is at 0.84), so the sponge can be taken out or put back
   only with the tray pulled in. The near tray stands on part of the dirt
   and the toys stand on it, so a wipe stops where the sponge meets the
   tray or a toy. A skill that cannot be carried out raises
