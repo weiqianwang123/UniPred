@@ -123,3 +123,32 @@ def test_basic_predicate_selected_for_its_derived_form(tmp_path):
     # Other then improves it by less than 1 percent.
     assert [p.name for p in selected] == ["Given", base.name, derived.name]
 
+
+
+def test_derived_preconditions_only_about_parameter_types():
+    """A derived precondition whose basic predicate is about none of an
+    operator's parameter types is dropped from it."""
+    # pylint: disable=import-outside-toplevel
+    from predicators.structs import NSRT, LiftedAtom, Type, Variable
+    from predicators.utils import null_sampler
+    from unipred.derived.rules import DerivedRule
+    from unipred.derived.selection import _relevant_preconditions
+    robot, wiper, toy, table = (Type(n, ["x"])
+                                for n in ("robot", "wiper", "toy", "table"))
+    on = Predicate("On", [toy, table], lambda s, o: True)
+    no_toy_on = Predicate("NoToyOnAny", [], lambda s, o: True)
+    holds = Predicate("Holds", [robot, toy], lambda s, o: True)
+    free = Predicate("HoldsNoToy", [robot], lambda s, o: True)
+    rules = {
+        no_toy_on: DerivedRule(no_toy_on, on, True, "ForAll", (0, 1)),
+        free: DerivedRule(free, holds, True, "ForAll", (1, )),
+    }
+    r, w = Variable("?r", robot), Variable("?w", wiper)
+    option = utils.SingletonParameterizedOption(
+        "PickWiper", lambda s, m, o, p: None, types=[robot, wiper])
+    nsrt = NSRT("PickWiper", [r, w],
+                {LiftedAtom(no_toy_on, []),
+                 LiftedAtom(free, [r])}, set(), set(), set(), option, [r, w],
+                null_sampler)
+    kept = _relevant_preconditions(nsrt, rules)
+    assert kept.preconditions == {LiftedAtom(free, [r])}

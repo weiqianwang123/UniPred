@@ -28,12 +28,17 @@ With derived-aware selection:
   REFINE_MIN_IMPROVEMENT, since derived predicates often only tighten
   preconditions (wiping before the toys are away is ruled out only by "no
   toy is on the table"), which the demonstrations' score barely needs;
-- after the operators are learned, each derived precondition is dropped if
-  the planning effort on the demonstrations stays within PRUNE_TOLERANCE
-  of the operators' with all of them: demonstrations in one order make "no
-  toy is on the table" hold before every later operator (picking the
-  sponge, pushing the tray), and those preconditions would make tasks that
-  start in another order (the sponge already in hand) unsolvable.
+- after the operators are learned, a derived precondition is dropped from
+  an operator none of whose parameters has a type of its basic predicate
+  ("no toy is on the table", about toys and tables, from taking the
+  sponge, whose arguments are the robot, the sponge and the tray), and
+  each remaining one if the planning effort on the demonstrations stays
+  within PRUNE_TOLERANCE of the operators' with all of them: demonstrations
+  in one order make "no toy is on the table" hold before every later
+  operator, and the effort on them alone cannot tell taking the sponge
+  from wiping (both rule out wiping too early; the former even saves
+  search), while tasks that start with the sponge in hand need it on
+  wiping.
 """
 
 from __future__ import annotations
@@ -66,6 +71,29 @@ REFINE_MIN_IMPROVEMENT = 0.01
 # A derived precondition is dropped if the score rises by at most this
 # fraction without it.
 PRUNE_TOLERANCE = 0.01
+
+def _relevant_preconditions(nsrt: NSRT,
+                            rules: Dict[Predicate, DerivedRule]) -> NSRT:
+    """The NSRT without the derived preconditions whose basic predicate is
+    about none of the NSRT's parameter types (e.g. "no toy is on the table"
+    on taking the wiper, whose arguments are the robot, the wiper and the
+    box)."""
+    types = {v.type for v in nsrt.parameters}
+    irrelevant = {
+        atom
+        for atom in nsrt.preconditions if atom.predicate in rules
+        and not types & set(rules[atom.predicate].base.types)
+    }
+    if not irrelevant:
+        return nsrt
+    for atom in sorted(irrelevant, key=str):
+        logging.info(f"Derived precondition {atom} of {nsrt.name}: about "
+                     "none of its parameter types, dropped.")
+    return nsrt.op.copy_with(preconditions=nsrt.preconditions -
+                             irrelevant).make_nsrt(nsrt.option,
+                                                   nsrt.option_vars,
+                                                   nsrt.sampler)
+
 
 class DerivedSelectionMixin:
     """Derived-aware selection for subclasses of BilevelLearningApproach.
@@ -248,7 +276,8 @@ class DerivedSelectionMixin:
                     [n.op for n in nsrts],
                     [(n.option, list(n.option_vars)) for n in nsrts])
 
-        nsrts = sorted(self._nsrts)  # type: ignore[attr-defined]
+        nsrts = [_relevant_preconditions(n, self._derived_rules)
+                 for n in sorted(self._nsrts)]  # type: ignore[attr-defined]
         limit = _score(nsrts) * (1 + PRUNE_TOLERANCE)
         for i in range(len(nsrts)):
             for atom in sorted(nsrts[i].preconditions, key=str):
