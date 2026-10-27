@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Any, List, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import torch
@@ -137,24 +137,17 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
     # Fit classifier to data
     logging.info("Fitting classifier...")
     X_classifier: List[List[Array]] = []
-    has_pcd = False
-    dropped_dim = 0
+    # The features that the sampler sees, fixed now for when it is used.
+    feature_filter = CFG.domain_sampler_data_filter
+    if feature_filter is not None:
+        logging.info(f"Sampler inputs: features {dict(feature_filter)} of "
+                     "the listed types")
     for state, sub, option, goal in positive_data + negative_data:
         # input is state features and option parameters
         X_classifier.append([np.array(1.0)])  # start with bias term
         for var in variables:
-            obj = sub[var]
-            data = state[obj]
-            if CFG.domain_sampler_data_filter is not None:
-                desired_feat_id = CFG.domain_sampler_data_filter[obj.type.name]
-                filtered_data = [d for i, d in enumerate(data) if i in desired_feat_id]
-                filtered_data = np.array(filtered_data)
-                if len(filtered_data) != len(data):
-                    has_pcd = True
-                    dropped_dim = len(data) - len(filtered_data)
-            else:
-                filtered_data = data
-            X_classifier[-1].extend(filtered_data)
+            X_classifier[-1].extend(
+                _sampler_features(state, sub[var], feature_filter))
         X_classifier[-1].extend(option.params)
         # For sampler learning, we currently make the extremely limiting
         # assumption that there is one goal atom, with one goal object. This
@@ -167,8 +160,6 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
             assert len(goal_atom.objects) == 1
             goal_obj = goal_atom.objects[0]
             X_classifier[-1].extend(state[goal_obj])
-    if has_pcd:
-        logging.warning(f"PCD: Dropped {dropped_dim} dimensions")
     X_arr_classifier = []
     X_arr_classifier = np.array(X_classifier)
     # output is binary signal
@@ -206,18 +197,8 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
         # input is state features
         X_regressor.append([np.array(1.0)])  # start with bias term
         for var in variables:
-            obj = sub[var]
-            data = state[obj]
-            if CFG.domain_sampler_data_filter is not None:
-                desired_feat_id = CFG.domain_sampler_data_filter[obj.type.name]
-                filtered_data = [d for i, d in enumerate(data) if i in desired_feat_id]
-                filtered_data = np.array(filtered_data)
-                if len(filtered_data) != len(data):
-                    has_pcd = True
-                    dropped_dim = len(data) - len(filtered_data)
-            else:
-                filtered_data = data
-            X_regressor[-1].extend(filtered_data)
+            X_regressor[-1].extend(
+                _sampler_features(state, sub[var], feature_filter))
         # Above, we made the assumption that there is one goal atom with one
         # goal object, which must also be used when assembling data for the
         # regressor.
@@ -272,8 +253,8 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
     torch.save(regressor_weights, weight_path)
     torch.save(regressor_info, info_path)
     # Construct and return sampler
-    return _LearnedSampler(classifier, regressor, variables,
-                           param_option).sampler
+    return _LearnedSampler(classifier, regressor, variables, param_option,
+                           feature_filter).sampler
 
 
 def _create_sampler_data(
@@ -359,6 +340,18 @@ def _create_sampler_data(
     return positive_data, negative_data
 
 
+def _sampler_features(
+        state: State, obj: Object,
+        feature_filter: Optional[Dict[str, Sequence[int]]]) -> Array:
+    """The features of an object that a learned sampler sees: those whose
+    indices the filter lists for the object's type, or all (no filter, or a
+    type it does not list)."""
+    data = state[obj]
+    if feature_filter is None or obj.type.name not in feature_filter:
+        return data
+    return data[list(feature_filter[obj.type.name])]
+
+
 @dataclass(frozen=True, eq=False, repr=False)
 class _LearnedSampler:
     """A convenience class for holding the models underlying a learned
@@ -367,6 +360,9 @@ class _LearnedSampler:
     _regressor: DistributionRegressor
     _variables: Sequence[Variable]
     _param_option: ParameterizedOption
+    # The object features it was trained on (see _sampler_features); None
+    # (also for samplers saved before this field existed): all.
+    _feature_filter: Optional[Dict[str, Sequence[int]]] = None
 
     def sampler(self, state: State, goal: Set[GroundAtom],
                 rng: np.random.Generator, objects: Sequence[Object]) -> Array:
@@ -377,15 +373,8 @@ class _LearnedSampler:
         x_lst: List[Any] = [1.0]  # start with bias term
         sub = dict(zip(self._variables, objects))
         for var in self._variables:
-            obj = sub[var]
-            data = state[obj]
-            if CFG.domain_sampler_data_filter is not None:
-                desired_feat_id = CFG.domain_sampler_data_filter[obj.type.name]
-                filtered_data = [d for i, d in enumerate(data) if i in desired_feat_id]
-                filtered_data = np.array(filtered_data)
-            else:
-                filtered_data = data
-            x_lst.extend(filtered_data)
+            x_lst.extend(
+                _sampler_features(state, sub[var], self._feature_filter))
         if CFG.sampler_learning_use_goals:
             # For goal-conditioned sampler learning, we currently make the
             # extremely limiting assumption that there is one goal atom, with

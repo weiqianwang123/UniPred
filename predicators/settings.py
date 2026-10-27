@@ -27,9 +27,6 @@ class GlobalSettings:
     # Optional {type name: [feature names]} of object features hidden from
     # the neural predicate and GNN inputs. None keeps all features.
     exclude_domain_feat = None
-    # Optional {type name: [feature indices]} of object features used as
-    # sampler inputs. None keeps all features.
-    domain_sampler_data_filter = None
     # Maximum number of training tasks to give a demonstration for, if the
     # offline_data_method is demo-based.
     max_initial_demos = float("inf")
@@ -326,6 +323,23 @@ class GlobalSettings:
             # Concretely, this effort refers to the maximum number of calls to
             # the sampler on each step before backtracking.
             sesame_max_samples_per_step=10,
+            # {type name: [feature indices]} of the object features that
+            # learned samplers see (types not listed: all); None: all. In
+            # Satellites, the ids (object.id, satellite.calibration_obj_id and
+            # read_obj_id) are labels, not quantities: test tasks have three
+            # objects, so ids that no training task has, and samplers fed them
+            # put the satellites anywhere (OOD success 20/50 instead of 48/50).
+            domain_sampler_data_filter=defaultdict(
+                lambda: None,
+                {
+                    "satellites": {
+                        # x, y, theta, instrument, is_calibrated,
+                        # shoots_chem_x, shoots_chem_y
+                        "satellite": [0, 1, 2, 3, 5, 7, 8],
+                        # x, y, has_chem_x, has_chem_y
+                        "object": [1, 2, 3, 4],
+                    },
+                })[args.get("env", "")],
             # Maximum number of skeletons used by ExpectedNodesScoreFunction.
             # If -1, defaults to CFG.sesame_max_skeletons_optimized.
             grammar_search_expected_nodes_max_skeletons=-1,
