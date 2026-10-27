@@ -33,6 +33,11 @@ prompts:
   box: wooden tray
   wiper: purple sponge
   table: table
+# A toy's box is at most 0.6 percent of the image in the 60 recorded
+# sessions; SAM3's "toy" around the arm holding the sponge (12 percent,
+# scored above "robotic arm") would otherwise drop the arm.
+max_box_area:
+  toy: 0.02
 # The toys are followed from keyframe to keyframe through the frames
 # recorded during the skills, with SAM3's video tracker (on the SAM3
 # server): in the next keyframe, a toy is the detection whose mask overlaps
