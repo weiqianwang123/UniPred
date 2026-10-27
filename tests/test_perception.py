@@ -111,6 +111,24 @@ def test_scene_perceiver_tracks_objects():
                            objects)
 
 
+def test_object_first_seen_later_is_matched_by_place():
+    """An object hidden at first (in the gripper; its box given) has no
+    appearance yet, so its first detection is matched by place, however
+    unlike the hidden crop it looks."""
+    perceiver = ScenePerceiver(
+        Detector("fake", {"robot": "robot gripper", "toy": "toy"}),
+        CropEncoder("fake"))
+    objects = {"toy0": "toy", "robot": "robot"}
+    robot = ("robot", (30, 40, 50, 60))
+    first = perceiver.perceive(_scene_image([robot]), objects,
+                               previous={"toy0": (35, 45, 45, 55)})
+    assert first.boxes["toy0"] == (35, 45, 45, 55)
+    second = perceiver.perceive(
+        _scene_image([robot, ("toy", (10, 10, 20, 20))]), objects,
+        previous=first)
+    assert second.boxes["toy0"] == (10.0, 10.0, 20.0, 20.0)
+
+
 def test_missing_detector_weights_name_the_path(tmp_path):
     """GroundingDINO and SAM2 without installed weights fail with the
     expected path."""

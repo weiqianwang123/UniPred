@@ -15,7 +15,9 @@ whose appearance is less similar than min_similarity is not the object
 (toys that look alike match by place). An object that is not detected
 keeps its previous box and appearance (for example a toy hidden in the
 gripper); boxes given explicitly (e.g. annotated for a hard object) replace
-detection. The crop around each box is encoded into the object's features;
+detection. An object that has not been detected yet has no appearance (its
+crop may not show it, as a toy hidden in the gripper at the start), so its
+first detection is matched by place only. The crop around each box is encoded into the object's features;
 with box_features, the box itself follows (its centre and size over the
 image's width and height), the object's pose in the image.
 
@@ -209,11 +211,8 @@ class ScenePerceiver:
         for name, (x0, y0, x1, y1) in given.items():
             boxes[name] = (float(x0), float(y0), float(x1), float(y1))
             masks[name] = None
-        missing = [n for n in objects if n not in looks]
-        for name, look in zip(
-                missing,
-                self._appearance(image, [(boxes[n], None) for n in missing])):
-            looks[name] = np.stack([look, look])
+            if name in previous_looks:
+                looks[name] = previous_looks[name]
         names = sorted(objects)
         crops = [
             crop_object(image, boxes[n], self._crop_padding,
