@@ -95,7 +95,9 @@ python examples/real_robot/closed_loop_example.py --session examples/real_robot/
 ```
 
 The deployment scripts take the flags of the training run, so they load
-the same model.
+the same model. `--video loop.mp4` writes an annotated video of the loop:
+what the robot sees, the plan, and the atoms it believes, with invented
+predicates named after the ground truth they match.
 
 ## On your robot
 

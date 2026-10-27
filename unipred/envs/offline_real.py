@@ -191,6 +191,15 @@ class OfflineRealEnv(BaseEnv):
             },
             simulator_state=RecordedScene(image, None))
 
+    def annotated_states(self) -> List[State]:
+        """The annotated keyframes of the train sessions."""
+        return [
+            self._state(session, index)
+            for session in self._split("train", CFG.num_train_tasks)
+            for index, keyframe in enumerate(session["keyframes"])
+            if keyframe["atoms"] is not None
+        ]
+
     def keyframe_image(self, state: State) -> str:
         """The image file of a state's keyframe."""
         assert isinstance(state.simulator_state, RecordedScene)

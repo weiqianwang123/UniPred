@@ -38,6 +38,7 @@ import numpy as np
 from predicators.approaches import ApproachFailure, ApproachTimeout
 from predicators.structs import State, _GroundNSRT
 from unipred.deploy import Deployment, RobotInterface, load_image
+from unipred.loop_video import LoopVideo, predicate_labels
 
 
 class FakeRobotInterface(RobotInterface):
@@ -64,28 +65,45 @@ def _effects_happened(nsrt: _GroundNSRT, state: State) -> bool:
         a.holds(state) for a in nsrt.delete_effects)
 
 
-def run_closed_loop(deployment: Deployment, robot: RobotInterface,
+def _step(nsrt: _GroundNSRT) -> str:
+    return f"{nsrt.option.name}({', '.join(o.name for o in nsrt.option_objs)})"
+
+
+def run_closed_loop(deployment: Deployment,
+                    robot: RobotInterface,
                     objects: Dict[str, str],
                     goal_atoms: Sequence[Tuple[str, Sequence[str]]],
-                    max_steps: int) -> bool:
-    """Run the loop (see module doc); return whether the goal holds."""
+                    max_steps: int,
+                    video: Optional[LoopVideo] = None) -> bool:
+    """Run the loop (see module doc); return whether the goal holds. The
+    video, if any, receives every keyframe and skill."""
     plan: List[_GroundNSRT] = []
+    done: List[str] = []
     executed: Optional[_GroundNSRT] = None
     previous = None
     for _ in range(max_steps + 1):
         frames = robot.video() if executed is not None else None
-        state, observation = deployment.observe(robot.capture(),
+        if video is not None and executed is not None:
+            video.skill(frames, done + [_step(n) for n in plan],
+                        len(done) - 1)
+        image = robot.capture()
+        state, observation = deployment.observe(image,
                                                 objects,
                                                 previous,
                                                 frames=frames)
         previous = observation
         goal = deployment.goal(goal_atoms, state)
+        note = ""
         if all(a.holds(state) for a in goal):
             logging.info("The goal holds.")
+            if video is not None:
+                video.keyframe(image, observation, objects, state, done,
+                               len(done), "the goal holds")
             return True
         if executed is not None and not _effects_happened(executed, state):
             logging.info(f"The effects of {executed.name} did not happen; "
                          "replanning.")
+            note = f"{_step(executed)} did not work: replanning"
             plan = []
         if not plan:
             try:
@@ -93,13 +111,14 @@ def run_closed_loop(deployment: Deployment, robot: RobotInterface,
             except (ApproachFailure, ApproachTimeout) as err:
                 logging.info(f"No plan: {err}")
                 return False
-            steps = ", ".join(
-                f"{n.option.name}({', '.join(o.name for o in n.option_objs)})"
-                for n in plan)
-            logging.info(f"Plan: {steps}")
+            logging.info(f"Plan: {', '.join(_step(n) for n in plan)}")
         if not plan:
             return False
+        if video is not None:
+            video.keyframe(image, observation, objects, state,
+                           done + [_step(n) for n in plan], len(done), note)
         executed = plan.pop(0)
+        done.append(_step(executed))
         robot.execute(executed.option.name,
                       [o.name for o in executed.option_objs])
     logging.info("The step budget is spent.")
@@ -115,6 +134,9 @@ def main() -> None:
     parser.add_argument("--robot", choices=["replay", "sim"], default="replay")
     parser.add_argument("--frames_dir",
                         help="with --robot sim: where the camera images go")
+    parser.add_argument("--video",
+                        help="an annotated video of the loop to write "
+                        "(.mp4 or .gif; see unipred/loop_video.py)")
     parser.add_argument("--max_steps", type=int, default=20)
     parser.add_argument("--robot_config", default="configs/real_robot.yaml")
     parser.add_argument("--detector", help="override the config's detector")
@@ -126,9 +148,22 @@ def main() -> None:
         session = json.load(f)
     deployment = Deployment(training_flags, args.robot_config, args.detector,
                             args.encoder)
+    video = None
+    if args.video:
+        predicates = deployment.predicates()
+        invented = [p for p in predicates if p not in deployment.env.predicates]
+        video = LoopVideo(
+            f"{os.path.basename(os.path.normpath(args.session))}: "
+            f"{deployment.approach.get_name()} in the closed loop",
+            predicates,
+            predicate_labels(invented, sorted(deployment.env.predicates),
+                             deployment.env.annotated_states()))
     if args.robot == "replay":
         run_closed_loop(deployment, FakeRobotInterface(args.session),
-                        session["objects"], session["goal"], args.max_steps)
+                        session["objects"], session["goal"], args.max_steps,
+                        video)
+        if video is not None:
+            video.save(args.video)
         return
     # pylint: disable=import-outside-toplevel
     from PIL import Image
@@ -147,7 +182,9 @@ def main() -> None:
     sim = scene.from_description(session["sim"])
     robot = MujocoRobot(sim)
     run_closed_loop(deployment, robot, session["objects"], session["goal"],
-                    args.max_steps)
+                    args.max_steps, video)
+    if video is not None:
+        video.save(args.video)
     goal = {(name, tuple(args_)) for name, args_ in session["goal"]}
     reached = goal <= set(sim.atoms())
     logging.info("In the simulator, the goal "

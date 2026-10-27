@@ -100,6 +100,15 @@ offline. On a real robot, `execute` dispatches to your skills (motion
 planning for picks and places, learned policies for pushing, ...), and
 `capture` reads the first camera in `cameras` of the robot config.
 
+`closed_loop_example.py --video loop.mp4` writes an annotated video of the
+loop (`unipred/loop_video.py`). Each keyframe shows the camera image with
+the boxes and names that perception found. Beside it is the plan, with the
+skills done and the one about to run. Below the plan are the atoms the
+robot believes. Each invented predicate is named after the hidden
+ground-truth predicate it agrees with most on the annotated training
+keyframes, with the agreement. The frames recorded while a skill runs
+follow.
+
 Table IV of the paper (execution on the real robot) is not reproduced: it
 needs the hardware. The simulated robot below stands in for it.
 

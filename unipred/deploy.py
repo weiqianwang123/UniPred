@@ -30,7 +30,8 @@ from predicators.approaches.bilevel_planning_approach import \
 from predicators.envs import create_new_env
 from predicators.ground_truth_models import get_gt_options
 from predicators.settings import CFG
-from predicators.structs import GroundAtom, State, Task, _GroundNSRT
+from predicators.structs import GroundAtom, Predicate, State, Task, \
+    _GroundNSRT
 from unipred.config import expand_config_args
 from unipred.envs.offline_real import OfflineRealEnv
 from unipred.perception.detector import Box
@@ -126,6 +127,11 @@ class Deployment:
         state = self.env.scene_state(dict(objects), observation.features,
                                      image_file)
         return state, observation
+
+    def predicates(self) -> Set[Predicate]:
+        """The predicates the approach plans with (given and invented)."""
+        # pylint: disable=protected-access
+        return set(self.approach._get_current_predicates())
 
     def goal(self, atoms: Sequence[Tuple[str, Sequence[str]]],
              state: State) -> Set[GroundAtom]:
