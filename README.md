@@ -45,7 +45,6 @@ This repository has:
 - [The simulated robot](#the-simulated-robot)
 - [Your own robot](#your-own-robot)
 - [Domains and methods](#domains-and-methods)
-- [Reproducing the paper's tables](#reproducing-the-papers-tables)
 - [Repository layout](#repository-layout)
 - [Citation](#citation)
 
@@ -191,24 +190,6 @@ scripts/run.sh configs/table_clean_sim/unipred.yaml 0 --config configs/ablations
 See [docs/domains.md](docs/domains.md) for the domains and
 [docs/adding_a_domain.md](docs/adding_a_domain.md) to add one.
 
-## Reproducing the paper's tables
-
-Each script runs its experiments for five seeds (`SEEDS="0 1 2 3 4"`),
-skips the seeds that already have results, and prints the table; `RUN=0`
-only prints it.
-
-| Table | Script | Experiments |
-|---|---|---|
-| II | `scripts/paper/table2.sh` | every method on the simulated domains; UniPred with Qwen and Gemini |
-| V | `scripts/paper/table5.sh` | without PDDL completion, the LLM loop or the loss feedback |
-| VI | `scripts/paper/table6.sh` | LLM-completed PDDL and Code as Policy on Blocks |
-| VII | `scripts/paper/table7.sh` | without semantic names; IVNTR |
-| VIII | `scripts/paper/table8.sh` | derived-aware selection on Table Clean Sim |
-
-The Tools domain of the paper is not part of this release. `python -m
-unipred.eval.summarize --domains ... --runs ...` prints a table from any
-runs.
-
 ## Repository layout
 
 ```
@@ -222,7 +203,7 @@ unipred/            the UniPred package
 third_party/IVNTR/  the fork of IVNTR (predicate invention, planning)
 configs/            a directory per domain, LLM and ablation overlays
 examples/real_robot/ recording, processing, planning from images, the closed loop
-scripts/            install, run, the paper's tables, the SAM3 server
+scripts/            install, run, the SAM3 server
 docs/               architecture, domains, real robot, adding a domain
 ```
 

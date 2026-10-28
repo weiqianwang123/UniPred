@@ -99,13 +99,13 @@ attach images (for the VLM baselines). Prompts are templates in
   planned for each test scene against the ground-truth operators from the
   scene's annotated atoms (the paper's Table III).
 - `unipred/eval/summarize.py` turns the results of `scripts/run.sh` into
-  the paper's tables; `scripts/paper/table*.sh` run each table.
+  a table.
 
 ## Layout
 
 ```
 configs/            experiment configs per domain, ablation overlays, LLMs
-scripts/            run.sh, install.sh, paper/table*.sh
+scripts/            run.sh, install.sh, sam3_server.py
 unipred/
   approaches/       unipred, ivntr_derived, code_as_policy, vila, pix2pred
   derived/          derived predicate rules, closure, derived-aware selection
