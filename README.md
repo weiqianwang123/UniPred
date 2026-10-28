@@ -1,18 +1,17 @@
 <p align="center">
-  <img src="metadata/logo.png" width="88" alt="UniPred logo">
+  <img src="metadata/header.png" width="100%" alt="UniPred: learning the concepts behind robot tasks from demonstrations, for long-horizon planning. IEEE Transactions on Robotics, 2026.">
 </p>
-
-<h1 align="center">UniPred</h1>
 
 <p align="center">
   <b>Unifying Deep Predicate Invention with Pre-trained Foundation Models</b><br>
-  <a href="https://arxiv.org/abs/2512.17992">Paper</a> ·
+  <a href="https://doi.org/10.1109/TRO.2026.3742972">IEEE T-RO 2026</a> ·
+  <a href="https://arxiv.org/abs/2512.17992">arXiv</a> ·
   <a href="https://unipred.github.io/">Project page</a> ·
   <a href="#citation">Citation</a>
 </p>
 
 <p align="center">
-  <img src="metadata/main_demo.gif" width="72%" alt="UniPred cleaning a table with a learned symbolic world model">
+  <img src="metadata/teaser.gif" width="80%" alt="The real robot cleaning a table and moving a bottle out of the way, Tools as a point cloud, and Table Clean in simulation">
 </p>
 
 UniPred learns a symbolic world model for long-horizon planning from a few
@@ -234,11 +233,13 @@ pytest tests`.
 ## Citation
 
 ```bibtex
-@article{wang2025unipred,
-  title={Unifying Deep Predicate Invention with Pre-trained Foundation Models},
+@article{wang2026unipred,
+  title={Unifying Deep Predicate Invention With Pre-Trained Foundation Models},
   author={Wang, Qianwei and Li, Bowen and Luo, Zhanpeng and Xu, Yifan and Kamat, Vineet and Menassa, Carol and Gray, Alexander and Silver, Tom and Scherer, Sebastian and Sycara, Katia and Xie, Yaqi},
-  journal={arXiv preprint arXiv:2512.17992},
-  year={2025}
+  journal={IEEE Transactions on Robotics},
+  year={2026},
+  pages={1--20},
+  doi={10.1109/TRO.2026.3742972}
 }
 ```
 
